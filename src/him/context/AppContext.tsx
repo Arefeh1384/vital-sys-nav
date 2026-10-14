@@ -24,7 +24,9 @@ interface AppContextType {
   clearNotification: () => void;
 }
 
-const AppContext = createContext<AppContextType | undefined>(undefined);
+// Keep one context object across live code reloads, so the provider and useApp always match.
+const g = globalThis as unknown as { __himAppContext?: React.Context<AppContextType | undefined> };
+const AppContext = g.__himAppContext ?? (g.__himAppContext = createContext<AppContextType | undefined>(undefined));
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Initial state: logged in with the chief executive for immediate evaluation,
