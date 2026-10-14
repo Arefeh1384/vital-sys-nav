@@ -37,6 +37,21 @@ interface AppContextType {
 const g = globalThis as unknown as { __himAppContext?: React.Context<AppContextType | undefined> };
 const AppContext = g.__himAppContext ?? (g.__himAppContext = createContext<AppContextType | undefined>(undefined));
 
+const TASKS_KEY = 'him.tasks.v1';
+const ALERTS_KEY = 'him.alerts.v1';
+function loadStored<T extends { id: string }>(key: string, base: T[]): T[] {
+  try {
+    const raw = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
+    if (!raw) return base;
+    const saved = JSON.parse(raw) as T[];
+    const byId = new Map(saved.map(x => [x.id, x]));
+    return base.map(b => ({ ...b, ...(byId.get(b.id) ?? {}) }));
+  } catch { return base; }
+}
+function saveStored(key: string, value: unknown) {
+  try { window.localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+}
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Initial state: logged in with the chief executive for immediate evaluation,
   // but with full capability to log out and use the LoginView.
@@ -56,8 +71,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [activeModule, setActiveModuleRaw] = useState<ModuleKey>('EXE');
   const [workView, setWorkView] = useState<WorkView | null>(null);
-  const [tasks, setTasks] = useState<WorkTask[]>(TASKS_DATA);
-  const [alerts, setAlerts] = useState<WorkAlert[]>(ALERTS_DATA);
+  // Persist task/alert changes so they survive a full page reload (app renders client-only).
+  const [tasks, setTasks] = useState<WorkTask[]>(() => loadStored(TASKS_KEY, TASKS_DATA));
+  const [alerts, setAlerts] = useState<WorkAlert[]>(() => loadStored(ALERTS_KEY, ALERTS_DATA));
+  useEffect(() => { saveStored(TASKS_KEY, tasks); }, [tasks]);
+  useEffect(() => { saveStored(ALERTS_KEY, alerts); }, [alerts]);
   const setActiveModule = (m: ModuleKey) => { setActiveModuleRaw(m); setWorkView(null); };
   const openWorkView = (v: WorkView | null) => { setWorkView(v); setViewState('normal'); };
   const updateTaskStatus = (id: string, status: TaskStatus) => {
