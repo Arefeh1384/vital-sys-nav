@@ -6,12 +6,14 @@ interface EmptyStateProps {
   title?: string;
   description?: string;
   onReset?: () => void;
+  resetLabel?: string;
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
   title = 'هیچ داده یا رویداد فعالی در این دامنه یافت نشد',
   description = 'برای سایت و فیلترهای زمانی انتخاب‌شده، در حال حاضر رکوردی در سرورهای محلی ثبت نشده است.',
   onReset,
+  resetLabel = 'بازنشانی به نمای عادی',
 }) => {
   const { scope, setIsScopeModalOpen, setViewState } = useApp();
 
@@ -50,7 +52,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
             className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800 transition-colors shadow-2xs flex items-center gap-1.5"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            <span>بازنشانی به نمای عادی</span>
+            <span>{resetLabel}</span>
           </button>
         </div>
       </div>
