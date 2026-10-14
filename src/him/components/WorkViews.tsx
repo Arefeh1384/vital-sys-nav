@@ -58,8 +58,8 @@ function Filters<T extends string>({ value, onChange, options }: { value: T | 'a
 const SearchBox: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => (
   <div className="relative w-full md:w-64">
     <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
-    <input value={value} onChange={e => onChange(e.target.value)} placeholder="جستجو در عنوان یا کد..." dir="auto"
-      className="w-full pr-9 pl-3 py-2 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/30" />
+    <input value={value} onChange={e => onChange(e.target.value)} placeholder="جستجو در عنوان یا کد..." aria-label="جستجو در عنوان یا کد" dir="rtl"
+      className="w-full text-right pr-9 pl-3 py-2 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/30" />
   </div>
 );
 
@@ -78,7 +78,12 @@ export const TaskListView: React.FC = () => {
         <Filters value={status} onChange={setStatus} options={TASK_STATUS_LABEL} />
         <SearchBox value={q} onChange={setQ} />
       </div>
-      {rows.length === 0 ? <EmptyState /> : (
+      {rows.length === 0 ? <EmptyState
+        title={q || status !== 'all' ? 'وظیفه‌ای مطابق جستجو و فیلترها یافت نشد' : undefined}
+        description={q || status !== 'all' ? 'عبارت جستجو یا فیلتر وضعیت را تغییر دهید.' : undefined}
+        resetLabel="پاک‌کردن جستجو و فیلترها"
+        onReset={() => { setQ(''); setStatus('all'); }}
+      /> : (
         <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100 overflow-hidden">
           {rows.map(t => (
             <button key={t.id} type="button" onClick={() => openWorkView({ kind: 'task', id: t.id })}
@@ -195,7 +200,12 @@ export const AlertListView: React.FC = () => {
         </div>
         <Filters value={severity} onChange={setSeverity} options={PRIORITY_LABEL} />
       </div>
-      {rows.length === 0 ? <EmptyState /> : (
+      {rows.length === 0 ? <EmptyState
+        title={q || status !== 'all' || severity !== 'all' ? 'هشداری مطابق جستجو و فیلترها یافت نشد' : undefined}
+        description={q || status !== 'all' || severity !== 'all' ? 'عبارت جستجو یا فیلترهای وضعیت و شدت را تغییر دهید.' : undefined}
+        resetLabel="پاک‌کردن جستجو و فیلترها"
+        onReset={() => { setQ(''); setStatus('all'); setSeverity('all'); }}
+      /> : (
         <div className="grid md:grid-cols-2 gap-3">
           {rows.map(a => (
             <button key={a.id} type="button" onClick={() => openWorkView({ kind: 'alert', id: a.id })}
