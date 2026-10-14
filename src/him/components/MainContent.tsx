@@ -45,7 +45,7 @@ export const MainContent: React.FC = () => {
     isScopeSwitching 
   } = useApp();
 
-  const currentModuleDef = MODULES_CONFIG.find(m => m.key === activeModule) || MODULES_CONFIG[0];
+  const currentModuleDef = MODULES_CONFIG.find(m => m.key === activeModule) || MODULES_CONFIG[0]!;
   const currentSite = SITES_DATA.find(s => s.id === scope.siteId);
 
   // If in scope-switching transition, render subtle loading

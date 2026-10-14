@@ -20,7 +20,7 @@ export const LoginView: React.FC = () => {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [selectedSiteId, setSelectedSiteId] = useState(SITES_DATA[0].id);
+  const [selectedSiteId, setSelectedSiteId] = useState(SITES_DATA[0]!.id);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);

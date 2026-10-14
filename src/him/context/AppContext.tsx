@@ -29,10 +29,10 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Initial state: logged in with the chief executive for immediate evaluation,
   // but with full capability to log out and use the LoginView.
-  const [user, setUser] = useState<User | null>(DEMO_USERS[0]);
+  const [user, setUser] = useState<User | null>(DEMO_USERS[0] ?? null);
   
   const [scope, setScope] = useState<Scope>(() => {
-    const initialSite = SITES_DATA[0];
+    const initialSite = SITES_DATA[0]!;
     return {
       orgId: CURRENT_ORGANIZATION.id,
       orgName: CURRENT_ORGANIZATION.name,
@@ -65,7 +65,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (user && permittedSites.length > 0) {
       if (!scope.siteId || !user.permittedSiteIds.includes(scope.siteId)) {
-        const fallbackSite = permittedSites[0];
+        const fallbackSite = permittedSites[0]!;
         setScope({
           orgId: CURRENT_ORGANIZATION.id,
           orgName: CURRENT_ORGANIZATION.name,
@@ -168,7 +168,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ? siteId 
       : demoUser.permittedSiteIds[0];
 
-    const targetSite = SITES_DATA.find(s => s.id === chosenSiteId) || SITES_DATA[0];
+    const targetSite = SITES_DATA.find(s => s.id === chosenSiteId) || SITES_DATA[0]!;
     
     setScope({
       orgId: CURRENT_ORGANIZATION.id,
