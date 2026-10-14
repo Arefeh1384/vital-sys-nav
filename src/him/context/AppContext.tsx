@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, Scope, ModuleKey, ViewState, Site } from '../types';
 import { CURRENT_ORGANIZATION, SITES_DATA, DEMO_USERS } from '../data/mockData';
+import { TASKS_DATA, ALERTS_DATA, type WorkTask, type WorkAlert, type TaskStatus, type AlertStatus } from '../data/workData';
+
+export type WorkView = { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string };
 
 interface AppContextType {
   user: User | null;
@@ -22,6 +25,12 @@ interface AppContextType {
   logout: () => void;
   showNotification: (msg: string) => void;
   clearNotification: () => void;
+  workView: WorkView | null;
+  openWorkView: (v: WorkView | null) => void;
+  tasks: WorkTask[];
+  alerts: WorkAlert[];
+  updateTaskStatus: (id: string, status: TaskStatus) => void;
+  updateAlertStatus: (id: string, status: AlertStatus) => void;
 }
 
 // Keep one context object across live code reloads, so the provider and useApp always match.
@@ -45,7 +54,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   });
 
-  const [activeModule, setActiveModule] = useState<ModuleKey>('EXE');
+  const [activeModule, setActiveModuleRaw] = useState<ModuleKey>('EXE');
+  const [workView, setWorkView] = useState<WorkView | null>(null);
+  const [tasks, setTasks] = useState<WorkTask[]>(TASKS_DATA);
+  const [alerts, setAlerts] = useState<WorkAlert[]>(ALERTS_DATA);
+  const setActiveModule = (m: ModuleKey) => { setActiveModuleRaw(m); setWorkView(null); };
+  const openWorkView = (v: WorkView | null) => { setWorkView(v); setViewState('normal'); };
+  const updateTaskStatus = (id: string, status: TaskStatus) => {
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, status, history: [...t.history, { at: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }), text: `وضعیت توسط ${user?.name ?? 'کاربر'} تغییر کرد.` }] } : t));
+    showNotification('وضعیت وظیفه به‌روزرسانی شد.');
+  };
+  const updateAlertStatus = (id: string, status: AlertStatus) => {
+    setAlerts(prev => prev.map(a => a.id === id ? { ...a, status } : a));
+    showNotification(status === 'resolved' ? 'هشدار برطرف‌شده ثبت شد.' : 'دریافت هشدار تأیید شد.');
+  };
   const [viewState, setViewState] = useState<ViewState>('normal');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -212,6 +234,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logout,
         showNotification,
         clearNotification,
+        workView,
+        openWorkView,
+        tasks,
+        alerts,
+        updateTaskStatus,
+        updateAlertStatus,
       }}
     >
       {children}

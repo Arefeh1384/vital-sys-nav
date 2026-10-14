@@ -12,7 +12,9 @@ import {
   ChevronRight,
   ChevronLeft,
   Building,
-  X
+  X,
+  ClipboardList,
+  Bell
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { MODULES_CONFIG } from '../data/mockData';
@@ -24,7 +26,11 @@ export const Sidebar: React.FC = () => {
     setActiveModule, 
     sidebarCollapsed, 
     setSidebarCollapsed,
-    scope 
+    scope,
+    workView,
+    openWorkView,
+    tasks,
+    alerts
   } = useApp();
 
   const handleModuleClick = (key: ModuleKey) => {
@@ -122,7 +128,7 @@ export const Sidebar: React.FC = () => {
 
             <nav className="space-y-1">
               {MODULES_CONFIG.map((mod) => {
-                const isSelected = activeModule === mod.key;
+                const isSelected = !workView && activeModule === mod.key;
 
                 return (
                   <button
@@ -155,6 +161,35 @@ export const Sidebar: React.FC = () => {
                     {isSelected && (
                       <span className="w-1 h-5 rounded-l-full bg-teal-600 absolute left-0 top-1/2 -translate-y-1/2"></span>
                     )}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+
+          <div>
+            {!sidebarCollapsed && (
+              <div className="px-3 pb-2 text-[11px] font-bold text-slate-400 tracking-wider">کارتابل</div>
+            )}
+            <nav className="space-y-1">
+              {([
+                { kind: 'tasks', label: 'فهرست وظایف', Icon: ClipboardList, count: tasks.filter(t => t.siteId === scope.siteId && t.status !== 'done').length },
+                { kind: 'alerts', label: 'فهرست هشدارها', Icon: Bell, count: alerts.filter(a => a.siteId === scope.siteId && a.status === 'new').length },
+              ] as const).map(({ kind, label, Icon, count }) => {
+                const sel = workView?.kind === kind || workView?.kind === kind.slice(0, -1);
+                return (
+                  <button key={kind} type="button" data-testid={`sidebar-item-${kind}`}
+                    onClick={() => { openWorkView({ kind }); if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarCollapsed(true); }}
+                    title={sidebarCollapsed ? label : undefined}
+                    className={`w-full group flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all relative cursor-pointer ${sel ? 'bg-teal-50 text-teal-900 border border-teal-200/80 font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'}`}>
+                    <Icon className={`w-5 h-5 shrink-0 ${sel ? 'text-teal-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                    {!sidebarCollapsed && (
+                      <div className="flex-1 flex items-center justify-between gap-1 min-w-0">
+                        <span className="truncate">{label}</span>
+                        {count > 0 && <span className="text-[10px] px-1.5 rounded-full bg-rose-100 text-rose-700 shrink-0 tabular-nums">{count.toLocaleString('fa-IR')}</span>}
+                      </div>
+                    )}
+                    {sel && <span className="w-1 h-5 rounded-l-full bg-teal-600 absolute left-0 top-1/2 -translate-y-1/2"></span>}
                   </button>
                 );
               })}

@@ -33,6 +33,7 @@ import { MODULES_CONFIG, SITES_DATA } from '../data/mockData';
 import { LoadingState } from './states/LoadingState';
 import { EmptyState } from './states/EmptyState';
 import { ErrorState } from './states/ErrorState';
+import { TaskListView, TaskDetailView, AlertListView, AlertDetailView } from './WorkViews';
 
 export const MainContent: React.FC = () => {
   const { 
@@ -42,7 +43,8 @@ export const MainContent: React.FC = () => {
     setViewState, 
     setIsScopeModalOpen, 
     user,
-    isScopeSwitching 
+    isScopeSwitching,
+    workView
   } = useApp();
 
   const currentModuleDef = MODULES_CONFIG.find(m => m.key === activeModule) || MODULES_CONFIG[0]!;
@@ -53,6 +55,17 @@ export const MainContent: React.FC = () => {
     return (
       <main className="flex-1 p-4 md:p-8 overflow-y-auto min-w-0" data-testid="scope-switching-state">
         <LoadingState message={`در حال تغییر مرز امنیتی و بارگذاری داده‌های «${scope.siteName}»...`} />
+      </main>
+    );
+  }
+
+  if (workView) {
+    return (
+      <main className="flex-1 p-4 md:p-8 overflow-y-auto min-w-0" dir="rtl">
+        {workView.kind === 'tasks' && <TaskListView />}
+        {workView.kind === 'task' && <TaskDetailView id={workView.id} />}
+        {workView.kind === 'alerts' && <AlertListView />}
+        {workView.kind === 'alert' && <AlertDetailView id={workView.id} />}
       </main>
     );
   }
