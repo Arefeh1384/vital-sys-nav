@@ -48,7 +48,7 @@ export const LoginView: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-slate-900 flex flex-col justify-between relative overflow-hidden text-slate-100">
+    <div dir="rtl" className="min-h-screen w-full bg-slate-900 flex flex-col justify-between relative overflow-hidden text-slate-100 text-start">
       {/* Background ambient medical grid */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-30 pointer-events-none" />
 
@@ -60,7 +60,7 @@ export const LoginView: React.FC = () => {
           </div>
           <div>
             <h1 className="text-base font-extrabold tracking-tight text-white leading-tight">
-              HIM-OS
+              <bdi dir="ltr">HIM-OS</bdi>
             </h1>
             <p className="text-xs text-slate-400">
               سامانه یکپارچه مدیریت و هوشمندی سلامت دانشگاه علوم پزشکی شهید بهشتی
@@ -70,7 +70,7 @@ export const LoginView: React.FC = () => {
 
         <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400 bg-slate-800/80 border border-slate-700/80 px-3 py-1.5 rounded-lg">
           <Server className="w-3.5 h-3.5 text-teal-400" />
-          <span>محیط استقرار: اینترانت محلی بیمارستان (On-Premises)</span>
+          <span>محیط استقرار: اینترانت محلی بیمارستان (<bdi dir="ltr">On-Premises</bdi>)</span>
         </div>
       </header>
 
@@ -82,10 +82,10 @@ export const LoginView: React.FC = () => {
             <div className="space-y-6">
               <div className="space-y-2">
                 <span className="text-xs font-bold text-teal-700 tracking-wider">
-                  درگاه احراز هویت متمرکز (SSO / OIDC)
+                  درگاه احراز هویت متمرکز (<bdi dir="ltr">SSO / OIDC</bdi>)
                 </span>
                 <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                  ورود به سامانه HIM-OS
+                  ورود به سامانه <bdi dir="ltr">HIM-OS</bdi>
                 </h2>
                 <p className="text-xs text-slate-500 leading-relaxed">
                   لطفاً با شناسه پرسنلی یا نام کاربری احراز هویت دانشگاهی وارد شوید.
@@ -109,6 +109,7 @@ export const LoginView: React.FC = () => {
                     <User className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
+                      dir="auto"
                       required
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
@@ -127,6 +128,7 @@ export const LoginView: React.FC = () => {
                     <Lock className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
                     <input
                       type={showPassword ? 'text' : 'password'}
+                      dir="auto"
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -158,7 +160,7 @@ export const LoginView: React.FC = () => {
                     >
                       {SITES_DATA.map((site) => (
                         <option key={site.id} value={site.id}>
-                          {site.name} ({site.code})
+                          {site.name} ({'\u2066'}{site.code}{'\u2069'})
                         </option>
                       ))}
                     </select>
@@ -203,7 +205,7 @@ export const LoginView: React.FC = () => {
             <div className="mt-8 pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
               <div className="flex items-center gap-1.5 text-slate-500">
                 <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
-                <span>جداسازی امنیتی RLS و توکن‌های کنترل دسترسی</span>
+                  <span>جداسازی امنیتی <bdi dir="ltr">RLS</bdi> و توکن‌های کنترل دسترسی</span>
               </div>
               <span>پایلوت شهریور ۱۴۰۵</span>
             </div>
@@ -220,7 +222,7 @@ export const LoginView: React.FC = () => {
                   ورود سریع با کاربران نمونه
                 </h3>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  جهت راستی‌آزمایی تفکیک Scope، می‌توانید روی هر حساب کلیک کنید (رمز عبور آزمایشی: <code className="text-teal-300 font-mono">sbmu1405</code> یا <code className="text-teal-300 font-mono">123456</code>):
+                  جهت راستی‌آزمایی تفکیک <bdi dir="ltr">Scope</bdi>، می‌توانید روی هر حساب کلیک کنید (رمز عبور آزمایشی: <bdi dir="ltr"><code className="text-teal-300 font-mono">sbmu1405</code></bdi> یا <bdi dir="ltr"><code className="text-teal-300 font-mono">123456</code></bdi>):
                 </p>
               </div>
 
@@ -268,7 +270,7 @@ export const LoginView: React.FC = () => {
 
       {/* Footer */}
       <footer className="p-6 text-center text-xs text-slate-500 border-t border-slate-800 relative z-10">
-        کلیه حقوق این سامانه متعلق به دانشگاه علوم پزشکی و خدمات بهداشتی درمانی شهید بهشتی می‌باشد · HIM-OS v1.2
+        کلیه حقوق این سامانه متعلق به دانشگاه علوم پزشکی و خدمات بهداشتی درمانی شهید بهشتی می‌باشد · <bdi dir="ltr">HIM-OS v1.2</bdi>
       </footer>
     </div>
   );
