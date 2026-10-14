@@ -1,24 +1,25 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import App from "@/him/App";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "HIM-OS | سامانه هوشمندی سلامت" },
+      { name: "description", content: "سامانه یکپارچه مدیریت و هوشمندی سلامت دانشگاه علوم پزشکی شهید بهشتی" },
+      { property: "og:title", content: "HIM-OS | سامانه هوشمندی سلامت" },
+      { property: "og:description", content: "سامانه یکپارچه مدیریت و هوشمندی سلامت بیمارستانی" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
-  return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
-  );
+  // The app reads screen width on start, so render it only in the browser.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return <div className="min-h-screen bg-slate-50" />;
+  return <App />;
 }
