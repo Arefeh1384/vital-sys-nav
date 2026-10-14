@@ -23,6 +23,7 @@ const AppShell: React.FC = () => {
       }, 4000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [notificationMessage, clearNotification]);
 
   // If not logged in, render the Login View
