@@ -71,7 +71,7 @@ export const ALERTS_DATA: WorkAlert[] = S.flatMap((_, si) =>
   })),
 );
 
-const baseTasks: Omit<WorkTask, 'id' | 'code' | 'siteId' | 'alertId'>[] & { alertIdx?: number }[] = [
+const baseTasks: (Omit<WorkTask, 'id' | 'code' | 'siteId' | 'alertId'> & { alertIdx?: number })[] = [
   { title: 'بازتوزیع بیماران ICU به بخش‌های مجاور', description: 'هماهنگی با سرپرستاران برای انتقال بیماران پایدار و آزادسازی ظرفیت ICU.', module: 'OPS', assignee: 'سرپرستار ICU', priority: 'critical', status: 'in_progress', dueDate: '۱۴۰۵/۰۷/۲۲', history: [{ at: '۰۸:۲۰', text: 'وظیفه از روی هشدار ایجاد شد.' }, { at: '۰۹:۰۵', text: 'وضعیت به «در حال انجام» تغییر کرد.' }], alertIdx: 0 },
   { title: 'ثبت سفارش فوری هپارین', description: 'ارسال درخواست خرید فوری به معاونت غذا و دارو.', module: 'SUP', assignee: 'مسئول داروخانه', priority: 'high', status: 'open', dueDate: '۱۴۰۵/۰۷/۲۳', history: [{ at: '۰۷:۴۵', text: 'وظیفه از روی هشدار ایجاد شد.' }], alertIdx: 1 },
   { title: 'تحلیل ریشه‌ای (RCA) خطای دارویی', description: 'تشکیل جلسه کمیته ایمنی و تکمیل فرم RCA.', module: 'QLT', assignee: 'کارشناس ایمنی بیمار', priority: 'high', status: 'open', dueDate: '۱۴۰۵/۰۷/۲۵', history: [{ at: '۲۲:۳۰', text: 'وظیفه ایجاد شد.' }], alertIdx: 2 },
@@ -82,7 +82,7 @@ const baseTasks: Omit<WorkTask, 'id' | 'code' | 'siteId' | 'alertId'>[] & { aler
 
 export const TASKS_DATA: WorkTask[] = S.flatMap((_, si) =>
   baseTasks.map((t, i) => {
-    const { alertIdx, ...rest } = t as typeof t & { alertIdx?: number };
+    const { alertIdx, ...rest } = t;
     return {
       ...rest,
       id: `tk-${si}-${i}`,
