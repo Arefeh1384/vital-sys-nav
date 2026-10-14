@@ -8,3 +8,4 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+- The HIM-OS app lives in src/him and renders browser-only from src/routes/index.tsx, because its startup state reads the screen width.
