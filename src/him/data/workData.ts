@@ -16,7 +16,7 @@ export interface WorkTask {
   priority: Priority;
   status: TaskStatus;
   dueDate: string;
-  alertId?: string;
+  alertId?: string | undefined;
   history: { at: string; text: string }[];
 }
 
