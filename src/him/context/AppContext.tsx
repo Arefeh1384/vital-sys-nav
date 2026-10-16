@@ -3,7 +3,9 @@ import { User, Scope, ModuleKey, ViewState, Site } from '../types';
 import { CURRENT_ORGANIZATION, SITES_DATA, DEMO_USERS } from '../data/mockData';
 import { TASKS_DATA, ALERTS_DATA, type WorkTask, type WorkAlert, type TaskStatus, type AlertStatus } from '../data/workData';
 
-export type WorkView = { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string };
+export type WorkView = { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' };
+
+export interface AppNotification { id: string; title: string; body: string; at: string; target: WorkView }
 
 interface AppContextType {
   user: User | null;
@@ -31,6 +33,9 @@ interface AppContextType {
   alerts: WorkAlert[];
   updateTaskStatus: (id: string, status: TaskStatus) => void;
   updateAlertStatus: (id: string, status: AlertStatus) => void;
+  notifications: AppNotification[];
+  readNotificationIds: string[];
+  markNotificationsRead: (ids: string[]) => void;
 }
 
 // Keep one context object across live code reloads, so the provider and useApp always match.
@@ -76,6 +81,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [alerts, setAlerts] = useState<WorkAlert[]>(() => loadStored(ALERTS_KEY, ALERTS_DATA));
   useEffect(() => { saveStored(TASKS_KEY, tasks); }, [tasks]);
   useEffect(() => { saveStored(ALERTS_KEY, alerts); }, [alerts]);
+  const [readNotificationIds, setReadIds] = useState<string[]>(() => {
+    try { return JSON.parse(window.localStorage.getItem('him.notif.read.v1') ?? '[]') as string[]; } catch { return []; }
+  });
+  useEffect(() => { saveStored('him.notif.read.v1', readNotificationIds); }, [readNotificationIds]);
+  const markNotificationsRead = (ids: string[]) => setReadIds(prev => Array.from(new Set([...prev, ...ids])));
+  const notifications = React.useMemo<AppNotification[]>(() => {
+    const sid = scope.siteId;
+    const fromAlerts = alerts.filter(a => a.siteId === sid && a.status !== 'resolved').map(a => ({
+      id: `n-${a.id}-${a.status}`, at: a.raisedAt,
+      title: a.status === 'new' ? `هشدار جدید: ${a.title}` : `هشدار در انتظار رفع: ${a.title}`,
+      body: `${a.code} · ${a.source}`, target: { kind: 'alert', id: a.id } as WorkView,
+    }));
+    const fromTasks = tasks.filter(t => t.siteId === sid && t.status !== 'done' && (t.priority === 'critical' || t.priority === 'high')).map(t => ({
+      id: `n-${t.id}-${t.status}`, at: `سررسید ${t.dueDate}`,
+      title: `وظیفه با اولویت بالا: ${t.title}`, body: `${t.code} · مسئول: ${t.assignee}`, target: { kind: 'task', id: t.id } as WorkView,
+    }));
+    return [...fromAlerts, ...fromTasks];
+  }, [alerts, tasks, scope.siteId]);
   const setActiveModule = (m: ModuleKey) => { setActiveModuleRaw(m); setWorkView(null); };
   const openWorkView = (v: WorkView | null) => { setWorkView(v); setViewState('normal'); };
   const updateTaskStatus = (id: string, status: TaskStatus) => {
@@ -258,6 +281,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         alerts,
         updateTaskStatus,
         updateAlertStatus,
+        notifications,
+        readNotificationIds,
+        markNotificationsRead,
       }}
     >
       {children}

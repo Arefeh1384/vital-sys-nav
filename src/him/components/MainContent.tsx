@@ -33,7 +33,7 @@ import { MODULES_CONFIG, SITES_DATA } from '../data/mockData';
 import { LoadingState } from './states/LoadingState';
 import { EmptyState } from './states/EmptyState';
 import { ErrorState } from './states/ErrorState';
-import { TaskListView, TaskDetailView, AlertListView, AlertDetailView } from './WorkViews';
+import { TaskListView, TaskDetailView, AlertListView, AlertDetailView, NotificationCenterView } from './WorkViews';
 
 export const MainContent: React.FC = () => {
   const { 
@@ -66,6 +66,7 @@ export const MainContent: React.FC = () => {
         {workView.kind === 'task' && <TaskDetailView id={workView.id} />}
         {workView.kind === 'alerts' && <AlertListView />}
         {workView.kind === 'alert' && <AlertDetailView id={workView.id} />}
+        {workView.kind === 'notifications' && <NotificationCenterView />}
       </main>
     );
   }
