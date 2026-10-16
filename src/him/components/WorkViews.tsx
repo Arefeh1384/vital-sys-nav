@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowRight, Bell, ClipboardList, Search, CheckCircle2, Clock, User as UserIcon, Link2 } from 'lucide-react';
+import { ArrowRight, Bell, ClipboardList, Search, CheckCircle2, Clock, User as UserIcon, Link2, FileCheck2, Inbox } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { MODULES_CONFIG } from '../data/mockData';
 import {
   PRIORITY_CLASS, PRIORITY_LABEL, TASK_STATUS_LABEL, ALERT_STATUS_LABEL,
   type TaskStatus, type AlertStatus, type Priority,
 } from '../data/workData';
+import { alertEvidence, taskEvidence, EVIDENCE_KIND_LABEL, type EvidenceItem } from '../data/evidenceData';
 import { EmptyState } from './states/EmptyState';
 
 const moduleTitle = (k: string) => MODULES_CONFIG.find(m => m.key === k)?.shortTitle ?? k;
@@ -150,6 +151,7 @@ export const TaskDetailView: React.FC<{ id: string }> = ({ id }) => {
               ))}
             </ol>
           </div>
+          <EvidencePackage items={taskEvidence(t, alert)} code={t.code} />
         </div>
         <div className="space-y-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-5 grid gap-3">
@@ -265,6 +267,7 @@ export const AlertDetailView: React.FC<{ id: string }> = ({ id }) => {
               </ul>
             )}
           </div>
+          <EvidencePackage items={alertEvidence(a)} code={a.code} />
         </div>
         <div className="space-y-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-5 grid gap-3">
@@ -286,6 +289,77 @@ export const AlertDetailView: React.FC<{ id: string }> = ({ id }) => {
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+export const EvidencePackage: React.FC<{ items: EvidenceItem[]; code: string }> = ({ items, code }) => {
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-5" data-testid="evidence-package">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <h2 className="text-sm font-bold text-slate-800 inline-flex items-center gap-1.5"><FileCheck2 className="w-4 h-4 text-teal-600" />بسته شواهد</h2>
+        <span className="text-[11px] text-slate-500"><bdi dir="ltr">{code}</bdi> · {items.length.toLocaleString('fa-IR')} مورد</span>
+      </div>
+      {items.length === 0 ? <p className="text-xs text-slate-500">شاهدی برای این مورد ثبت نشده است.</p> : (
+        <ul className="space-y-2">
+          {items.map(e => (
+            <li key={e.id} className="border border-slate-100 rounded-xl">
+              <button type="button" onClick={() => setOpen(open === e.id ? null : e.id)} aria-expanded={open === e.id}
+                className="w-full text-start flex items-center justify-between gap-2 p-3 hover:bg-slate-50 rounded-xl">
+                <span className="min-w-0">
+                  <span className="block text-sm text-slate-800">{e.title}</span>
+                  <span className="block text-[11px] text-slate-500">{EVIDENCE_KIND_LABEL[e.kind]} · {e.source} · {e.capturedAt}</span>
+                </span>
+                <span className="text-[11px] text-teal-700 shrink-0">{open === e.id ? 'بستن' : 'مشاهده'}</span>
+              </button>
+              {open === e.id && (
+                <div className="px-3 pb-3 text-xs text-slate-600 leading-6 space-y-1">
+                  <p>{e.detail}</p>
+                  <p className="text-slate-400">اثر انگشت: <bdi dir="ltr" className="font-mono">{e.hash}</bdi></p>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+export const NotificationCenterView: React.FC = () => {
+  const { notifications, readNotificationIds, markNotificationsRead, openWorkView } = useApp();
+  const [onlyUnread, setOnlyUnread] = useState(false);
+  const rows = notifications.filter(n => !onlyUnread || !readNotificationIds.includes(n.id));
+  const unread = notifications.filter(n => !readNotificationIds.includes(n.id)).length;
+  return (
+    <div data-testid="notification-center">
+      <Header icon={<Inbox className="w-5 h-5" />} title="مرکز اعلان‌ها" subtitle={`${unread.toLocaleString('fa-IR')} اعلان خوانده‌نشده`} />
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button type="button" onClick={() => setOnlyUnread(false)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${!onlyUnread ? 'bg-teal-600 text-white border-teal-600' : 'border-slate-200 text-slate-600'}`}>همه</button>
+        <button type="button" onClick={() => setOnlyUnread(true)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${onlyUnread ? 'bg-teal-600 text-white border-teal-600' : 'border-slate-200 text-slate-600'}`}>خوانده‌نشده</button>
+        <button type="button" disabled={unread === 0} onClick={() => markNotificationsRead(notifications.map(n => n.id))} className="ms-auto px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 text-slate-700 disabled:opacity-40">علامت‌گذاری همه به‌عنوان خوانده‌شده</button>
+      </div>
+      {rows.length === 0 ? <p className="text-sm text-slate-500 bg-white border border-slate-200 rounded-2xl p-6 text-center">اعلان خوانده‌نشده‌ای وجود ندارد.</p> : (
+        <ul className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100">
+          {rows.map(n => {
+            const isRead = readNotificationIds.includes(n.id);
+            return (
+              <li key={n.id}>
+                <button type="button" onClick={() => { markNotificationsRead([n.id]); openWorkView(n.target); }}
+                  className="w-full text-start flex items-start gap-3 p-4 hover:bg-slate-50">
+                  <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${isRead ? 'bg-transparent' : 'bg-teal-500'}`} />
+                  <span className="min-w-0 flex-1">
+                    <span className={`block text-sm ${isRead ? 'text-slate-600' : 'text-slate-900 font-bold'}`}>{n.title}</span>
+                    <span className="block text-xs text-slate-500 mt-0.5">{n.body}</span>
+                  </span>
+                  <span className="text-[11px] text-slate-400 shrink-0">{n.at}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 };

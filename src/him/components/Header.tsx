@@ -24,8 +24,12 @@ export const Header: React.FC = () => {
     viewState,
     setViewState,
     loginAsDemoUser,
-    showNotification
+    showNotification,
+    openWorkView,
+    notifications,
+    readNotificationIds
   } = useApp();
+  const unreadCount = notifications.filter(n => !readNotificationIds.includes(n.id)).length;
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isStateMenuOpen, setIsStateMenuOpen] = useState(false);
@@ -183,12 +187,13 @@ export const Header: React.FC = () => {
         {/* Notifications Icon */}
         <button
           type="button"
-          onClick={() => showNotification('هیچ اعلان فوری خوانده‌نشده‌ای در محدوده کاری فعلی وجود ندارد.')}
+          onClick={() => openWorkView({ kind: 'notifications' })}
+          data-testid="open-notification-center"
           className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors relative"
           title="اعلانات سامانه"
         >
           <Bell className="w-4 h-4" />
-          <span className="w-2 h-2 rounded-full bg-teal-500 absolute top-1.5 left-1.5 ring-2 ring-white"></span>
+          {unreadCount > 0 && <span className="min-w-4 h-4 px-1 rounded-full bg-rose-600 text-white text-[9px] leading-4 text-center absolute -top-0.5 -left-0.5 ring-2 ring-white tabular-nums">{unreadCount.toLocaleString('fa-IR')}</span>}
         </button>
 
         {/* User Profile dropdown */}
