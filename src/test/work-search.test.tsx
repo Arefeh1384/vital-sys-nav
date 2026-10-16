@@ -28,7 +28,7 @@ describe('Work list search reset', () => {
   it('clears alert search, status and severity so the original alert returns', () => {
     render(<AlertListView />);
     fireEvent.click(screen.getByRole('button', { name: 'برطرف‌شده' }));
-    fireEvent.click(screen.getByRole('button', { name: 'کم' }));
+    fireEvent.click(screen.getByRole('button', { name: 'پایین' }));
     const input = screen.getByRole('textbox');
     fireEvent.change(input, { target: { value: 'بدون نتیجه' } });
     expect(screen.queryByText('ALR-1003')).toBeNull();
