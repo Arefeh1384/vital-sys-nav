@@ -3,10 +3,10 @@ import { Inbox, RefreshCw, Building2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 interface EmptyStateProps {
-  title?: string;
-  description?: string;
-  onReset?: () => void;
-  resetLabel?: string;
+  title?: string | undefined;
+  description?: string | undefined;
+  onReset?: (() => void) | undefined;
+  resetLabel?: string | undefined;
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
