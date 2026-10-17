@@ -1,0 +1,3 @@
+- [ ] Add scoped action proposal list and detail with diff, impact and approval panel.
+- [ ] Add action journal and explicit uncertain-state reconciliation flow.
+- [ ] Test approval separation, transitions and scope isolation; verify preview flow.
