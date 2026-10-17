@@ -1,0 +1,85 @@
+import { useState } from 'react';
+import { ArrowRight, ArrowLeft, ClipboardCheck, History, Search, ShieldCheck, AlertTriangle, GitCompareArrows, Send, CheckCircle2, FileSearch } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useApp } from '../context/AppContext';
+import { ACTION_STATUS_LABEL, approvalError, scopedActions, type ActionStatus, type ActionProposal } from '../data/actionData';
+
+const statusClass: Record<ActionStatus, string> = {
+  proposed: 'bg-muted text-muted-foreground', approved: 'bg-action-success/10 text-action-success',
+  sent: 'bg-action-info/10 text-action-info', uncertain: 'bg-action-warning/10 text-action-warning', finalized: 'bg-action-success/10 text-action-success',
+};
+function Status({ status }: { status: ActionStatus }) {
+  return <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold ${statusClass[status]}`}>{ACTION_STATUS_LABEL[status]}</span>;
+}
+function Heading({ title, journal = false }: { title: string; journal?: boolean }) {
+  const { scope } = useApp();
+  const Icon = journal ? History : ClipboardCheck;
+  return <header className="mb-6 flex items-start gap-3"><Icon className="mt-1 size-6 text-action-brand shrink-0" /><div className="min-w-0"><h1 className="text-xl font-bold text-foreground">{title}</h1><p className="mt-1 text-xs text-muted-foreground">{scope.siteName} · داده و عملیات نمونه</p></div></header>;
+}
+function JournalEntries({ action }: { action: ActionProposal }) {
+  return <ol className="border-r border-border mr-2 space-y-5 py-2">{action.history.map((event, i) => <li key={`${i}-${event.at}`} className="relative pr-6"><span className="absolute -right-1.5 top-2 size-3 rounded-full bg-action-brand border-2 border-background" /><div className="flex flex-wrap items-center gap-2"><Status status={event.status} /><time className="text-xs text-muted-foreground">{event.at}</time></div><p className="mt-2 text-sm leading-6">{event.note}</p><p className="mt-1 text-xs text-muted-foreground">{event.actor}</p></li>)}</ol>;
+}
+
+export function ActionProposalListView() {
+  const { actions, scope, openWorkView } = useApp();
+  const [q, setQ] = useState('');
+  const [status, setStatus] = useState<ActionStatus | 'all'>('all');
+  const rows = scopedActions(actions, scope.siteId).filter(a => (status === 'all' || a.status === status) && (!q.trim() || `${a.title} ${a.code}`.toLowerCase().includes(q.trim().toLowerCase())));
+  return <div data-testid="action-list"><Heading title="فهرست پیشنهادهای اقدام" />
+    <div className="flex flex-col xl:flex-row gap-4 justify-between mb-5"><div className="flex flex-wrap gap-1">{(['all', ...Object.keys(ACTION_STATUS_LABEL)] as (ActionStatus | 'all')[]).map(s => <Button size="sm" variant={status === s ? 'secondary' : 'ghost'} className={status === s ? 'text-action-brand' : ''} aria-pressed={status === s} key={s} onClick={() => setStatus(s)}>{s === 'all' ? 'همه' : ACTION_STATUS_LABEL[s]}</Button>)}</div>
+      <div className="relative w-full xl:w-64 shrink-0"><Search className="absolute right-3 top-3 size-4 text-muted-foreground" /><input aria-label="جستجوی پیشنهاد اقدام" placeholder="جستجو در عنوان یا کد…" dir="rtl" value={q} onChange={e => setQ(e.target.value)} className="w-full text-right border border-input bg-background rounded-md pr-9 pl-3 h-10 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+    </div>
+    {rows.length ? <div className="divide-y divide-border border-y border-border">{rows.map(a => <Button key={a.id} variant="ghost" onClick={() => openWorkView({ kind: 'proposal', id: a.id })} className="w-full h-auto min-h-24 rounded-none px-2 py-4 justify-between text-right whitespace-normal gap-4"><div className="min-w-0"><bdi dir="ltr" className="text-xs font-mono text-muted-foreground">{a.code}</bdi><h2 className="text-sm font-bold mt-1">{a.title}</h2><p className="text-xs font-normal text-muted-foreground mt-1">سازنده: {a.creatorName}</p></div><div className="flex items-center gap-2 shrink-0"><Status status={a.status} /><ArrowLeft /></div></Button>)}</div> : <div className="py-12 text-center"><p className="text-muted-foreground">پیشنهادی مطابق جستجو و فیلترها یافت نشد.</p><Button className="mt-4" variant="outline" onClick={() => { setQ(''); setStatus('all'); }}>پاک‌کردن جستجو و فیلترها</Button></div>}
+  </div>;
+}
+
+function ApprovalPanel({ action }: { action: ActionProposal }) {
+  const { user, scope, runActionCommand } = useApp();
+  const [checked, setChecked] = useState(false);
+  const [reference, setReference] = useState('');
+  const [note, setNote] = useState('');
+  const [outcome, setOutcome] = useState<'confirmed' | 'not_found' | 'pending'>('pending');
+  const error = approvalError(action, user, scope.siteId);
+  const canOperate = !!user && ['executive_viewer', 'process_approver', 'control_approver', 'data_steward', 'integration_administrator'].includes(user.role);
+  const reconcile = action.status === 'uncertain' || action.status === 'sent';
+  return <aside className="border-t lg:border-t-0 lg:border-r border-border pt-6 lg:pt-0 lg:pr-6 space-y-5 min-w-0" data-testid="approval-panel">
+    <h2 className="text-base font-bold flex items-center gap-2"><ShieldCheck className="size-5 text-action-brand" />پنل تأیید</h2>
+    <dl className="space-y-3 text-sm"><div><dt className="text-xs text-muted-foreground">وضعیت</dt><dd className="mt-1"><Status status={action.status} /></dd></div><div><dt className="text-xs text-muted-foreground">سازنده پیشنهاد</dt><dd className="mt-1">{action.creatorName}</dd></div><div><dt className="text-xs text-muted-foreground">بررسی‌کننده فعلی</dt><dd className="mt-1">{user?.name ?? '—'}</dd></div><div><dt className="text-xs text-muted-foreground">مقصد</dt><dd className="mt-1"><bdi dir="auto">{action.target}</bdi></dd></div></dl>
+    {action.status === 'proposed' && <div className="space-y-3">{error && <p role="status" className="text-sm text-action-warning leading-6">{error}</p>}<label className="flex gap-2 text-sm leading-6"><input type="checkbox" checked={checked} disabled={!!error} onChange={e => setChecked(e.target.checked)} className="mt-1 accent-action-brand shrink-0" />تفاوت‌ها، اثر و ریسک اقدام را بررسی کرده‌ام.</label><Button className="w-full bg-action-brand text-action-brand-foreground hover:bg-action-brand/90" disabled={!!error || !checked} onClick={() => runActionCommand(action.id, { kind: 'approve' })}><ShieldCheck />تأیید پیشنهاد اقدام</Button></div>}
+    {action.status === 'approved' && <div className="space-y-3"><p className="text-sm text-action-success">تأیید مستقل ثبت شده است.</p><Button className="w-full" disabled={!canOperate} onClick={() => runActionCommand(action.id, { kind: 'send' })}><Send />ثبت ارسال نمونه</Button></div>}
+    {action.dispatchKey && <div className="text-xs text-muted-foreground"><p>شناسه یکتای ارسال</p><bdi dir="ltr" className="block mt-1 break-all font-mono">{action.dispatchKey}</bdi></div>}
+    {reconcile && <div className="space-y-4 border-t border-border pt-4" data-testid="reconciliation-panel">
+      <h3 className="text-sm font-bold flex items-center gap-2"><FileSearch className="size-4" />تطبیق نتیجه مقصد (Reconciliation)</h3>
+      {action.status === 'uncertain' && <p className="text-sm leading-6 text-action-warning">نتیجه ارسال نامشخص است. ارسال مجدد مسدود است تا رکورد مقصد با شناسه یکتای ارسال تطبیق داده شود.</p>}
+      <p className="text-xs leading-6 text-muted-foreground">مرجع بررسی: {action.target} · رکورد مقصد یا گزارش دریافت</p>
+      <label className="block text-xs">مرجع رکورد یا گزارش مقصد<input className="block mt-2 w-full border border-input bg-background rounded-md p-2 text-sm" dir="auto" value={reference} onChange={e => setReference(e.target.value)} /></label>
+      <label className="block text-xs">نتیجه تطبیق<select value={outcome} onChange={e => setOutcome(e.target.value as typeof outcome)} className="mt-2 block w-full bg-background border border-input rounded-md p-2 text-sm"><option value="pending">هنوز نامشخص؛ ادامه بررسی</option><option value="confirmed">اجرای اقدام در مقصد تأیید شد</option><option value="not_found">رکورد اجرا در مقصد یافت نشد</option></select></label>
+      <label className="block text-xs">شرح بررسی<textarea value={note} onChange={e => setNote(e.target.value)} rows={3} className="mt-2 w-full border border-input bg-background rounded-md p-2 text-sm" /></label>
+      <Button className="w-full" variant="outline" disabled={!canOperate || !reference.trim() || !note.trim()} onClick={() => runActionCommand(action.id, { kind: 'reconcile', result: { reference, note, outcome } })}><FileSearch />ثبت نتیجه تطبیق</Button>
+      {action.status === 'sent' && <Button variant="ghost" className="w-full text-action-warning" disabled={!canOperate} onClick={() => runActionCommand(action.id, { kind: 'uncertain' })}><AlertTriangle />ثبت نبود پاسخ قطعی</Button>}
+      {action.reconciliation && <p role="status" className="text-xs text-muted-foreground leading-6">آخرین مرجع: <bdi>{action.reconciliation.reference}</bdi> · {action.reconciliation.note}</p>}
+    </div>}
+    {action.status === 'finalized' && <p className="text-sm text-action-success flex gap-2 leading-6"><CheckCircle2 className="size-5 shrink-0" />اجرای اقدام با مرجع {action.reconciliation?.reference ?? 'ثبت مقصد'} تأیید و نهایی شد.</p>}
+  </aside>;
+}
+
+export function ActionProposalDetailView({ id }: { id: string }) {
+  const { actions, scope, openWorkView } = useApp();
+  const action = scopedActions(actions, scope.siteId).find(a => a.id === id);
+  if (!action) return <div><p className="mb-4 text-muted-foreground">این پیشنهاد در دامنه فعلی یافت نشد.</p><Button variant="outline" onClick={() => openWorkView({ kind: 'proposals' })}>بازگشت به پیشنهادها</Button></div>;
+  return <div data-testid="action-detail"><Button variant="ghost" size="sm" className="mb-4 text-action-brand" onClick={() => openWorkView({ kind: 'proposals' })}><ArrowRight />بازگشت به پیشنهادها</Button><Heading title={action.title} /><p className="font-mono text-xs text-muted-foreground mb-5"><bdi dir="ltr">{action.code}</bdi></p>
+    <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-8"><div className="min-w-0 space-y-8">
+      <section><h2 className="font-bold text-sm mb-3">شرح پیشنهاد</h2><p className="text-sm leading-7 text-muted-foreground">{action.description}</p></section>
+      <section><h2 className="font-bold text-sm mb-3 flex gap-2 items-center"><GitCompareArrows className="size-5 text-action-brand" />تفاوت‌ها (Diff)</h2><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="text-xs text-muted-foreground bg-muted"><tr><th className="p-3">فیلد</th><th className="p-3">قبل از اقدام</th><th className="p-3">پس از اقدام</th></tr></thead><tbody>{action.diff.map(d => <tr key={d.field} className="border-b border-border"><td className="p-3 font-medium">{d.field}</td><td className="p-3 text-muted-foreground">{d.before}</td><td className="p-3 text-action-success">{d.after}</td></tr>)}</tbody></table></div></section>
+      <section><h2 className="font-bold text-sm mb-3">تأثیر مورد انتظار و ریسک</h2><p className="text-sm leading-7">{action.impact}</p><p className="mt-2 text-sm leading-7 text-muted-foreground">{action.risk}</p></section>
+      <section><h2 className="font-bold text-sm mb-3">منابع و شواهد مرتبط</h2><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => openWorkView({ kind: 'task', id: action.taskId })}>وظیفه مرتبط و بسته شواهد<ArrowLeft /></Button><Button variant="outline" size="sm" onClick={() => openWorkView({ kind: 'alert', id: action.alertId })}>هشدار مرتبط و بسته شواهد<ArrowLeft /></Button></div></section>
+      <section><h2 className="font-bold text-sm mb-4 flex gap-2 items-center"><History className="size-5 text-action-brand" />ژورنال اقدام</h2><JournalEntries action={action} /></section>
+    </div><ApprovalPanel key={action.id} action={action} /></div>
+  </div>;
+}
+
+export function ActionJournalView() {
+  const { actions, scope, openWorkView } = useApp();
+  const rows = scopedActions(actions, scope.siteId);
+  return <div data-testid="action-journal"><Heading title="ژورنال اقدام" journal /><div className="mb-6 flex flex-wrap items-center gap-2 text-xs">{Object.entries(ACTION_STATUS_LABEL).map(([s, label], i) => <span className="inline-flex items-center gap-2" key={s}>{i > 0 && <ArrowLeft className="size-3 text-muted-foreground" />}<span>{label}</span></span>)}</div>{rows.length ? rows.map(action => <section key={action.id} className="border-t border-border py-6"><div className="flex flex-wrap items-center justify-between gap-3 mb-4"><Button variant="ghost" className="h-auto text-start whitespace-normal p-0 gap-2" onClick={() => openWorkView({ kind: 'proposal', id: action.id })}><bdi dir="ltr" className="font-mono text-xs text-muted-foreground">{action.code}</bdi><span className="font-bold text-sm">{action.title}</span><ArrowLeft /></Button><Status status={action.status} /></div><JournalEntries action={action} />{action.status === 'uncertain' && <Button className="mt-4 text-action-warning" variant="outline" onClick={() => openWorkView({ kind: 'proposal', id: action.id })}><FileSearch />بررسی و تطبیق نتیجه مقصد</Button>}</section>) : <p className="py-12 text-center text-muted-foreground">اقدامی در دامنه فعلی ثبت نشده است.</p>}</div>;
+}

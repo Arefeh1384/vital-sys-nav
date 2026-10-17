@@ -2,8 +2,9 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, Scope, ModuleKey, ViewState, Site } from '../types';
 import { CURRENT_ORGANIZATION, SITES_DATA, DEMO_USERS } from '../data/mockData';
 import { TASKS_DATA, ALERTS_DATA, type WorkTask, type WorkAlert, type TaskStatus, type AlertStatus } from '../data/workData';
+import { ACTIONS_DATA, applyActionCommand, type ActionProposal, type ActionCommand } from '../data/actionData';
 
-export type WorkView = { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' };
+export type WorkView = { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'proposal'; id: string } | { kind: 'journal' };
 
 export interface AppNotification { id: string; title: string; body: string; at: string; target: WorkView }
 
@@ -36,6 +37,8 @@ interface AppContextType {
   notifications: AppNotification[];
   readNotificationIds: string[];
   markNotificationsRead: (ids: string[]) => void;
+  actions: ActionProposal[];
+  runActionCommand: (id: string, command: ActionCommand) => void;
 }
 
 // Keep one context object across live code reloads, so the provider and useApp always match.
@@ -76,6 +79,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [activeModule, setActiveModuleRaw] = useState<ModuleKey>('EXE');
   const [workView, setWorkView] = useState<WorkView | null>(null);
+  // Preview actions are session-only; no command is dispatched to a real hospital system.
+  const [actions, setActions] = useState<ActionProposal[]>(ACTIONS_DATA);
+  const runActionCommand = (id: string, command: ActionCommand) => {
+    setActions(prev => prev.map(action => action.id === id
+      ? applyActionCommand(action, user, scope.siteId, command, new Date().toLocaleString('fa-IR'))
+      : action));
+  };
   // Persist task/alert changes so they survive a full page reload (app renders client-only).
   const [tasks, setTasks] = useState<WorkTask[]>(() => loadStored(TASKS_KEY, TASKS_DATA));
   const [alerts, setAlerts] = useState<WorkAlert[]>(() => loadStored(ALERTS_KEY, ALERTS_DATA));
@@ -176,6 +186,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         siteType: targetSite.type,
       });
       setIsScopeSwitching(false);
+      setWorkView(prev => prev?.kind === 'proposal' ? { kind: 'proposals' } : prev);
       showNotification(`دامنه کاری به «${targetSite.name}» تغییر یافت.`);
     }, 300);
 
@@ -245,10 +256,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     setViewState('normal');
     showNotification(`ورود موفق به سامانه با هویت «${demoUser.name}»`);
+    setWorkView(null);
   };
 
   const logout = () => {
     setUser(null);
+    setWorkView(null);
     setViewState('normal');
     showNotification('خروج از سامانه انجام شد.');
   };
@@ -284,6 +297,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         notifications,
         readNotificationIds,
         markNotificationsRead,
+        actions,
+        runActionCommand,
       }}
     >
       {children}
