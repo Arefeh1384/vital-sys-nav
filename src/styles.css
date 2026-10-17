@@ -59,9 +59,19 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-action-brand: var(--action-brand);
+  --color-action-brand-foreground: var(--action-brand-foreground);
+  --color-action-success: var(--action-success);
+  --color-action-warning: var(--action-warning);
+  --color-action-info: var(--action-info);
 }
 
 :root {
+  --action-brand: oklch(0.511 0.096 186.391);
+  --action-brand-foreground: oklch(0.984 0.003 247.858);
+  --action-success: oklch(0.508 0.118 165.612);
+  --action-warning: oklch(0.555 0.163 48.998);
+  --action-info: oklch(0.5 0.134 242.749);
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.129 0.042 264.695);
@@ -98,6 +108,11 @@
 }
 
 .dark {
+  --action-brand: oklch(0.777 0.152 181.912);
+  --action-brand-foreground: oklch(0.129 0.042 264.695);
+  --action-success: oklch(0.765 0.177 163.223);
+  --action-warning: oklch(0.828 0.189 84.429);
+  --action-info: oklch(0.746 0.16 232.661);
   --background: oklch(0.129 0.042 264.695);
   --foreground: oklch(0.984 0.003 247.858);
   --card: oklch(0.208 0.042 265.755);

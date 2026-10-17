@@ -14,11 +14,14 @@ import {
   Building,
   X,
   ClipboardList,
-  Bell
+  Bell,
+  ClipboardCheck,
+  History
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { MODULES_CONFIG } from '../data/mockData';
 import { ModuleKey } from '../types';
+import { Button } from '@/components/ui/button';
 
 export const Sidebar: React.FC = () => {
   const { 
@@ -163,6 +166,20 @@ export const Sidebar: React.FC = () => {
                     )}
                   </button>
                 );
+              })}
+            </nav>
+            <nav className="space-y-1 mt-1">
+              {([
+                { kind: 'proposals', label: 'پیشنهادهای اقدام', Icon: ClipboardCheck },
+                { kind: 'journal', label: 'ژورنال اقدام', Icon: History },
+              ] as const).map(({ kind, label, Icon }) => {
+                const selected = workView?.kind === kind || (kind === 'proposals' && workView?.kind === 'proposal');
+                return <Button key={kind} variant="ghost" data-testid={`sidebar-item-${kind}`}
+                  title={label} aria-label={label} aria-pressed={selected}
+                  onClick={() => { openWorkView({ kind }); if (window.innerWidth < 768) setSidebarCollapsed(true); }}
+                  className={`w-full justify-start gap-3 h-auto px-3 py-2.5 text-xs font-semibold ${selected ? 'bg-action-brand/10 text-action-brand' : 'text-muted-foreground'}`}>
+                  <Icon className="size-5 shrink-0" />{!sidebarCollapsed && <span>{label}</span>}
+                </Button>;
               })}
             </nav>
           </div>
