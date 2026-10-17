@@ -58,4 +58,17 @@ describe('Action approval and journal rules', () => {
       expect(run(result, 'send')).toBe(result);
     }
   });
+  it('escalates an uncertain action without retry, then finalizes only via verified manual completion', () => {
+    const uncertain = run(run(run(action, 'approve'), 'send'), 'uncertain');
+    expect(applyActionCommand(uncertain, chief, scope, { kind: 'manual', reference: 'M-1', note: 'x' }, 'now')).toBe(uncertain);
+    expect(applyActionCommand(uncertain, chief, scope, { kind: 'escalate', note: '' }, 'now')).toBe(uncertain);
+    const escalated = applyActionCommand(uncertain, chief, scope, { kind: 'escalate', note: 'no destination record' }, 'now');
+    expect(escalated.status).toBe('uncertain');
+    expect(escalated.escalatedTo).toBeTruthy();
+    expect(run(escalated, 'send')).toBe(escalated);
+    const done = applyActionCommand(escalated, chief, scope, { kind: 'manual', reference: 'M-1', note: 'checked by phone' }, 'now');
+    expect(done.status).toBe('finalized');
+    expect(done.manualCompletion?.reference).toBe('M-1');
+    expect(done.reconciliation).toBeUndefined();
+  });
 });

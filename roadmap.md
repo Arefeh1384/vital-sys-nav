@@ -1,3 +1,3 @@
-- [ ] Add scoped action proposal list and detail with diff, impact and approval panel.
-- [ ] Add action journal and explicit uncertain-state reconciliation flow.
-- [ ] Test approval separation, transitions and scope isolation; verify preview flow.
+- [x] Add scoped action proposal list and detail with diff, impact and approval panel.
+- [x] Add action journal and explicit uncertain-state reconciliation flow (reconcile, escalate, verified manual completion).
+- [ ] Run `bunx vitest run` to verify approval separation, transitions and scope isolation; verify preview flow.

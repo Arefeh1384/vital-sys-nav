@@ -14,6 +14,8 @@ export interface ActionProposal {
   taskId: string; alertId: string; history: ActionEvent[];
   approvedBy?: string; dispatchKey?: string;
   reconciliation?: { reference: string; outcome: 'confirmed' | 'not_found' | 'pending'; note: string };
+  escalatedTo?: string;
+  manualCompletion?: { reference: string; note: string; verifiedBy: string };
 }
 
 export function scopedActions(actions: ActionProposal[], siteId: string | null) {
@@ -27,7 +29,11 @@ export function approvalError(action: ActionProposal, user: User | null, siteId:
   return null;
 }
 type Reconciliation = NonNullable<ActionProposal['reconciliation']>;
-export type ActionCommand = { kind: 'approve' | 'send' | 'uncertain' } | { kind: 'reconcile'; result: Reconciliation };
+export type ActionCommand =
+  | { kind: 'approve' | 'send' | 'uncertain' }
+  | { kind: 'reconcile'; result: Reconciliation }
+  | { kind: 'escalate'; note: string }
+  | { kind: 'manual'; reference: string; note: string };
 export function applyActionCommand(action: ActionProposal, user: User | null, siteId: string | null, command: ActionCommand, at: string): ActionProposal {
   if (!user || action.siteId !== siteId || !user.permittedSiteIds.includes(action.siteId)) return action;
   let status = action.status;
@@ -48,6 +54,16 @@ export function applyActionCommand(action: ActionProposal, user: User | null, si
       status = result.outcome === 'confirmed' ? 'finalized' : 'uncertain';
       note = `تطبیق با مرجع ${result.reference.trim()}: ${result.note.trim()}`;
       extra = { reconciliation: { ...result, reference: result.reference.trim(), note: result.note.trim() } };
+    } else if (command.kind === 'escalate' && action.status === 'uncertain' && !action.escalatedTo) {
+      // A missing destination record is not proof of failure: hand over to a person, never auto-retry or cancel.
+      if (!command.note.trim()) return action;
+      status = 'uncertain'; note = `ارجاع به مسئول کنترل برای بررسی دستی: ${command.note.trim()}`;
+      extra = { escalatedTo: 'مسئول کنترل' };
+    } else if (command.kind === 'manual' && action.status === 'uncertain' && action.escalatedTo) {
+      // Manual completion is verified by a person; it is distinct from source-confirmed completion.
+      if (!command.reference.trim() || !command.note.trim()) return action;
+      status = 'finalized'; note = `اجرای دستی با مرجع ${command.reference.trim()} تأیید شد (تأیید انسانی، نه تأیید خودکار منبع): ${command.note.trim()}`;
+      extra = { manualCompletion: { reference: command.reference.trim(), note: command.note.trim(), verifiedBy: user.name } };
     } else return action;
   }
   return { ...action, ...extra, status, history: [...action.history, { status, at, actor: user.name, note }] };
@@ -58,6 +74,7 @@ const titles = ['بازتوزیع ظرفیت مراقبت ویژه', 'افزای
 export const ACTIONS_DATA: ActionProposal[] = SITES_DATA.flatMap((site, si) => stages.map((status, i) => {
   const creator = DEMO_USERS[i === 1 ? 0 : 1];
   const id = `ap-${si}-${i}`;
+  const k = (i + si) % 5; // each site gets a different mix of topics so scope changes are visible
   const history = stages.slice(0, i + 1).map((s, index): ActionEvent => ({ status: s, at: `۱۴۰۵/۰۷/۲۵ · ${['۰۸:۰۰', '۰۸:۳۰', '۰۸:۳۵', '۰۸:۴۰', '۰۹:۰۰'][index]}`, actor: index === 0 ? creator?.name ?? 'کارشناس' : 'مسئول بررسی', note: ['پیشنهاد همراه شواهد ثبت شد.', 'تفاوت‌ها و اثر اقدام بررسی شد.', 'ارسال نمونه ثبت شد.', 'پاسخ مقصد قطعی نیست؛ نیازمند تطبیق.', 'اجرای مقصد با مرجع تطبیق تأیید شد.'][index] ?? '' }));
   const diffs = [
     { field: 'ظرفیت تخصیص‌یافته ICU', before: '۲۰ تخت', after: '۲۴ تخت' },
@@ -67,13 +84,13 @@ export const ACTIONS_DATA: ActionProposal[] = SITES_DATA.flatMap((site, si) => s
     { field: 'وضعیت اسناد', before: 'نیازمند اصلاح', after: 'آماده بازبینی بیمه' },
   ];
   return {
-    id, code: `ACT-${3000 + si * 10 + i}`, siteId: site.id, title: titles[i] ?? 'پیشنهاد اقدام',
+    id, code: `ACT-${3000 + si * 10 + i}`, siteId: site.id, title: `${titles[k] ?? 'پیشنهاد اقدام'} — ${site.name}`,
     description: 'پیشنهاد اصلاح فرایند بر اساس هشدار و وظیفه مرتبط، برای بررسی مسئول تأیید.',
     creatorId: creator?.id ?? 'usr-2', creatorName: creator?.name ?? 'کارشناس', status,
-    target: ['HIS / ADT', 'سامانه انبار', 'سامانه ایمنی بیمار', 'سامانه نگهداشت', 'سامانه درآمد'][i] ?? 'سامانه مقصد',
-    impact: ['آزادسازی ظرفیت و کاهش انتظار انتقال بیماران؛ اثر تخمینی: ۴ تخت.', 'افزایش پوشش موجودی دارو؛ اثر تخمینی: ۱۸۰ ویال.', 'کاهش احتمال خطای دارویی با بررسی مستقل.', 'بازگرداندن سه دستگاه به برنامه نگهداشت.', 'کاهش برگشت اسناد با بازبینی ثبت خدمات.'][i] ?? '',
+    target: ['HIS / ADT', 'سامانه انبار', 'سامانه ایمنی بیمار', 'سامانه نگهداشت', 'سامانه درآمد'][k] ?? 'سامانه مقصد',
+    impact: ['آزادسازی ظرفیت و کاهش انتظار انتقال بیماران؛ اثر تخمینی: ۴ تخت.', 'افزایش پوشش موجودی دارو؛ اثر تخمینی: ۱۸۰ ویال.', 'کاهش احتمال خطای دارویی با بررسی مستقل.', 'بازگرداندن سه دستگاه به برنامه نگهداشت.', 'کاهش برگشت اسناد با بازبینی ثبت خدمات.'][k] ?? '',
     risk: 'اثرها تخمینی هستند؛ صحت داده منبع و ظرفیت اجرایی باید پیش از ارسال بررسی شود.',
-    diff: diffs[i] ? [diffs[i]] : [], taskId: `tk-${si}-${i}`, alertId: `al-${si}-${i}`, history,
+    diff: diffs[k] ? [diffs[k]] : [], taskId: `tk-${si}-${i}`, alertId: `al-${si}-${i}`, history,
     ...(i >= 1 ? { approvedBy: 'reviewer' } : {}),
     ...(i >= 2 ? { dispatchKey: `dispatch-${id}` } : {}),
     ...(i === 4 ? { reconciliation: { reference: `REC-${3000 + si * 10 + i}`, outcome: 'confirmed' as const, note: 'ثبت مقصد بررسی و اجرای اقدام تأیید شد.' } } : {}),

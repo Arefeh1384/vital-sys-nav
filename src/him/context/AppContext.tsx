@@ -82,9 +82,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Preview actions are session-only; no command is dispatched to a real hospital system.
   const [actions, setActions] = useState<ActionProposal[]>(ACTIONS_DATA);
   const runActionCommand = (id: string, command: ActionCommand) => {
-    setActions(prev => prev.map(action => action.id === id
-      ? applyActionCommand(action, user, scope.siteId, command, new Date().toLocaleString('fa-IR'))
-      : action));
+    const current = actions.find(a => a.id === id);
+    if (!current) return;
+    const next = applyActionCommand(current, user, scope.siteId, command, new Date().toLocaleString('fa-IR'));
+    if (next === current) {
+      showNotification('این اقدام انجام نشد: دسترسی، وضعیت یا اطلاعات لازم معتبر نیست.');
+      return;
+    }
+    setActions(prev => prev.map(a => a.id === id ? next : a));
+    const messages: Record<ActionCommand['kind'], string> = {
+      approve: 'پیشنهاد اقدام تأیید شد.',
+      send: 'ارسال نمونه ثبت شد.',
+      uncertain: 'نبود پاسخ قطعی ثبت شد؛ اقدام نامشخص است.',
+      reconcile: next.status === 'finalized' ? 'نتیجه تطبیق ثبت شد و اقدام نهایی شد.' : 'نتیجه تطبیق ثبت شد؛ اقدام همچنان نامشخص است.',
+      escalate: 'اقدام برای بررسی دستی ارجاع شد.',
+      manual: 'اجرای دستی تأییدشده ثبت و اقدام نهایی شد.',
+    };
+    showNotification(messages[command.kind]);
   };
   // Persist task/alert changes so they survive a full page reload (app renders client-only).
   const [tasks, setTasks] = useState<WorkTask[]>(() => loadStored(TASKS_KEY, TASKS_DATA));

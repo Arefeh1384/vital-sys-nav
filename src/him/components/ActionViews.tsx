@@ -29,7 +29,7 @@ export function ActionProposalListView() {
     <div className="flex flex-col xl:flex-row gap-4 justify-between mb-5"><div className="flex flex-wrap gap-1">{(['all', ...Object.keys(ACTION_STATUS_LABEL)] as (ActionStatus | 'all')[]).map(s => <Button size="sm" variant={status === s ? 'secondary' : 'ghost'} className={status === s ? 'text-action-brand' : ''} aria-pressed={status === s} key={s} onClick={() => setStatus(s)}>{s === 'all' ? 'همه' : ACTION_STATUS_LABEL[s]}</Button>)}</div>
       <div className="relative w-full xl:w-64 shrink-0"><Search className="absolute right-3 top-3 size-4 text-muted-foreground" /><input aria-label="جستجوی پیشنهاد اقدام" placeholder="جستجو در عنوان یا کد…" dir="rtl" value={q} onChange={e => setQ(e.target.value)} className="w-full text-right border border-input bg-background rounded-md pr-9 pl-3 h-10 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
     </div>
-    {rows.length ? <div className="divide-y divide-border border-y border-border">{rows.map(a => <Button key={a.id} variant="ghost" onClick={() => openWorkView({ kind: 'proposal', id: a.id })} className="w-full h-auto min-h-24 rounded-none px-2 py-4 justify-between text-right whitespace-normal gap-4"><div className="min-w-0"><bdi dir="ltr" className="text-xs font-mono text-muted-foreground">{a.code}</bdi><h2 className="text-sm font-bold mt-1">{a.title}</h2><p className="text-xs font-normal text-muted-foreground mt-1">سازنده: {a.creatorName}</p></div><div className="flex items-center gap-2 shrink-0"><Status status={a.status} /><ArrowLeft /></div></Button>)}</div> : <div className="py-12 text-center"><p className="text-muted-foreground">پیشنهادی مطابق جستجو و فیلترها یافت نشد.</p><Button className="mt-4" variant="outline" onClick={() => { setQ(''); setStatus('all'); }}>پاک‌کردن جستجو و فیلترها</Button></div>}
+    {rows.length ? <div className="divide-y divide-border border-y border-border">{rows.map(a => <Button key={a.id} variant="ghost" onClick={() => openWorkView({ kind: 'proposal', id: a.id })} className="w-full h-auto min-h-24 rounded-none px-2 py-4 justify-between text-right whitespace-normal gap-4"><div className="min-w-0"><bdi dir="ltr" className="text-xs font-mono text-muted-foreground">{a.code}</bdi><span className="text-xs text-muted-foreground"> · {scope.siteName}</span><h2 className="text-sm font-bold mt-1">{a.title}</h2><p className="text-xs font-normal text-muted-foreground mt-1">سازنده: {a.creatorName}</p></div><div className="flex items-center gap-2 shrink-0"><Status status={a.status} /><ArrowLeft /></div></Button>)}</div> : <div className="py-12 text-center"><p className="text-muted-foreground">پیشنهادی مطابق جستجو و فیلترها یافت نشد.</p><Button className="mt-4" variant="outline" onClick={() => { setQ(''); setStatus('all'); }}>پاک‌کردن جستجو و فیلترها</Button></div>}
   </div>;
 }
 
@@ -38,6 +38,9 @@ function ApprovalPanel({ action }: { action: ActionProposal }) {
   const [checked, setChecked] = useState(false);
   const [reference, setReference] = useState('');
   const [note, setNote] = useState('');
+  const [escNote, setEscNote] = useState('');
+  const [manualRef, setManualRef] = useState('');
+  const [manualNote, setManualNote] = useState('');
   const [outcome, setOutcome] = useState<'confirmed' | 'not_found' | 'pending'>('pending');
   const error = approvalError(action, user, scope.siteId);
   const canOperate = !!user && ['executive_viewer', 'process_approver', 'control_approver', 'data_steward', 'integration_administrator'].includes(user.role);
@@ -57,9 +60,18 @@ function ApprovalPanel({ action }: { action: ActionProposal }) {
       <label className="block text-xs">شرح بررسی<textarea value={note} onChange={e => setNote(e.target.value)} rows={3} className="mt-2 w-full border border-input bg-background rounded-md p-2 text-sm" /></label>
       <Button className="w-full" variant="outline" disabled={!canOperate || !reference.trim() || !note.trim()} onClick={() => runActionCommand(action.id, { kind: 'reconcile', result: { reference, note, outcome } })}><FileSearch />ثبت نتیجه تطبیق</Button>
       {action.status === 'sent' && <Button variant="ghost" className="w-full text-action-warning" disabled={!canOperate} onClick={() => runActionCommand(action.id, { kind: 'uncertain' })}><AlertTriangle />ثبت نبود پاسخ قطعی</Button>}
+      {action.status === 'uncertain' && !action.escalatedTo && <div className="space-y-2 border-t border-border pt-4" data-testid="escalation-panel">
+        <p className="text-xs leading-6 text-muted-foreground">اگر رکورد مقصد پیدا نشد، این به معنای شکست قطعی نیست. اقدام را برای بررسی دستی ارجاع بده. لغو و ارسال مجدد در این حالت مجاز نیست.</p>
+        <textarea aria-label="دلیل ارجاع" value={escNote} onChange={e => setEscNote(e.target.value)} rows={2} placeholder="دلیل ارجاع" className="w-full border border-input bg-background rounded-md p-2 text-sm" />
+        <Button className="w-full" variant="outline" disabled={!canOperate || !escNote.trim()} onClick={() => runActionCommand(action.id, { kind: 'escalate', note: escNote })}><AlertTriangle />ارجاع به مسئول کنترل</Button></div>}
+      {action.status === 'uncertain' && action.escalatedTo && <div className="space-y-2 border-t border-border pt-4" data-testid="manual-panel">
+        <p className="text-xs leading-6 text-action-warning">ارجاع‌شده به {action.escalatedTo}. اگر اجرا به‌صورت دستی تأیید شد، ثبت کن (این با «تأیید خودکار منبع» متفاوت است). برای جبران، پیشنهاد اقدام جدید بساز.</p>
+        <input aria-label="مرجع اجرای دستی" dir="auto" value={manualRef} onChange={e => setManualRef(e.target.value)} placeholder="مرجع اجرای دستی" className="w-full border border-input bg-background rounded-md p-2 text-sm" />
+        <textarea aria-label="شرح اجرای دستی" value={manualNote} onChange={e => setManualNote(e.target.value)} rows={2} placeholder="شرح بررسی" className="w-full border border-input bg-background rounded-md p-2 text-sm" />
+        <Button className="w-full" variant="outline" disabled={!canOperate || !manualRef.trim() || !manualNote.trim()} onClick={() => runActionCommand(action.id, { kind: 'manual', reference: manualRef, note: manualNote })}><CheckCircle2 />ثبت اجرای دستی تأییدشده</Button></div>}
       {action.reconciliation && <p role="status" className="text-xs text-muted-foreground leading-6">آخرین مرجع: <bdi>{action.reconciliation.reference}</bdi> · {action.reconciliation.note}</p>}
     </div>}
-    {action.status === 'finalized' && <p className="text-sm text-action-success flex gap-2 leading-6"><CheckCircle2 className="size-5 shrink-0" />اجرای اقدام با مرجع {action.reconciliation?.reference ?? 'ثبت مقصد'} تأیید و نهایی شد.</p>}
+    {action.status === 'finalized' && <p className="text-sm text-action-success flex gap-2 leading-6"><CheckCircle2 className="size-5 shrink-0" />{action.manualCompletion ? `اجرای دستی با مرجع ${action.manualCompletion.reference} تأیید انسانی و نهایی شد.` : `اجرای اقدام با مرجع ${action.reconciliation?.reference ?? 'ثبت مقصد'} تأیید و نهایی شد.`}</p>}
   </aside>;
 }
 
