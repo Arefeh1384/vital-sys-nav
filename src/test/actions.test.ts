@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ACTIONS_DATA, applyActionCommand, formatEventTime, minutesUntil, scopedActions, type ActionProposal } from '@/him/data/actionData';
+import { pathForWorkView } from '@/him/context/AppContext';
+import { ACTIONS_DATA, applyActionCommand, cancelError, requiredApprovals, formatEventTime, minutesUntil, scopedActions, type ActionProposal } from '@/him/data/actionData';
 import { DEMO_USERS, SITES_DATA } from '@/him/data/mockData';
 import { ALERTS_DATA, TASKS_DATA } from '@/him/data/workData';
 
@@ -126,5 +127,33 @@ describe('Action approval and journal rules', () => {
   });
   it('keeps sample expiry fixed across reloads (no Date.now based extension)', () => {
     expect(ACTIONS_DATA.every(a => a.expiresAtIso.startsWith('2027-03-20'))).toBe(true);
+  });
+  it('T3 proposals need two distinct independent approvers', () => {
+    const t3 = ACTIONS_DATA.find(a => a.tier === 't3' && a.status === 'proposed' && a.creatorId !== chief?.id) as ActionProposal;
+    expect(requiredApprovals(t3.tier)).toBe(2);
+    const first = applyActionCommand(t3, chief, t3.siteId, { kind: 'approve' }, new Date().toISOString());
+    expect(first.status).toBe('proposed');
+    expect(first.approvals).toHaveLength(1);
+    expect(applyActionCommand(first, chief, t3.siteId, { kind: 'approve' }, new Date().toISOString())).toBe(first);
+    const second = applyActionCommand(first, verifier, t3.siteId, { kind: 'approve' }, new Date().toISOString());
+    expect(second.status).toBe('approved');
+    expect(second.approvals).toHaveLength(2);
+  });
+  it('cancels only before dispatch and requires a real reason', () => {
+    expect(cancelError(action, chief, 'short')).toBeTruthy();
+    expect(applyActionCommand(action, chief, scope, { kind: 'cancel', reason: 'short' }, 'now')).toBe(action);
+    const canceled = applyActionCommand(action, chief, scope, { kind: 'cancel', reason: 'duplicate of another request' }, 'now');
+    expect(canceled.status).toBe('canceled');
+    expect(canceled.history.at(-1)).toMatchObject({ from: 'proposed', status: 'canceled' });
+    const sent = run(run(action, 'approve'), 'send');
+    expect(cancelError(sent, chief, 'a long enough reason')).toMatch(/ممکن است اقدام پیش‌تر اجرا شده/);
+    expect(applyActionCommand(sent, chief, scope, { kind: 'cancel', reason: 'a long enough reason' }, 'now')).toBe(sent);
+  });
+  it('mirrors the visible action view in the browser path', () => {
+    expect(pathForWorkView({ kind: 'proposals' })).toBe('/actions');
+    expect(pathForWorkView({ kind: 'proposal', id: 'ap-1-2' })).toBe('/actions/ap-1-2');
+    expect(pathForWorkView({ kind: 'approvals' })).toBe('/approvals');
+    expect(pathForWorkView({ kind: 'journal' })).toBe('/journal');
+    expect(pathForWorkView(null)).toBe('/');
   });
 });

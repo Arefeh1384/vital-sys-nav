@@ -1,9 +1,12 @@
 import { DEMO_USERS, SITES_DATA } from './mockData';
 import type { User } from '../types';
 
-export type ActionStatus = 'proposed' | 'approved' | 'sent' | 'uncertain' | 'finalized';
+export type ActionStatus = 'proposed' | 'approved' | 'sent' | 'uncertain' | 'finalized' | 'canceled';
+export type ActionTier = 't2' | 't3';
+export const TIER_LABEL: Record<ActionTier, string> = { t2: 'T2 · یک تأییدکننده', t3: 'T3 · دو تأییدکننده مستقل' };
+export const requiredApprovals = (tier: ActionTier) => (tier === 't3' ? 2 : 1);
 export const ACTION_STATUS_LABEL: Record<ActionStatus, string> = {
-  proposed: 'پیشنهادی', approved: 'تأییدشده', sent: 'ارسال‌شده', uncertain: 'نامشخص', finalized: 'نهایی‌شده',
+  proposed: 'پیشنهادی', approved: 'تأییدشده', sent: 'ارسال‌شده', uncertain: 'نامشخص', finalized: 'نهایی‌شده', canceled: 'لغوشده',
 };
 /** One immutable journal entry: previous→next state, UTC instant (ISO), actor, reason and operation key. */
 export interface ActionEvent { from: ActionStatus | null; status: ActionStatus; at: string; actor: string; note: string; opKey: string }
@@ -30,6 +33,10 @@ export interface ActionProposal {
   taskId: string; alertId: string; history: ActionEvent[];
   approvedBy?: string; dispatchKey?: string;
   reconciliation?: { reference: string; outcome: 'confirmed' | 'not_found' | 'pending'; note: string };
+  tier: ActionTier;
+  /** Independent approvals recorded for the current revision. */
+  approvals: { userId: string; name: string; at: string }[];
+  cancelReason?: string;
   /** Proposal version; the approval is bound to this revision. */
   revision: number;
   expiresAt: string;
@@ -55,6 +62,7 @@ export function approvalError(action: ActionProposal, user: User | null, siteId:
   if (!APPROVER_ROLES.includes(user.role)) return 'نقش فعلی شما مجوز تأیید اقدام ندارد.';
   if (action.status !== 'proposed') return 'این پیشنهاد در انتظار تأیید نیست.';
   if (minutesUntil(action.expiresAtIso) <= 0) return 'مهلت تأیید این پیشنهاد به پایان رسیده است.';
+  if ((action.approvals ?? []).some(a => a.userId === user.id)) return 'شما قبلاً این پیشنهاد را تأیید کرده‌اید؛ تأییدکننده‌ی مستقل دیگری لازم است.';
   return null;
 }
 const addActor = (action: ActionProposal, user: User) => Array.from(new Set([...(action.uncertainActorIds ?? []), user.id]));
@@ -69,15 +77,34 @@ export type ActionCommand =
   | { kind: 'approve' | 'send' | 'uncertain' }
   | { kind: 'reconcile'; result: Reconciliation }
   | { kind: 'escalate'; note: string }
-  | { kind: 'manual'; reference: string; note: string };
+  | { kind: 'manual'; reference: string; note: string }
+  | { kind: 'cancel'; reason: string };
+export const MIN_REASON_LENGTH = 10;
+/** Cancel is only possible before dispatch; afterwards the action may already have executed. */
+export function cancelError(action: ActionProposal, user: User | null, reason = ''): string | null {
+  if (!user) return 'برای لغو باید وارد شوید.';
+  if (action.status !== 'proposed' && action.status !== 'approved') return 'لغو پس از ارسال ممکن نیست؛ ممکن است اقدام پیش‌تر اجرا شده باشد. برای جبران، پیشنهاد جدید بسازید.';
+  if (!(user.id === action.creatorId || OPERATOR_ROLES.includes(user.role))) return 'نقش فعلی شما مجوز لغو این پیشنهاد را ندارد.';
+  if (reason.trim().length < MIN_REASON_LENGTH) return `دلیل لغو باید دست‌کم ${MIN_REASON_LENGTH} نویسه باشد.`;
+  return null;
+}
 export function applyActionCommand(action: ActionProposal, user: User | null, siteId: string | null, command: ActionCommand, at: string): ActionProposal {
   if (!user || action.siteId !== siteId || !user.permittedSiteIds.includes(action.siteId)) return action;
   let status = action.status;
   let note = '';
   let extra: Partial<ActionProposal> = {};
-  if (command.kind === 'approve') {
+  if (command.kind === 'cancel') {
+    if (cancelError(action, user, command.reason)) return action;
+    status = 'canceled'; note = `لغو پیش از ارسال: ${command.reason.trim()}`; extra = { cancelReason: command.reason.trim() };
+  } else if (command.kind === 'approve') {
     if (approvalError(action, user, siteId)) return action;
-    status = 'approved'; note = 'تفاوت‌ها و اثر اقدام بررسی و تأیید شد.'; extra = { approvedBy: user.id };
+    const approvals = [...(action.approvals ?? []), { userId: user.id, name: user.name, at }];
+    const need = requiredApprovals(action.tier ?? 't2');
+    if (approvals.length >= need) {
+      status = 'approved'; note = 'تفاوت‌ها و اثر اقدام بررسی و تأیید شد.'; extra = { approvedBy: user.id, approvals };
+    } else {
+      status = 'proposed'; note = `تأیید ${approvals.length.toLocaleString('fa-IR')} از ${need.toLocaleString('fa-IR')} ثبت شد؛ تأییدکننده‌ی مستقل دیگری لازم است.`; extra = { approvals };
+    }
   } else {
     if (!OPERATOR_ROLES.includes(user.role)) return action;
     if (command.kind === 'send' && action.status === 'approved') {
@@ -139,6 +166,8 @@ export const ACTIONS_DATA: ActionProposal[] = SITES_DATA.flatMap((site, si) => s
     target: ['HIS / ADT', 'سامانه انبار', 'سامانه ایمنی بیمار', 'سامانه نگهداشت', 'سامانه درآمد'][k] ?? 'سامانه مقصد',
     impact: ['آزادسازی ظرفیت و کاهش انتظار انتقال بیماران؛ اثر تخمینی: ۴ تخت.', 'افزایش پوشش موجودی دارو؛ اثر تخمینی: ۱۸۰ ویال.', 'کاهش احتمال خطای دارویی با بررسی مستقل.', 'بازگرداندن سه دستگاه به برنامه نگهداشت.', 'کاهش برگشت اسناد با بازبینی ثبت خدمات.'][k] ?? '',
     risk: 'اثرها تخمینی هستند؛ صحت داده منبع و ظرفیت اجرایی باید پیش از ارسال بررسی شود.',
+    tier: (k === 1 ? 't3' : 't2') as ActionTier,
+    approvals: i >= 1 ? [{ userId: 'rev-1', name: 'مسئول بررسی', at: history[1]?.at ?? '' }, ...(k === 1 ? [{ userId: 'rev-2', name: 'مسئول بررسی دوم', at: history[1]?.at ?? '' }] : [])] : [],
     revision: 1 + ((si + i) % 3),
     expiresAtIso: new Date(expiresMs).toISOString(),
     expiresAt: formatEventTime(new Date(expiresMs).toISOString()).tehran,

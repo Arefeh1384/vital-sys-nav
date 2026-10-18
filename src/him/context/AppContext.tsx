@@ -6,6 +6,16 @@ import { ACTIONS_DATA, applyActionCommand, type ActionProposal, type ActionComma
 
 export type WorkView = { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' };
 
+/** Browser path that mirrors the visible work view, so refresh and direct links land on the same page. */
+export function pathForWorkView(v: WorkView | null): string {
+  if (!v) return '/';
+  if (v.kind === 'proposals') return '/actions';
+  if (v.kind === 'proposal') return `/actions/${encodeURIComponent(v.id)}`;
+  if (v.kind === 'approvals') return '/approvals';
+  if (v.kind === 'journal') return '/journal';
+  return '/';
+}
+
 export interface AppNotification { id: string; title: string; body: string; at: string; target: WorkView }
 
 interface AppContextType {
@@ -67,7 +77,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?
   const [user, setUser] = useState<User | null>(DEMO_USERS[0] ?? null);
   
   const [scope, setScope] = useState<Scope>(() => {
-    const initialSite = SITES_DATA[0]!;
+    // A direct link to one proposal opens in that proposal's hospital when the user may see it.
+    const linked = initialWorkView?.kind === 'proposal' ? ACTIONS_DATA.find(a => a.id === initialWorkView.id) : undefined;
+    const linkedSite = linked && DEMO_USERS[0]?.permittedSiteIds.includes(linked.siteId) ? SITES_DATA.find(x => x.id === linked.siteId) : undefined;
+    const initialSite = linkedSite ?? SITES_DATA[0]!;
     return {
       orgId: CURRENT_ORGANIZATION.id,
       orgName: CURRENT_ORGANIZATION.name,
@@ -80,6 +93,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?
 
   const [activeModule, setActiveModuleRaw] = useState<ModuleKey>('EXE');
   const [workView, setWorkView] = useState<WorkView | null>(initialWorkView);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const path = pathForWorkView(workView);
+    const current = window.location.pathname.replace(/\/+$/, '') || '/';
+    if (current !== path) window.history.pushState(null, '', path);
+  }, [workView]);
   // Sample actions are kept in this browser only so a refresh does not undo a recorded approval;
   // no command is ever dispatched to a real hospital system.
   const [actions, setActions] = useState<ActionProposal[]>(() =>
@@ -99,7 +118,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?
     }
     setActions(prev => prev.map(a => a.id === id ? next : a));
     const messages: Record<ActionCommand['kind'], string> = {
-      approve: 'پیشنهاد اقدام تأیید شد. (داده نمونه در همین مرورگر ذخیره می‌شود.)',
+      approve: next.status === 'approved' ? 'پیشنهاد اقدام تأیید شد. (داده نمونه در همین مرورگر ذخیره می‌شود.)' : 'تأیید شما ثبت شد؛ تأیید مستقل دیگری لازم است.',
+      cancel: 'پیشنهاد پیش از ارسال لغو شد.',
       send: 'ارسال نمونه ثبت شد.',
       uncertain: 'نبود پاسخ قطعی ثبت شد؛ اقدام نامشخص است.',
       reconcile: next.status === 'finalized' ? 'نتیجه تطبیق ثبت شد و اقدام نهایی شد.' : 'نتیجه تطبیق ثبت شد؛ اقدام همچنان نامشخص است.',

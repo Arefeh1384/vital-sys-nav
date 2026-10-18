@@ -63,15 +63,20 @@ export const MainContent: React.FC = () => {
   if (workView) {
     return (
       <main className="flex-1 p-4 md:p-8 overflow-y-auto min-w-0" dir="rtl">
-        {workView.kind === 'tasks' && <TaskListView />}
-        {workView.kind === 'task' && <TaskDetailView id={workView.id} />}
-        {workView.kind === 'alerts' && <AlertListView />}
-        {workView.kind === 'alert' && <AlertDetailView id={workView.id} />}
-        {workView.kind === 'notifications' && <NotificationCenterView />}
-        {workView.kind === 'proposals' && <ActionProposalListView key={scope.siteId} />}
-        {workView.kind === 'approvals' && <ApprovalQueueView key={scope.siteId} />}
-        {workView.kind === 'proposal' && <ActionProposalDetailView id={workView.id} />}
-        {workView.kind === 'journal' && <ActionJournalView />}
+        {viewState === 'loading' && <LoadingState />}
+        {viewState === 'empty' && <EmptyState />}
+        {viewState === 'error' && <ErrorState />}
+        {viewState === 'normal' && <>
+          {workView.kind === 'tasks' && <TaskListView />}
+          {workView.kind === 'task' && <TaskDetailView id={workView.id} />}
+          {workView.kind === 'alerts' && <AlertListView />}
+          {workView.kind === 'alert' && <AlertDetailView id={workView.id} />}
+          {workView.kind === 'notifications' && <NotificationCenterView />}
+          {workView.kind === 'proposals' && <ActionProposalListView key={scope.siteId} />}
+          {workView.kind === 'approvals' && <ApprovalQueueView key={scope.siteId} />}
+          {workView.kind === 'proposal' && <ActionProposalDetailView id={workView.id} />}
+          {workView.kind === 'journal' && <ActionJournalView />}
+        </>}
       </main>
     );
   }

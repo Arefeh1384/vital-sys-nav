@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ApprovalsRouteImport } from './routes/approvals'
+import { Route as JournalRouteImport } from './routes/journal'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ActionsIndexRouteImport } from './routes/actions/index'
 import { Route as ActionsIdRouteImport } from './routes/actions/$id'
@@ -17,6 +18,11 @@ import { Route as ActionsIdRouteImport } from './routes/actions/$id'
 const ApprovalsRoute = ApprovalsRouteImport.update({
   id: '/approvals',
   path: '/approvals',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JournalRoute = JournalRouteImport.update({
+  id: '/journal',
+  path: '/journal',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -38,12 +44,14 @@ const ActionsIdRoute = ActionsIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/approvals': typeof ApprovalsRoute
+  '/journal': typeof JournalRoute
   '/actions/$id': typeof ActionsIdRoute
   '/actions/': typeof ActionsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/approvals': typeof ApprovalsRoute
+  '/journal': typeof JournalRoute
   '/actions/$id': typeof ActionsIdRoute
   '/actions': typeof ActionsIndexRoute
 }
@@ -51,20 +59,22 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/approvals': typeof ApprovalsRoute
+  '/journal': typeof JournalRoute
   '/actions/$id': typeof ActionsIdRoute
   '/actions/': typeof ActionsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/approvals' | '/actions/$id' | '/actions/'
+  fullPaths: '/' | '/approvals' | '/journal' | '/actions/$id' | '/actions/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/approvals' | '/actions/$id' | '/actions'
-  id: '__root__' | '/' | '/approvals' | '/actions/$id' | '/actions/'
+  to: '/' | '/approvals' | '/journal' | '/actions/$id' | '/actions'
+  id: '__root__' | '/' | '/approvals' | '/journal' | '/actions/$id' | '/actions/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApprovalsRoute: typeof ApprovalsRoute
+  JournalRoute: typeof JournalRoute
   ActionsIdRoute: typeof ActionsIdRoute
   ActionsIndexRoute: typeof ActionsIndexRoute
 }
@@ -76,6 +86,13 @@ declare module '@tanstack/react-router' {
       path: '/approvals'
       fullPath: '/approvals'
       preLoaderRoute: typeof ApprovalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/journal': {
+      id: '/journal'
+      path: '/journal'
+      fullPath: '/journal'
+      preLoaderRoute: typeof JournalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -105,6 +122,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApprovalsRoute: ApprovalsRoute,
+  JournalRoute: JournalRoute,
   ActionsIdRoute: ActionsIdRoute,
   ActionsIndexRoute: ActionsIndexRoute,
 }
