@@ -5,7 +5,23 @@ export type ActionStatus = 'proposed' | 'approved' | 'sent' | 'uncertain' | 'fin
 export const ACTION_STATUS_LABEL: Record<ActionStatus, string> = {
   proposed: 'پیشنهادی', approved: 'تأییدشده', sent: 'ارسال‌شده', uncertain: 'نامشخص', finalized: 'نهایی‌شده',
 };
-export interface ActionEvent { status: ActionStatus; at: string; actor: string; note: string }
+/** One immutable journal entry: previous→next state, UTC instant (ISO), actor, reason and operation key. */
+export interface ActionEvent { from: ActionStatus | null; status: ActionStatus; at: string; actor: string; note: string; opKey: string }
+
+/** Stored times are UTC; the UI shows Asia/Tehran and keeps the UTC instant visible. */
+export function formatEventTime(iso: string): { tehran: string; utc: string } {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return { tehran: iso, utc: iso };
+  return {
+    tehran: new Intl.DateTimeFormat('fa-IR', { dateStyle: 'short', timeStyle: 'medium', timeZone: 'Asia/Tehran' }).format(d),
+    utc: d.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC'),
+  };
+}
+/** Remaining validity in whole minutes; negative or zero means expired. */
+export function minutesUntil(iso: string, now = Date.now()): number {
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? 0 : Math.floor((t - now) / 60000);
+}
 export interface ActionProposal {
   id: string; code: string; siteId: string; title: string; description: string;
   creatorId: string; creatorName: string; status: ActionStatus;
@@ -14,7 +30,10 @@ export interface ActionProposal {
   taskId: string; alertId: string; history: ActionEvent[];
   approvedBy?: string; dispatchKey?: string;
   reconciliation?: { reference: string; outcome: 'confirmed' | 'not_found' | 'pending'; note: string };
+  /** Proposal version; the approval is bound to this revision. */
+  revision: number;
   expiresAt: string;
+  expiresAtIso: string;
   escalatedTo?: string;
   /** Users who reconciled or referred this action while it was uncertain; they cannot verify the manual completion. */
   uncertainActorIds?: string[];
@@ -29,6 +48,7 @@ export function approvalError(action: ActionProposal, user: User | null, siteId:
   if (action.creatorId === user.id) return 'سازنده پیشنهاد نمی‌تواند پیشنهاد خودش را تأیید کند.';
   if (!['executive_viewer', 'process_approver', 'control_approver'].includes(user.role)) return 'نقش فعلی شما مجوز تأیید اقدام ندارد.';
   if (action.status !== 'proposed') return 'این پیشنهاد در انتظار تأیید نیست.';
+  if (minutesUntil(action.expiresAtIso) <= 0) return 'مهلت تأیید این پیشنهاد به پایان رسیده است.';
   return null;
 }
 const addActor = (action: ActionProposal, user: User) => Array.from(new Set([...(action.uncertainActorIds ?? []), user.id]));
@@ -77,7 +97,9 @@ export function applyActionCommand(action: ActionProposal, user: User | null, si
       extra = { manualCompletion: { reference: command.reference.trim(), note: command.note.trim(), verifiedBy: user.name } };
     } else return action;
   }
-  return { ...action, ...extra, status, history: [...action.history, { status, at, actor: user.name, note }] };
+  const dispatchKey = (extra.dispatchKey ?? undefined) as string | undefined;
+  const opKey = dispatchKey ?? `op-${action.id}-${action.history.length + 1}`;
+  return { ...action, ...extra, status, history: [...action.history, { from: action.status, status, at, actor: user.name, note, opKey }] };
 }
 
 const stages: ActionStatus[] = ['proposed', 'approved', 'sent', 'uncertain', 'finalized'];
@@ -86,7 +108,16 @@ export const ACTIONS_DATA: ActionProposal[] = SITES_DATA.flatMap((site, si) => s
   const creator = DEMO_USERS[i === 1 ? 0 : 1];
   const id = `ap-${si}-${i}`;
   const k = (i + si) % 5; // each site gets a different mix of topics so scope changes are visible
-  const history = stages.slice(0, i + 1).map((s, index): ActionEvent => ({ status: s, at: `۱۴۰۵/۰۷/۲۵ · ${['۰۸:۰۰', '۰۸:۳۰', '۰۸:۳۵', '۰۸:۴۰', '۰۹:۰۰'][index]}`, actor: index === 0 ? creator?.name ?? 'کارشناس' : 'مسئول بررسی', note: ['پیشنهاد همراه شواهد ثبت شد.', 'تفاوت‌ها و اثر اقدام بررسی شد.', 'ارسال نمونه ثبت شد.', 'پاسخ مقصد قطعی نیست؛ نیازمند تطبیق.', 'اجرای مقصد با مرجع تطبیق تأیید شد.'][index] ?? '' }));
+  const baseMs = Date.UTC(2026, 9, 17, 4, 30); // 2026-10-17 08:00 Asia/Tehran
+  const offsets = [0, 30, 35, 40, 60];
+  const notes = ['پیشنهاد همراه شواهد ثبت شد.', 'تفاوت‌ها و اثر اقدام بررسی شد.', 'ارسال نمونه ثبت شد.', 'پاسخ مقصد قطعی نیست؛ ممکن است اقدام پیش‌تر اجرا شده باشد و نیازمند تطبیق است.', 'اجرای مقصد با مرجع تطبیق تأیید شد.'];
+  const history = stages.slice(0, i + 1).map((s, index): ActionEvent => ({
+    from: index === 0 ? null : stages[index - 1] ?? null, status: s,
+    at: new Date(baseMs + (offsets[index] ?? 0) * 60000).toISOString(),
+    actor: index === 0 ? creator?.name ?? 'کارشناس' : 'مسئول بررسی', note: notes[index] ?? '',
+    opKey: index === 2 ? `dispatch-${id}` : `op-${id}-${index + 1}`,
+  }));
+  const expiresMs = Date.now() + (8 + si) * 3600000; // rolling sample expiry so the demo never starts expired
   const diffs = [
     { field: 'ظرفیت تخصیص‌یافته ICU', before: '۲۰ تخت', after: '۲۴ تخت' },
     { field: 'تعداد سفارش هپارین', before: '۱۲۰ ویال', after: '۳۰۰ ویال' },
@@ -101,7 +132,9 @@ export const ACTIONS_DATA: ActionProposal[] = SITES_DATA.flatMap((site, si) => s
     target: ['HIS / ADT', 'سامانه انبار', 'سامانه ایمنی بیمار', 'سامانه نگهداشت', 'سامانه درآمد'][k] ?? 'سامانه مقصد',
     impact: ['آزادسازی ظرفیت و کاهش انتظار انتقال بیماران؛ اثر تخمینی: ۴ تخت.', 'افزایش پوشش موجودی دارو؛ اثر تخمینی: ۱۸۰ ویال.', 'کاهش احتمال خطای دارویی با بررسی مستقل.', 'بازگرداندن سه دستگاه به برنامه نگهداشت.', 'کاهش برگشت اسناد با بازبینی ثبت خدمات.'][k] ?? '',
     risk: 'اثرها تخمینی هستند؛ صحت داده منبع و ظرفیت اجرایی باید پیش از ارسال بررسی شود.',
-    expiresAt: '۱۴۰۵/۰۷/۲۶ · ۱۸:۰۰',
+    revision: 1 + ((si + i) % 3),
+    expiresAtIso: new Date(expiresMs).toISOString(),
+    expiresAt: formatEventTime(new Date(expiresMs).toISOString()).tehran,
     diff: diffs[k] ? [diffs[k]] : [], taskId: `tk-${si}-${i}`, alertId: `al-${si}-${i}`, history,
     ...(i >= 1 ? { approvedBy: 'reviewer' } : {}),
     ...(i >= 2 ? { dispatchKey: `dispatch-${id}` } : {}),

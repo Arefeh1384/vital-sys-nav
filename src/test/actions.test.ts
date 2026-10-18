@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTIONS_DATA, applyActionCommand, scopedActions, type ActionProposal } from '@/him/data/actionData';
+import { ACTIONS_DATA, applyActionCommand, formatEventTime, minutesUntil, scopedActions, type ActionProposal } from '@/him/data/actionData';
 import { DEMO_USERS, SITES_DATA } from '@/him/data/mockData';
 
 const action = ACTIONS_DATA[0] as ActionProposal;
@@ -78,5 +78,27 @@ describe('Action approval and journal rules', () => {
     const escalated = applyActionCommand(reconciled, chief, scope, { kind: 'escalate', note: 'manual check' }, 'now');
     expect(applyActionCommand(escalated, chief, scope, { kind: 'manual', reference: 'M-1', note: 'ok' }, 'now')).toBe(escalated);
     expect(applyActionCommand(escalated, verifier, scope, { kind: 'manual', reference: 'M-1', note: 'ok' }, 'now').status).toBe('finalized');
+  });
+  it('records previous→next state, UTC time and an operation key on every journal event', () => {
+    const sent = run(run(action, 'approve'), 'send');
+    const [created, approved, dispatched] = sent.history;
+    expect(created?.from).toBeNull();
+    expect(approved).toMatchObject({ from: 'proposed', status: 'approved' });
+    expect(dispatched).toMatchObject({ from: 'approved', status: 'sent', opKey: sent.dispatchKey });
+    for (const e of sent.history) {
+      expect(e.opKey).toBeTruthy();
+      expect(Number.isNaN(Date.parse(e.at))).toBe(false);
+    }
+    expect(new Set(sent.history.map(e => e.opKey)).size).toBe(sent.history.length);
+    expect(formatEventTime('2026-10-17T04:30:00.000Z').utc).toBe('2026-10-17 04:30:00 UTC');
+  });
+  it('exposes revision and a positive expiry countdown for sample proposals', () => {
+    expect(action.revision).toBeGreaterThan(0);
+    expect(minutesUntil(action.expiresAtIso)).toBeGreaterThan(0);
+    expect(minutesUntil('2000-01-01T00:00:00Z')).toBeLessThanOrEqual(0);
+  });
+  it('blocks approval after the proposal has expired', () => {
+    const expired = { ...action, expiresAtIso: '2000-01-01T00:00:00Z' };
+    expect(applyActionCommand(expired, chief, scope, { kind: 'approve' }, 'now')).toBe(expired);
   });
 });

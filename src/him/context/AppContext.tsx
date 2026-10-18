@@ -47,7 +47,7 @@ const AppContext = g.__himAppContext ?? (g.__himAppContext = createContext<AppCo
 
 const TASKS_KEY = 'him.tasks.v1';
 const ALERTS_KEY = 'him.alerts.v1';
-const ACTIONS_KEY = 'him.actions.v2';
+const ACTIONS_KEY = 'him.actions.v3';
 function loadStored<T extends { id: string }>(key: string, base: T[]): T[] {
   try {
     const raw = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
@@ -82,12 +82,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?
   const [workView, setWorkView] = useState<WorkView | null>(initialWorkView);
   // Sample actions are kept in this browser only so a refresh does not undo a recorded approval;
   // no command is ever dispatched to a real hospital system.
-  const [actions, setActions] = useState<ActionProposal[]>(() => loadStored(ACTIONS_KEY, ACTIONS_DATA));
+  const [actions, setActions] = useState<ActionProposal[]>(() =>
+    // The rolling sample expiry is never restored from storage, so a saved copy cannot start already expired.
+    loadStored(ACTIONS_KEY, ACTIONS_DATA).map(a => {
+      const base = ACTIONS_DATA.find(b => b.id === a.id);
+      return base ? { ...a, expiresAt: base.expiresAt, expiresAtIso: base.expiresAtIso } : a;
+    }));
   useEffect(() => { saveStored(ACTIONS_KEY, actions); }, [actions]);
   const runActionCommand = (id: string, command: ActionCommand) => {
     const current = actions.find(a => a.id === id);
     if (!current) return;
-    const next = applyActionCommand(current, user, scope.siteId, command, new Date().toLocaleString('fa-IR'));
+    const next = applyActionCommand(current, user, scope.siteId, command, new Date().toISOString());
     if (next === current) {
       showNotification('این اقدام انجام نشد: دسترسی، وضعیت یا اطلاعات لازم معتبر نیست.');
       return;

@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowRight, ArrowLeft, ClipboardCheck, History, Search, ShieldCheck, AlertTriangle, GitCompareArrows, Send, CheckCircle2, FileSearch } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useApp } from '../context/AppContext';
-import { ACTION_STATUS_LABEL, approvalError, manualVerificationError, scopedActions, type ActionStatus, type ActionProposal } from '../data/actionData';
+import { ACTION_STATUS_LABEL, approvalError, formatEventTime, minutesUntil, manualVerificationError, scopedActions, type ActionStatus, type ActionProposal } from '../data/actionData';
 
 const statusClass: Record<ActionStatus, string> = {
   proposed: 'bg-muted text-muted-foreground', approved: 'bg-action-success/10 text-action-success',
@@ -18,7 +18,27 @@ function Heading({ title, journal = false }: { title: string; journal?: boolean 
   return <header className="mb-6 flex items-start gap-3"><Icon className="mt-1 size-6 text-action-brand shrink-0" /><div className="min-w-0"><h1 className="text-xl font-bold text-foreground">{title}</h1><p className="mt-1 text-xs text-muted-foreground">{scope.siteName} · داده و عملیات نمونه</p></div></header>;
 }
 function JournalEntries({ action }: { action: ActionProposal }) {
-  return <ol className="border-r border-border mr-2 space-y-5 py-2">{action.history.map((event, i) => <li key={`${i}-${event.at}`} className="relative pr-6"><span className="absolute -right-1.5 top-2 size-3 rounded-full bg-action-brand border-2 border-background" /><div className="flex flex-wrap items-center gap-2"><Status status={event.status} /><time className="text-xs text-muted-foreground">{event.at}</time></div><p className="mt-2 text-sm leading-6">{event.note}</p><p className="mt-1 text-xs text-muted-foreground">{event.actor}</p></li>)}</ol>;
+  return <ol className="border-r border-border mr-2 space-y-5 py-2">{action.history.map((event, i) => {
+    const time = formatEventTime(event.at);
+    return <li key={`${i}-${event.at}`} className="relative pr-6" data-testid="journal-event"><span className="absolute -right-1.5 top-2 size-3 rounded-full bg-action-brand border-2 border-background" />
+      <div className="flex flex-wrap items-center gap-2">
+        {event.from ? <><Status status={event.from} /><ArrowLeft className="size-3 text-muted-foreground" aria-label="به" /></> : <span className="text-xs text-muted-foreground">آغاز ←</span>}
+        <Status status={event.status} />
+      </div>
+      <p className="mt-2 text-sm leading-6">{event.note}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{event.actor}</p>
+      <p className="mt-1 text-xs text-muted-foreground"><time dateTime={event.at}>{time.tehran}</time> <span>(Asia/Tehran)</span> · <bdi dir="ltr" className="font-mono">{time.utc}</bdi></p>
+      {event.opKey && <p className="mt-1 text-xs text-muted-foreground">کلید عملیات: <bdi dir="ltr" className="font-mono break-all">{event.opKey}</bdi></p>}
+    </li>;
+  })}</ol>;
+}
+function Countdown({ iso }: { iso: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
+  const m = minutesUntil(iso, now);
+  if (m <= 0) return <span className="font-semibold text-action-warning">منقضی‌شده</span>;
+  const h = Math.floor(m / 60);
+  return <span>{h > 0 ? `${h.toLocaleString('fa-IR')} ساعت و ` : ''}{(m % 60).toLocaleString('fa-IR')} دقیقه مانده</span>;
 }
 
 export function ActionProposalListView() {
@@ -60,6 +80,7 @@ function ApprovalDialog({ action, open, onOpenChange }: { action: ActionProposal
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm" data-testid="approval-summary">
           <dt className="text-muted-foreground">مقصد</dt><dd><bdi dir="auto">{action.target}</bdi></dd>
           {action.diff.map(d => <div key={d.field} className="contents"><dt className="text-muted-foreground">{d.field}</dt><dd>{d.before} ← <strong>{d.after}</strong></dd></div>)}
+          <dt className="text-muted-foreground">ویرایش</dt><dd>{action.revision.toLocaleString('fa-IR')}</dd>
           <dt className="text-muted-foreground">انقضای تأیید</dt><dd>{action.expiresAt}</dd>
           <dt className="text-muted-foreground">سازنده</dt><dd>{action.creatorName}</dd>
         </dl>
@@ -102,7 +123,7 @@ function ApprovalPanel({ action }: { action: ActionProposal }) {
     {action.dispatchKey && <div className="text-xs text-muted-foreground"><p>شناسه یکتای ارسال</p><bdi dir="ltr" className="block mt-1 break-all font-mono">{action.dispatchKey}</bdi></div>}
     {reconcile && <div className="space-y-4 border-t border-border pt-4" data-testid="reconciliation-panel">
       <h3 className="text-sm font-bold flex items-center gap-2"><FileSearch className="size-4" />تطبیق نتیجه مقصد (Reconciliation)</h3>
-      {action.status === 'uncertain' && <p className="text-sm leading-6 text-action-warning">نتیجه ارسال نامشخص است. ارسال مجدد مسدود است تا رکورد مقصد با شناسه یکتای ارسال تطبیق داده شود.</p>}
+      {action.status === 'uncertain' && <p className="text-sm leading-6 text-action-warning">هشدار: نتیجه ارسال نامشخص است و ممکن است اقدام پیش‌تر در مقصد اجرا یا پذیرفته شده باشد. نبود پاسخ قطعی به معنای شکست نیست. تلاش مجدد یا ارسال دوباره مسدود است تا رکورد مقصد با شناسه یکتای ارسال تطبیق داده شود.</p>}
       <p className="text-xs leading-6 text-muted-foreground">مرجع بررسی: {action.target} · رکورد مقصد یا گزارش دریافت</p>
       <label className="block text-xs">مرجع رکورد یا گزارش مقصد<input className="block mt-2 w-full border border-input bg-background rounded-md p-2 text-sm" dir="auto" value={reference} onChange={e => setReference(e.target.value)} /></label>
       <label className="block text-xs">نتیجه تطبیق<select value={outcome} onChange={e => setOutcome(e.target.value as typeof outcome)} className="mt-2 block w-full bg-background border border-input rounded-md p-2 text-sm"><option value="pending">هنوز نامشخص؛ ادامه بررسی</option><option value="confirmed">اجرای اقدام در مقصد تأیید شد</option><option value="not_found">رکورد اجرا در مقصد یافت نشد</option></select></label>
@@ -129,7 +150,7 @@ export function ActionProposalDetailView({ id }: { id: string }) {
   const { actions, scope, openWorkView } = useApp();
   const action = scopedActions(actions, scope.siteId).find(a => a.id === id);
   if (!action) return <div><p className="mb-4 text-muted-foreground">این پیشنهاد در دامنه فعلی یافت نشد.</p><Button variant="outline" onClick={() => openWorkView({ kind: 'proposals' })}>بازگشت به پیشنهادها</Button></div>;
-  return <div data-testid="action-detail"><Button variant="ghost" size="sm" className="mb-4 text-action-brand" onClick={() => openWorkView({ kind: 'proposals' })}><ArrowRight />بازگشت به پیشنهادها</Button><Heading title={action.title} /><p className="font-mono text-xs text-muted-foreground mb-5"><bdi dir="ltr">{action.code}</bdi></p>
+  return <div data-testid="action-detail"><Button variant="ghost" size="sm" className="mb-4 text-action-brand" onClick={() => openWorkView({ kind: 'proposals' })}><ArrowRight />بازگشت به پیشنهادها</Button><Heading title={action.title} /><p className="font-mono text-xs text-muted-foreground mb-2"><bdi dir="ltr">{action.code}</bdi></p><p className="text-xs text-muted-foreground mb-5" data-testid="action-header-meta">ویرایش {action.revision.toLocaleString('fa-IR')} · مهلت تأیید: <Countdown iso={action.expiresAtIso} /> <span>({action.expiresAt})</span></p>
     <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-8"><div className="min-w-0 space-y-8">
       <section><h2 className="font-bold text-sm mb-3">شرح پیشنهاد</h2><p className="text-sm leading-7 text-muted-foreground">{action.description}</p></section>
       <section><h2 className="font-bold text-sm mb-3 flex gap-2 items-center"><GitCompareArrows className="size-5 text-action-brand" />تفاوت‌ها (Diff)</h2><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="text-xs text-muted-foreground bg-muted"><tr><th className="p-3">فیلد</th><th className="p-3">قبل از اقدام</th><th className="p-3">پس از اقدام</th></tr></thead><tbody>{action.diff.map(d => <tr key={d.field} className="border-b border-border"><td className="p-3 font-medium">{d.field}</td><td className="p-3 text-muted-foreground">{d.before}</td><td className="p-3 text-action-success">{d.after}</td></tr>)}</tbody></table></div></section>
