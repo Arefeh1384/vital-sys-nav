@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { ACTIONS_DATA, applyActionCommand, formatEventTime, minutesUntil, scopedActions, type ActionProposal } from '@/him/data/actionData';
 import { DEMO_USERS, SITES_DATA } from '@/him/data/mockData';
+import { ALERTS_DATA, TASKS_DATA } from '@/him/data/workData';
 
 const action = ACTIONS_DATA[0] as ActionProposal;
 const chief = DEMO_USERS[0] ?? null;
 const creator = DEMO_USERS[1] ?? null;
-const verifier = DEMO_USERS[3] ?? null; // data steward, permitted on every site
+const verifier = chief ? { ...chief, id: 'usr-verifier', name: 'Second approver' } : null; // another operator permitted on every site
+const auditor = DEMO_USERS[3] ?? null; // data steward / observer
 const scope = action.siteId;
-const run = (a: ActionProposal, kind: 'approve' | 'send' | 'uncertain') => applyActionCommand(a, chief, scope, { kind }, 'now');
+const run = (a: ActionProposal, kind: 'approve' | 'send' | 'uncertain') => applyActionCommand(a, chief, scope, { kind }, new Date().toISOString());
 
 describe('Action approval and journal rules', () => {
   it('rejects approval by the proposal creator', () => {
@@ -100,5 +102,29 @@ describe('Action approval and journal rules', () => {
   it('blocks approval after the proposal has expired', () => {
     const expired = { ...action, expiresAtIso: '2000-01-01T00:00:00Z' };
     expect(applyActionCommand(expired, chief, scope, { kind: 'approve' }, 'now')).toBe(expired);
+  });
+  it('keeps the auditor (data steward) read-only: no approve, dispatch, reconcile, refer or manual completion', () => {
+    const approved = run(action, 'approve');
+    expect(auditor?.role).toBe('data_steward');
+    expect(applyActionCommand(action, auditor, scope, { kind: 'approve' }, 'now')).toBe(action);
+    expect(applyActionCommand(approved, auditor, scope, { kind: 'send' }, 'now')).toBe(approved);
+    const uncertain = run(run(approved, 'send'), 'uncertain');
+    expect(applyActionCommand(uncertain, auditor, scope, { kind: 'reconcile', result: { reference: 'R', note: 'n', outcome: 'confirmed' } }, 'now')).toBe(uncertain);
+    expect(applyActionCommand(uncertain, auditor, scope, { kind: 'escalate', note: 'n' }, 'now')).toBe(uncertain);
+  });
+  it('links each action to the task and alert of its own topic', () => {
+    for (const a of ACTIONS_DATA) {
+      const task = TASKS_DATA.find(t => t.id === a.taskId);
+      const alert = ALERTS_DATA.find(x => x.id === a.alertId);
+      expect(task?.siteId).toBe(a.siteId);
+      expect(alert?.siteId).toBe(a.siteId);
+      expect(task?.alertId).toBe(a.alertId);
+      const topic = ['بازتوزیع', 'افزایش سفارش هپارین', 'برنامه اصلاح خطای دارویی', 'کالیبراسیون', 'اصلاح اسناد'][Number(a.alertId.split('-')[2])];
+      expect(a.title.startsWith(topic ?? '#')).toBe(true);
+      expect(task?.module).toBe(alert?.module);
+    }
+  });
+  it('keeps sample expiry fixed across reloads (no Date.now based extension)', () => {
+    expect(ACTIONS_DATA.every(a => a.expiresAtIso.startsWith('2027-03-20'))).toBe(true);
   });
 });

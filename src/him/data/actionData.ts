@@ -40,13 +40,19 @@ export interface ActionProposal {
   manualCompletion?: { reference: string; note: string; verifiedBy: string };
 }
 
+/** Roles that may approve; auditors and data stewards are read-only for actions. */
+export const APPROVER_ROLES: User['role'][] = ['executive_viewer', 'process_approver', 'control_approver'];
+/** Roles that may dispatch, reconcile, refer or verify manual completion. */
+export const OPERATOR_ROLES: User['role'][] = [...APPROVER_ROLES, 'integration_administrator'];
+export const canOperateActions = (user: User | null) => !!user && OPERATOR_ROLES.includes(user.role);
+
 export function scopedActions(actions: ActionProposal[], siteId: string | null) {
   return actions.filter(a => a.siteId === siteId);
 }
 export function approvalError(action: ActionProposal, user: User | null, siteId: string | null): string | null {
   if (!user || action.siteId !== siteId || !user.permittedSiteIds.includes(action.siteId)) return 'این پیشنهاد خارج از دامنه دسترسی شماست.';
   if (action.creatorId === user.id) return 'سازنده پیشنهاد نمی‌تواند پیشنهاد خودش را تأیید کند.';
-  if (!['executive_viewer', 'process_approver', 'control_approver'].includes(user.role)) return 'نقش فعلی شما مجوز تأیید اقدام ندارد.';
+  if (!APPROVER_ROLES.includes(user.role)) return 'نقش فعلی شما مجوز تأیید اقدام ندارد.';
   if (action.status !== 'proposed') return 'این پیشنهاد در انتظار تأیید نیست.';
   if (minutesUntil(action.expiresAtIso) <= 0) return 'مهلت تأیید این پیشنهاد به پایان رسیده است.';
   return null;
@@ -73,7 +79,7 @@ export function applyActionCommand(action: ActionProposal, user: User | null, si
     if (approvalError(action, user, siteId)) return action;
     status = 'approved'; note = 'تفاوت‌ها و اثر اقدام بررسی و تأیید شد.'; extra = { approvedBy: user.id };
   } else {
-    if (!['executive_viewer', 'process_approver', 'control_approver', 'data_steward', 'integration_administrator'].includes(user.role)) return action;
+    if (!OPERATOR_ROLES.includes(user.role)) return action;
     if (command.kind === 'send' && action.status === 'approved') {
       status = 'sent'; note = 'ارسال نمونه ثبت شد؛ منتظر تطبیق نتیجه مقصد.'; extra = { dispatchKey: `dispatch-${action.id}` };
     } else if (command.kind === 'uncertain' && action.status === 'sent') {
@@ -117,7 +123,8 @@ export const ACTIONS_DATA: ActionProposal[] = SITES_DATA.flatMap((site, si) => s
     actor: index === 0 ? creator?.name ?? 'کارشناس' : 'مسئول بررسی', note: notes[index] ?? '',
     opKey: index === 2 ? `dispatch-${id}` : `op-${id}-${index + 1}`,
   }));
-  const expiresMs = Date.now() + (8 + si) * 3600000; // rolling sample expiry so the demo never starts expired
+  // Fixed per revision: reloading must never extend validity. 2027-03-20 18:00 Asia/Tehran plus one hour per site.
+  const expiresMs = Date.UTC(2027, 2, 20, 14, 30) + si * 3600000;
   const diffs = [
     { field: 'ظرفیت تخصیص‌یافته ICU', before: '۲۰ تخت', after: '۲۴ تخت' },
     { field: 'تعداد سفارش هپارین', before: '۱۲۰ ویال', after: '۳۰۰ ویال' },
@@ -135,7 +142,7 @@ export const ACTIONS_DATA: ActionProposal[] = SITES_DATA.flatMap((site, si) => s
     revision: 1 + ((si + i) % 3),
     expiresAtIso: new Date(expiresMs).toISOString(),
     expiresAt: formatEventTime(new Date(expiresMs).toISOString()).tehran,
-    diff: diffs[k] ? [diffs[k]] : [], taskId: `tk-${si}-${i}`, alertId: `al-${si}-${i}`, history,
+    diff: diffs[k] ? [diffs[k]] : [], taskId: `tk-${si}-${k}`, alertId: `al-${si}-${k}`, history,
     ...(i >= 1 ? { approvedBy: 'reviewer' } : {}),
     ...(i >= 2 ? { dispatchKey: `dispatch-${id}` } : {}),
     ...(i === 4 ? { reconciliation: { reference: `REC-${3000 + si * 10 + i}`, outcome: 'confirmed' as const, note: 'ثبت مقصد بررسی و اجرای اقدام تأیید شد.' } } : {}),
