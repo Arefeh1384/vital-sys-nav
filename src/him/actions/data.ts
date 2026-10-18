@@ -389,7 +389,7 @@ export function resumeHeldAction(action: ActionProposal, user: DemoUser, atUtc: 
   if (action.status !== 'held') return { ok: false, error: 'این اقدام متوقف نیست.' };
   if (user.role !== 'approver') return { ok: false, error: 'فقط تأییدکننده مجاز می‌تواند ازسرگیری کند.' };
   // Resume = back to validation, requiring NEW approval (slots reset), never auto-dispatch.
-  const slots = action.slots.map(s => ({ slot: s.slot, siteId: s.siteId, decision: 'empty' as const }));
+  const slots: ApprovalSlot[] = action.slots.map(s => (s.siteId ? { slot: s.slot, siteId: s.siteId, decision: 'empty' } : { slot: s.slot, decision: 'empty' }));
   const next: ActionProposal = {
     ...action, status: 'validating', heldReason: undefined, slots, revision: action.revision + 1, updatedAt: atUtc,
     journal: [...action.journal, pushJournal(action, 'validating', user.name, 'ازسرگیری: بازگشت به اعتبارسنجی؛ تأیید جدید لازم است.', atUtc)],
