@@ -9,12 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SplatRouteImport } from './routes/$'
 import { Route as ApprovalsRouteImport } from './routes/approvals'
 import { Route as JournalRouteImport } from './routes/journal'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ActionsIndexRouteImport } from './routes/actions/index'
 import { Route as ActionsIdRouteImport } from './routes/actions/$id'
 
+const SplatRoute = SplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApprovalsRoute = ApprovalsRouteImport.update({
   id: '/approvals',
   path: '/approvals',
@@ -43,6 +49,7 @@ const ActionsIdRoute = ActionsIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/$': typeof SplatRoute
   '/approvals': typeof ApprovalsRoute
   '/journal': typeof JournalRoute
   '/actions/$id': typeof ActionsIdRoute
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/$': typeof SplatRoute
   '/approvals': typeof ApprovalsRoute
   '/journal': typeof JournalRoute
   '/actions/$id': typeof ActionsIdRoute
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/$': typeof SplatRoute
   '/approvals': typeof ApprovalsRoute
   '/journal': typeof JournalRoute
   '/actions/$id': typeof ActionsIdRoute
@@ -65,14 +74,15 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/approvals' | '/journal' | '/actions/$id' | '/actions/'
+  fullPaths: '/' | '/$' | '/approvals' | '/journal' | '/actions/$id' | '/actions/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/approvals' | '/journal' | '/actions/$id' | '/actions'
-  id: '__root__' | '/' | '/approvals' | '/journal' | '/actions/$id' | '/actions/'
+  to: '/' | '/$' | '/approvals' | '/journal' | '/actions/$id' | '/actions'
+  id: '__root__' | '/' | '/$' | '/approvals' | '/journal' | '/actions/$id' | '/actions/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  SplatRoute: typeof SplatRoute
   ApprovalsRoute: typeof ApprovalsRoute
   JournalRoute: typeof JournalRoute
   ActionsIdRoute: typeof ActionsIdRoute
@@ -81,6 +91,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/$': {
+      id: '/$'
+      path: '/$'
+      fullPath: '/$'
+      preLoaderRoute: typeof SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/approvals': {
       id: '/approvals'
       path: '/approvals'
@@ -121,6 +138,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SplatRoute: SplatRoute,
   ApprovalsRoute: ApprovalsRoute,
   JournalRoute: JournalRoute,
   ActionsIdRoute: ActionsIdRoute,

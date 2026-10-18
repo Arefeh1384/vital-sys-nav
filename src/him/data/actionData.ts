@@ -32,7 +32,7 @@ export interface ActionProposal {
   diff: { field: string; before: string; after: string }[];
   taskId: string; alertId: string; history: ActionEvent[];
   approvedBy?: string; dispatchKey?: string;
-  reconciliation?: { reference: string; outcome: 'confirmed' | 'not_found' | 'pending'; note: string };
+  reconciliation?: { reference: string; outcome: 'confirmed' | 'failed_confirmed' | 'not_found' | 'pending'; note: string };
   tier: ActionTier;
   /** Independent approvals recorded for the current revision. */
   approvals: { userId: string; name: string; at: string }[];
@@ -80,6 +80,15 @@ export type ActionCommand =
   | { kind: 'manual'; reference: string; note: string }
   | { kind: 'cancel'; reason: string };
 export const MIN_REASON_LENGTH = 10;
+/** Dispatch needs the full number of distinct approvers, none of them the proposer. */
+export function dispatchError(action: ActionProposal): string | null {
+  if (action.status !== 'approved') return 'ارسال فقط برای پیشنهاد تأییدشده ممکن است.';
+  const need = requiredApprovals(action.tier ?? 't2');
+  const approvers = new Set((action.approvals ?? []).map(a => a.userId));
+  if (approvers.size < need) return `برای ارسال ${need.toLocaleString('fa-IR')} تأییدکننده‌ی مستقل لازم است؛ ${approvers.size.toLocaleString('fa-IR')} تأیید ثبت شده است.`;
+  if (approvers.has(action.creatorId)) return 'سازنده‌ی پیشنهاد نمی‌تواند یکی از تأییدکنندگان باشد.';
+  return null;
+}
 /** Cancel is only possible before dispatch; afterwards the action may already have executed. */
 export function cancelError(action: ActionProposal, user: User | null, reason = ''): string | null {
   if (!user) return 'برای لغو باید وارد شوید.';
@@ -108,13 +117,15 @@ export function applyActionCommand(action: ActionProposal, user: User | null, si
   } else {
     if (!OPERATOR_ROLES.includes(user.role)) return action;
     if (command.kind === 'send' && action.status === 'approved') {
+      if (dispatchError(action)) return action;
       status = 'sent'; note = 'ارسال نمونه ثبت شد؛ منتظر تطبیق نتیجه مقصد.'; extra = { dispatchKey: `dispatch-${action.id}` };
     } else if (command.kind === 'uncertain' && action.status === 'sent') {
       status = 'uncertain'; note = 'پاسخ قطعی مقصد موجود نیست؛ ارسال دوباره متوقف و تطبیق لازم است.';
     } else if (command.kind === 'reconcile' && (action.status === 'uncertain' || action.status === 'sent')) {
       const result = command.result;
       if (!result.reference.trim() || !result.note.trim()) return action;
-      status = result.outcome === 'confirmed' ? 'finalized' : 'uncertain';
+      // Success and confirmed failure are both conclusive; 'not found' and 'pending' are not proof of anything.
+      status = result.outcome === 'confirmed' || result.outcome === 'failed_confirmed' ? 'finalized' : 'uncertain';
       note = `تطبیق با مرجع ${result.reference.trim()}: ${result.note.trim()}`;
       extra = { reconciliation: { ...result, reference: result.reference.trim(), note: result.note.trim() }, uncertainActorIds: addActor(action, user) };
     } else if (command.kind === 'escalate' && action.status === 'uncertain' && !action.escalatedTo) {
@@ -153,6 +164,13 @@ export const ACTIONS_DATA: ActionProposal[] = SITES_DATA.flatMap((site, si) => s
     actor: index === 0 ? creator?.name ?? 'کارشناس' : 'مسئول بررسی', note: notes[index] ?? '',
     opKey: index === 2 ? `dispatch-${id}` : `op-${id}-${index + 1}`,
   }));
+  if (k === 1 && i >= 1) {
+    // A T3 proposal is approved by two independent reviewers: the journal shows both approvals.
+    const second = history[1]!;
+    history.splice(1, 1,
+      { from: 'proposed', status: 'proposed', at: new Date(baseMs + 20 * 60000).toISOString(), actor: 'مسئول بررسی', note: 'تأیید ۱ از ۲ ثبت شد؛ تأییدکننده‌ی مستقل دیگری لازم است.', opKey: `op-${id}-2a` },
+      { ...second, note: 'تأیید ۲ از ۲ ثبت شد؛ تفاوت‌ها و اثر اقدام بررسی و تأیید شد.', actor: 'مسئول بررسی دوم' });
+  }
   // Fixed per revision: reloading must never extend validity. 2027-03-20 18:00 Asia/Tehran plus one hour per site.
   const expiresMs = Date.UTC(2027, 2, 20, 14, 30) + si * 3600000;
   const diffs = [
@@ -170,7 +188,9 @@ export const ACTIONS_DATA: ActionProposal[] = SITES_DATA.flatMap((site, si) => s
     impact: ['آزادسازی ظرفیت و کاهش انتظار انتقال بیماران؛ اثر تخمینی: ۴ تخت.', `افزایش پوشش موجودی دارو؛ اثر تخمینی: ${(HEPARIN_AFTER - HEPARIN_BEFORE).toLocaleString('fa-IR')} ویال (${HEPARIN_AFTER.toLocaleString('fa-IR')} − ${HEPARIN_BEFORE.toLocaleString('fa-IR')}).`, 'کاهش احتمال خطای دارویی با بررسی مستقل.', 'بازگرداندن سه دستگاه به برنامه نگهداشت.', 'کاهش برگشت اسناد با بازبینی ثبت خدمات.'][k] ?? '',
     risk: 'اثرها تخمینی هستند؛ صحت داده منبع و ظرفیت اجرایی باید پیش از ارسال بررسی شود.',
     tier: (k === 1 ? 't3' : 't2') as ActionTier,
-    approvals: i >= 1 ? [{ userId: 'rev-1', name: 'مسئول بررسی', at: history[1]?.at ?? '' }, ...(k === 1 ? [{ userId: 'rev-2', name: 'مسئول بررسی دوم', at: history[1]?.at ?? '' }] : [])] : [],
+    approvals: i >= 1 ? (k === 1
+      ? [{ userId: 'rev-1', name: 'مسئول بررسی', at: history[1]?.at ?? '' }, { userId: 'rev-2', name: 'مسئول بررسی دوم', at: history[2]?.at ?? '' }]
+      : [{ userId: 'rev-1', name: 'مسئول بررسی', at: history[1]?.at ?? '' }]) : [],
     revision: 1 + ((si + i) % 3),
     expiresAtIso: new Date(expiresMs).toISOString(),
     expiresAt: formatEventTime(new Date(expiresMs).toISOString()).tehran,

@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, ArrowLeft, ClipboardCheck, History, Search, ShieldCheck, AlertTriangle, GitCompareArrows, Send, CheckCircle2, FileSearch } from 'lucide-react';
+import { ArrowRight, ArrowLeft, ClipboardCheck, History, Search, ShieldCheck, AlertTriangle, GitCompareArrows, Send, CheckCircle2, FileSearch, Clock, CheckCheck, HelpCircle, Ban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useApp } from '../context/AppContext';
-import { ACTION_STATUS_LABEL, MIN_REASON_LENGTH, TIER_LABEL, approvalError, cancelError, canOperateActions, requiredApprovals, type ActionTier, formatEventTime, minutesUntil, manualVerificationError, scopedActions, type ActionStatus, type ActionProposal } from '../data/actionData';
+import { ACTION_STATUS_LABEL, MIN_REASON_LENGTH, TIER_LABEL, approvalError, cancelError, dispatchError, canOperateActions, requiredApprovals, type ActionTier, formatEventTime, minutesUntil, manualVerificationError, scopedActions, type ActionStatus, type ActionProposal } from '../data/actionData';
 
 const statusClass: Record<ActionStatus, string> = {
   proposed: 'bg-muted text-muted-foreground', approved: 'bg-action-success/10 text-action-success',
   sent: 'bg-action-info/10 text-action-info', uncertain: 'bg-action-warning/10 text-action-warning', finalized: 'bg-action-success/10 text-action-success', canceled: 'bg-muted text-muted-foreground line-through',
 };
+const statusIcon: Record<ActionStatus, typeof Clock> = { proposed: Clock, approved: CheckCircle2, sent: Send, uncertain: HelpCircle, finalized: CheckCheck, canceled: Ban };
 function Status({ status }: { status: ActionStatus }) {
-  return <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold ${statusClass[status]}`}>{ACTION_STATUS_LABEL[status]}</span>;
+  const Icon = statusIcon[status];
+  return <span data-status={status} className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ${statusClass[status]}`}><Icon className="size-3.5 shrink-0" aria-hidden data-testid="status-icon" />{ACTION_STATUS_LABEL[status]}</span>;
 }
 function Heading({ title, journal = false }: { title: string; journal?: boolean }) {
   const { scope } = useApp();
@@ -140,7 +142,7 @@ function ApprovalPanel({ action }: { action: ActionProposal }) {
   const [escNote, setEscNote] = useState('');
   const [manualRef, setManualRef] = useState('');
   const [manualNote, setManualNote] = useState('');
-  const [outcome, setOutcome] = useState<'confirmed' | 'not_found' | 'pending'>('pending');
+  const [outcome, setOutcome] = useState<'confirmed' | 'failed_confirmed' | 'not_found' | 'pending'>('pending');
   const error = approvalError(action, user, scope.siteId);
   const canOperate = canOperateActions(user);
   const cancelAllowed = !cancelError(action, user, 'x'.repeat(MIN_REASON_LENGTH));
@@ -148,9 +150,9 @@ function ApprovalPanel({ action }: { action: ActionProposal }) {
   const manualError = manualVerificationError(action, user);
   return <aside className="border-t lg:border-t-0 lg:border-r border-border pt-6 lg:pt-0 lg:pr-6 space-y-5 min-w-0" data-testid="approval-panel">
     <h2 className="text-base font-bold flex items-center gap-2"><ShieldCheck className="size-5 text-action-brand" />پنل تأیید</h2>
-    <dl className="space-y-3 text-sm"><div><dt className="text-xs text-muted-foreground">وضعیت</dt><dd className="mt-1"><Status status={action.status} /></dd></div><div><dt className="text-xs text-muted-foreground">سازنده پیشنهاد</dt><dd className="mt-1">{action.creatorName}</dd></div><div><dt className="text-xs text-muted-foreground">بررسی‌کننده فعلی</dt><dd className="mt-1">{user?.name ?? '—'}</dd></div><div><dt className="text-xs text-muted-foreground">مقصد</dt><dd className="mt-1"><bdi dir="auto">{action.target}</bdi></dd></div></dl>
+    <dl className="space-y-3 text-sm"><div><dt className="text-xs text-muted-foreground">وضعیت</dt><dd className="mt-1"><Status status={action.status} /></dd></div><div><dt className="text-xs text-muted-foreground">سازنده پیشنهاد</dt><dd className="mt-1">{action.creatorName}</dd></div><div><dt className="text-xs text-muted-foreground">کاربر فعلی (شما)</dt><dd className="mt-1">{user?.name ?? '—'}</dd></div>{(action.approvals?.length ?? 0) > 0 && <div data-testid="approvers"><dt className="text-xs text-muted-foreground">تأییدکنندگان ({(action.approvals?.length ?? 0).toLocaleString('fa-IR')} از {requiredApprovals(action.tier).toLocaleString('fa-IR')})</dt><dd className="mt-1">{action.approvals.map(a => a.name).join('، ')}</dd></div>}<div><dt className="text-xs text-muted-foreground">مقصد</dt><dd className="mt-1"><bdi dir="auto">{action.target}</bdi></dd></div></dl>
     {action.status === 'proposed' && <div className="space-y-3">{error && <p role="status" className="text-sm text-action-warning leading-6">{error}</p>}<Button className="w-full bg-action-brand text-action-brand-foreground hover:bg-action-brand/90" disabled={!!error} onClick={() => setApproveOpen(true)}><ShieldCheck />تأیید پیشنهاد اقدام</Button><p className="text-xs text-muted-foreground leading-6">انقضای تأیید: {action.expiresAt}</p>{requiredApprovals(action.tier) > 1 && <p className="text-xs text-muted-foreground leading-6" data-testid="approval-progress">{TIER_LABEL[action.tier]} · تأییدهای ثبت‌شده: {(action.approvals?.length ?? 0).toLocaleString('fa-IR')} از {requiredApprovals(action.tier).toLocaleString('fa-IR')}</p>}<ApprovalDialog action={action} open={approveOpen} onOpenChange={setApproveOpen} /></div>}
-    {action.status === 'approved' && <div className="space-y-3"><p className="text-sm text-action-success">تأیید مستقل ثبت شده است.</p>{canOperate ? <Button className="w-full" onClick={() => runActionCommand(action.id, { kind: 'send' })}><Send />ثبت ارسال نمونه</Button> : <p role="status" className="text-xs leading-6 text-muted-foreground" data-testid="read-only-note">نقش فعلی شما فقط‌خواندنی است؛ ارسال، تطبیق و ارجاع برای این نقش مجاز نیست.</p>}</div>}
+    {action.status === 'approved' && <div className="space-y-3"><p className="text-sm text-action-success">{requiredApprovals(action.tier) > 1 ? `هر ${requiredApprovals(action.tier).toLocaleString('fa-IR')} تأیید مستقل ثبت شده است.` : 'تأیید مستقل ثبت شده است.'}</p>{dispatchError(action) && <p role="status" className="text-xs leading-6 text-action-warning" data-testid="dispatch-blocked">{dispatchError(action)}</p>}{canOperate ? <Button className="w-full" disabled={!!dispatchError(action)} onClick={() => runActionCommand(action.id, { kind: 'send' })}><Send />ثبت ارسال نمونه</Button> : <p role="status" className="text-xs leading-6 text-muted-foreground" data-testid="read-only-note">نقش فعلی شما فقط‌خواندنی است؛ ارسال، تطبیق و ارجاع برای این نقش مجاز نیست.</p>}</div>}
     {action.dispatchKey && <div className="text-xs text-muted-foreground"><p>شناسه یکتای ارسال</p><bdi dir="ltr" className="block mt-1 break-all font-mono">{action.dispatchKey}</bdi></div>}
     {reconcile && <div className="space-y-4 border-t border-border pt-4" data-testid="reconciliation-panel">
       <h3 className="text-sm font-bold flex items-center gap-2"><FileSearch className="size-4" />تطبیق نتیجه مقصد (Reconciliation)</h3>
@@ -158,7 +160,7 @@ function ApprovalPanel({ action }: { action: ActionProposal }) {
       <p className="text-xs leading-6 text-muted-foreground">مرجع بررسی: {action.target} · رکورد مقصد یا گزارش دریافت</p>
       {canOperate ? <>
       <label className="block text-xs">مرجع رکورد یا گزارش مقصد<input className="block mt-2 w-full border border-input bg-background rounded-md p-2 text-sm" dir="auto" value={reference} onChange={e => setReference(e.target.value)} /></label>
-      <label className="block text-xs">نتیجه تطبیق<select value={outcome} onChange={e => setOutcome(e.target.value as typeof outcome)} className="mt-2 block w-full bg-background border border-input rounded-md p-2 text-sm"><option value="pending">هنوز نامشخص؛ ادامه بررسی</option><option value="confirmed">اجرای اقدام در مقصد تأیید شد</option><option value="not_found">رکورد اجرا در مقصد یافت نشد</option></select></label>
+      <label className="block text-xs">نتیجه تطبیق<select value={outcome} onChange={e => setOutcome(e.target.value as typeof outcome)} className="mt-2 block w-full bg-background border border-input rounded-md p-2 text-sm"><option value="pending">هنوز نامشخص؛ ادامه بررسی</option><option value="confirmed">موفق: اجرای اقدام در مقصد تأیید شد</option><option value="failed_confirmed">شکست تأییدشده: عدم اجرا با شواهد قطعی ثبت شد</option><option value="not_found">رکورد اجرا در مقصد یافت نشد</option></select></label>
       <label className="block text-xs">شرح بررسی<textarea value={note} onChange={e => setNote(e.target.value)} rows={3} className="mt-2 w-full border border-input bg-background rounded-md p-2 text-sm" /></label>
       <Button className="w-full" variant="outline" disabled={!canOperate || !reference.trim() || !note.trim()} onClick={() => runActionCommand(action.id, { kind: 'reconcile', result: { reference, note, outcome } })}><FileSearch />ثبت نتیجه تطبیق</Button>
       {action.status === 'sent' && <Button variant="ghost" className="w-full text-action-warning" disabled={!canOperate} onClick={() => runActionCommand(action.id, { kind: 'uncertain' })}><AlertTriangle />ثبت نبود پاسخ قطعی</Button>}
@@ -184,14 +186,14 @@ function ApprovalPanel({ action }: { action: ActionProposal }) {
     </div>}
     {action.status === 'canceled' && <p className="text-sm text-muted-foreground leading-6">این پیشنهاد پیش از ارسال لغو شد: {action.cancelReason}</p>}
     {(action.status === 'sent' || action.status === 'uncertain') && <p className="text-xs leading-6 text-muted-foreground" data-testid="no-cancel-note">{cancelError(action, user, 'x'.repeat(MIN_REASON_LENGTH))}</p>}
-    {action.status === 'finalized' && <p className="text-sm text-action-success flex gap-2 leading-6"><CheckCircle2 className="size-5 shrink-0" />{action.manualCompletion ? `اجرای دستی با مرجع ${action.manualCompletion.reference} تأیید انسانی و نهایی شد.` : `اجرای اقدام با مرجع ${action.reconciliation?.reference ?? 'ثبت مقصد'} تأیید و نهایی شد.`}</p>}
+    {action.status === 'finalized' && <p className="text-sm text-action-success flex gap-2 leading-6"><CheckCircle2 className="size-5 shrink-0" />{action.manualCompletion ? `اجرای دستی با مرجع ${action.manualCompletion.reference} تأیید انسانی و نهایی شد.` : action.reconciliation?.outcome === 'failed_confirmed' ? `عدم اجرای اقدام در مقصد با مرجع ${action.reconciliation.reference} تأیید شد (شکست تأییدشده) و پرونده نهایی شد. برای جبران، پیشنهاد جدید بسازید.` : `اجرای اقدام با مرجع ${action.reconciliation?.reference ?? 'ثبت مقصد'} تأیید و نهایی شد.`}</p>}
   </aside>;
 }
 
 export function ActionProposalDetailView({ id }: { id: string }) {
   const { actions, scope, openWorkView } = useApp();
   const action = scopedActions(actions, scope.siteId).find(a => a.id === id);
-  if (!action) return <div><p className="mb-4 text-muted-foreground">این پیشنهاد در دامنه فعلی یافت نشد.</p><Button variant="outline" onClick={() => openWorkView({ kind: 'proposals' })}>بازگشت به پیشنهادها</Button></div>;
+  if (!action) return <div><div role="alert" data-testid="action-not-found" className="mb-4"><h1 className="text-xl font-bold">۴۰۴</h1><p className="mt-1 text-muted-foreground">پیشنهاد اقدام یافت نشد.</p></div><Button variant="outline" onClick={() => openWorkView({ kind: 'proposals' })}>بازگشت به پیشنهادها</Button></div>;
   return <div data-testid="action-detail"><Button variant="ghost" size="sm" className="mb-4 text-action-brand" onClick={() => openWorkView({ kind: 'proposals' })}><ArrowRight />بازگشت به پیشنهادها</Button><Heading title={action.title} /><p className="font-mono text-xs text-muted-foreground mb-2"><bdi dir="ltr">{action.code}</bdi></p><p className="text-xs text-muted-foreground mb-5" data-testid="action-header-meta">ویرایش {action.revision.toLocaleString('fa-IR')} · مهلت تأیید: <Countdown iso={action.expiresAtIso} /> <span>({action.expiresAt})</span></p>
     <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-8"><div className="min-w-0 space-y-8">
       <section><h2 className="font-bold text-sm mb-3">شرح پیشنهاد</h2><p className="text-sm leading-7 text-muted-foreground">{action.description}</p></section>

@@ -13,6 +13,11 @@ export function pathForWorkView(v: WorkView | null): string {
   if (v.kind === 'proposal') return `/actions/${encodeURIComponent(v.id)}`;
   if (v.kind === 'approvals') return '/approvals';
   if (v.kind === 'journal') return '/journal';
+  if (v.kind === 'tasks') return '/tasks';
+  if (v.kind === 'task') return `/tasks/${encodeURIComponent(v.id)}`;
+  if (v.kind === 'alerts') return '/alerts';
+  if (v.kind === 'alert') return `/alerts/${encodeURIComponent(v.id)}`;
+  if (v.kind === 'notifications') return '/notifications';
   return '/';
 }
 
@@ -22,8 +27,14 @@ export function workViewForPath(path: string): WorkView | null {
   if (p === '/actions') return { kind: 'proposals' };
   if (p === '/approvals') return { kind: 'approvals' };
   if (p === '/journal') return { kind: 'journal' };
-  const m = /^\/actions\/([^/]+)$/.exec(p);
-  return m ? { kind: 'proposal', id: decodeURIComponent(m[1]!) } : null;
+  if (p === '/tasks') return { kind: 'tasks' };
+  if (p === '/alerts') return { kind: 'alerts' };
+  if (p === '/notifications') return { kind: 'notifications' };
+  const m = /^\/(actions|tasks|alerts)\/([^/]+)$/.exec(p);
+  if (!m) return null;
+  let id: string;
+  try { id = decodeURIComponent(m[2]!); } catch { return null; }
+  return m[1] === 'actions' ? { kind: 'proposal', id } : m[1] === 'tasks' ? { kind: 'task', id } : { kind: 'alert', id };
 }
 
 const SESSION_KEY = 'him.session.v1';
@@ -75,7 +86,7 @@ const AppContext = g.__himAppContext ?? (g.__himAppContext = createContext<AppCo
 
 const TASKS_KEY = 'him.tasks.v1';
 const ALERTS_KEY = 'him.alerts.v1';
-const ACTIONS_KEY = 'him.actions.v3';
+const ACTIONS_KEY = 'him.actions.v4';
 function loadStored<T extends { id: string }>(key: string, base: T[]): T[] {
   try {
     const raw = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;

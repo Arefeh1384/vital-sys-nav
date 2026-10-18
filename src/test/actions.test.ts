@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { pathForWorkView, workViewForPath } from '@/him/context/AppContext';
-import { ACTIONS_DATA, applyActionCommand, cancelError, requiredApprovals, formatEventTime, minutesUntil, scopedActions, type ActionProposal } from '@/him/data/actionData';
+import { ACTIONS_DATA, applyActionCommand, cancelError, dispatchError, requiredApprovals, formatEventTime, minutesUntil, scopedActions, type ActionProposal } from '@/him/data/actionData';
 import { DEMO_USERS, SITES_DATA } from '@/him/data/mockData';
 import { ALERTS_DATA, TASKS_DATA } from '@/him/data/workData';
 
@@ -170,5 +170,29 @@ describe('Action approval and journal rules', () => {
       expect(after! - before!).toBeGreaterThan(0);
       expect(a.impact).toContain((after! - before!).toLocaleString('fa-IR'));
     }
+  });
+  it('shows both approvals for a T3 proposal that is already approved, and dispatches only then', () => {
+    const t3 = ACTIONS_DATA.find(a => a.tier === 't3' && a.status === 'approved') as ActionProposal;
+    expect(t3.approvals).toHaveLength(2);
+    expect(new Set(t3.approvals.map(a => a.userId)).size).toBe(2);
+    expect(t3.history.filter(e => e.note.includes('تأیید')).length).toBeGreaterThanOrEqual(2);
+    expect(dispatchError(t3)).toBeNull();
+    const oneApproval = { ...t3, approvals: t3.approvals.slice(0, 1) };
+    expect(dispatchError(oneApproval)).toBeTruthy();
+    expect(applyActionCommand(oneApproval, chief, t3.siteId, { kind: 'send' }, new Date().toISOString())).toBe(oneApproval);
+    expect(applyActionCommand(t3, chief, t3.siteId, { kind: 'send' }, new Date().toISOString()).status).toBe('sent');
+  });
+  it('records a confirmed failure as a conclusive reconciliation outcome', () => {
+    const uncertain = run(run(run(action, 'approve'), 'send'), 'uncertain');
+    const failed = applyActionCommand(uncertain, chief, scope, { kind: 'reconcile', result: { reference: 'REC-F', note: 'destination reports rejection', outcome: 'failed_confirmed' } }, new Date().toISOString());
+    expect(failed.status).toBe('finalized');
+    expect(failed.reconciliation?.outcome).toBe('failed_confirmed');
+  });
+  it('maps task, alert and notification views to their own paths', () => {
+    for (const v of [{ kind: 'tasks' }, { kind: 'task', id: 'tk-0-1' }, { kind: 'alerts' }, { kind: 'alert', id: 'al-0-1' }, { kind: 'notifications' }] as const) {
+      expect(pathForWorkView(v)).not.toBe('/');
+      expect(workViewForPath(pathForWorkView(v))).toEqual(v);
+    }
+    expect(workViewForPath('/unknown')).toBeNull();
   });
 });
