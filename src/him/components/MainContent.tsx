@@ -34,7 +34,7 @@ import { LoadingState } from './states/LoadingState';
 import { EmptyState } from './states/EmptyState';
 import { ErrorState } from './states/ErrorState';
 import { TaskListView, TaskDetailView, AlertListView, AlertDetailView, NotificationCenterView } from './WorkViews';
-import { ActionProposalListView, ActionProposalDetailView, ActionJournalView } from './ActionViews';
+import { ActionProposalListView, ActionProposalDetailView, ActionJournalView, ApprovalQueueView } from './ActionViews';
 
 export const MainContent: React.FC = () => {
   const { 
@@ -69,6 +69,7 @@ export const MainContent: React.FC = () => {
         {workView.kind === 'alert' && <AlertDetailView id={workView.id} />}
         {workView.kind === 'notifications' && <NotificationCenterView />}
         {workView.kind === 'proposals' && <ActionProposalListView key={scope.siteId} />}
+        {workView.kind === 'approvals' && <ApprovalQueueView key={scope.siteId} />}
         {workView.kind === 'proposal' && <ActionProposalDetailView id={workView.id} />}
         {workView.kind === 'journal' && <ActionJournalView />}
       </main>

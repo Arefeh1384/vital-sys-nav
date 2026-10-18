@@ -4,7 +4,7 @@ import { CURRENT_ORGANIZATION, SITES_DATA, DEMO_USERS } from '../data/mockData';
 import { TASKS_DATA, ALERTS_DATA, type WorkTask, type WorkAlert, type TaskStatus, type AlertStatus } from '../data/workData';
 import { ACTIONS_DATA, applyActionCommand, type ActionProposal, type ActionCommand } from '../data/actionData';
 
-export type WorkView = { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'proposal'; id: string } | { kind: 'journal' };
+export type WorkView = { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' };
 
 export interface AppNotification { id: string; title: string; body: string; at: string; target: WorkView }
 
@@ -47,6 +47,7 @@ const AppContext = g.__himAppContext ?? (g.__himAppContext = createContext<AppCo
 
 const TASKS_KEY = 'him.tasks.v1';
 const ALERTS_KEY = 'him.alerts.v1';
+const ACTIONS_KEY = 'him.actions.v2';
 function loadStored<T extends { id: string }>(key: string, base: T[]): T[] {
   try {
     const raw = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
@@ -60,7 +61,7 @@ function saveStored(key: string, value: unknown) {
   try { window.localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
 }
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?: WorkView | null }> = ({ children, initialWorkView = null }) => {
   // Initial state: logged in with the chief executive for immediate evaluation,
   // but with full capability to log out and use the LoginView.
   const [user, setUser] = useState<User | null>(DEMO_USERS[0] ?? null);
@@ -78,9 +79,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [activeModule, setActiveModuleRaw] = useState<ModuleKey>('EXE');
-  const [workView, setWorkView] = useState<WorkView | null>(null);
-  // Preview actions are session-only; no command is dispatched to a real hospital system.
-  const [actions, setActions] = useState<ActionProposal[]>(ACTIONS_DATA);
+  const [workView, setWorkView] = useState<WorkView | null>(initialWorkView);
+  // Sample actions are kept in this browser only so a refresh does not undo a recorded approval;
+  // no command is ever dispatched to a real hospital system.
+  const [actions, setActions] = useState<ActionProposal[]>(() => loadStored(ACTIONS_KEY, ACTIONS_DATA));
+  useEffect(() => { saveStored(ACTIONS_KEY, actions); }, [actions]);
   const runActionCommand = (id: string, command: ActionCommand) => {
     const current = actions.find(a => a.id === id);
     if (!current) return;
@@ -91,7 +94,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     setActions(prev => prev.map(a => a.id === id ? next : a));
     const messages: Record<ActionCommand['kind'], string> = {
-      approve: 'پیشنهاد اقدام تأیید شد.',
+      approve: 'پیشنهاد اقدام تأیید شد. (داده نمونه در همین مرورگر ذخیره می‌شود.)',
       send: 'ارسال نمونه ثبت شد.',
       uncertain: 'نبود پاسخ قطعی ثبت شد؛ اقدام نامشخص است.',
       reconcile: next.status === 'finalized' ? 'نتیجه تطبیق ثبت شد و اقدام نهایی شد.' : 'نتیجه تطبیق ثبت شد؛ اقدام همچنان نامشخص است.',

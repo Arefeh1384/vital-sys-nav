@@ -5,6 +5,7 @@ import { DEMO_USERS, SITES_DATA } from '@/him/data/mockData';
 const action = ACTIONS_DATA[0] as ActionProposal;
 const chief = DEMO_USERS[0] ?? null;
 const creator = DEMO_USERS[1] ?? null;
+const verifier = DEMO_USERS[3] ?? null; // data steward, permitted on every site
 const scope = action.siteId;
 const run = (a: ActionProposal, kind: 'approve' | 'send' | 'uncertain') => applyActionCommand(a, chief, scope, { kind }, 'now');
 
@@ -66,9 +67,16 @@ describe('Action approval and journal rules', () => {
     expect(escalated.status).toBe('uncertain');
     expect(escalated.escalatedTo).toBeTruthy();
     expect(run(escalated, 'send')).toBe(escalated);
-    const done = applyActionCommand(escalated, chief, scope, { kind: 'manual', reference: 'M-1', note: 'checked by phone' }, 'now');
+    const done = applyActionCommand(escalated, verifier, scope, { kind: 'manual', reference: 'M-1', note: 'checked by phone' }, 'now');
     expect(done.status).toBe('finalized');
     expect(done.manualCompletion?.reference).toBe('M-1');
     expect(done.reconciliation).toBeUndefined();
+  });
+  it('does not let the user who reconciled or referred an action verify its manual completion', () => {
+    const uncertain = run(run(run(action, 'approve'), 'send'), 'uncertain');
+    const reconciled = applyActionCommand(uncertain, chief, scope, { kind: 'reconcile', result: { reference: 'R-1', note: 'not found', outcome: 'not_found' } }, 'now');
+    const escalated = applyActionCommand(reconciled, chief, scope, { kind: 'escalate', note: 'manual check' }, 'now');
+    expect(applyActionCommand(escalated, chief, scope, { kind: 'manual', reference: 'M-1', note: 'ok' }, 'now')).toBe(escalated);
+    expect(applyActionCommand(escalated, verifier, scope, { kind: 'manual', reference: 'M-1', note: 'ok' }, 'now').status).toBe('finalized');
   });
 });

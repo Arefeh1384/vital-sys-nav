@@ -14,7 +14,10 @@ export interface ActionProposal {
   taskId: string; alertId: string; history: ActionEvent[];
   approvedBy?: string; dispatchKey?: string;
   reconciliation?: { reference: string; outcome: 'confirmed' | 'not_found' | 'pending'; note: string };
+  expiresAt: string;
   escalatedTo?: string;
+  /** Users who reconciled or referred this action while it was uncertain; they cannot verify the manual completion. */
+  uncertainActorIds?: string[];
   manualCompletion?: { reference: string; note: string; verifiedBy: string };
 }
 
@@ -26,6 +29,13 @@ export function approvalError(action: ActionProposal, user: User | null, siteId:
   if (action.creatorId === user.id) return 'سازنده پیشنهاد نمی‌تواند پیشنهاد خودش را تأیید کند.';
   if (!['executive_viewer', 'process_approver', 'control_approver'].includes(user.role)) return 'نقش فعلی شما مجوز تأیید اقدام ندارد.';
   if (action.status !== 'proposed') return 'این پیشنهاد در انتظار تأیید نیست.';
+  return null;
+}
+const addActor = (action: ActionProposal, user: User) => Array.from(new Set([...(action.uncertainActorIds ?? []), user.id]));
+/** Manual completion needs a verifier who did not reconcile or refer the action. */
+export function manualVerificationError(action: ActionProposal, user: User | null): string | null {
+  if (!user) return 'برای ثبت اجرای دستی باید وارد شوید.';
+  if ((action.uncertainActorIds ?? []).includes(user.id)) return 'تأیید اجرای دستی باید توسط کاربری غیر از ثبت‌کننده‌ی تطبیق یا ارجاع انجام شود.';
   return null;
 }
 type Reconciliation = NonNullable<ActionProposal['reconciliation']>;
@@ -53,13 +63,14 @@ export function applyActionCommand(action: ActionProposal, user: User | null, si
       if (!result.reference.trim() || !result.note.trim()) return action;
       status = result.outcome === 'confirmed' ? 'finalized' : 'uncertain';
       note = `تطبیق با مرجع ${result.reference.trim()}: ${result.note.trim()}`;
-      extra = { reconciliation: { ...result, reference: result.reference.trim(), note: result.note.trim() } };
+      extra = { reconciliation: { ...result, reference: result.reference.trim(), note: result.note.trim() }, uncertainActorIds: addActor(action, user) };
     } else if (command.kind === 'escalate' && action.status === 'uncertain' && !action.escalatedTo) {
       // A missing destination record is not proof of failure: hand over to a person, never auto-retry or cancel.
       if (!command.note.trim()) return action;
       status = 'uncertain'; note = `ارجاع به مسئول کنترل برای بررسی دستی: ${command.note.trim()}`;
-      extra = { escalatedTo: 'مسئول کنترل' };
+      extra = { escalatedTo: 'مسئول کنترل', uncertainActorIds: addActor(action, user) };
     } else if (command.kind === 'manual' && action.status === 'uncertain' && action.escalatedTo) {
+      if (manualVerificationError(action, user)) return action;
       // Manual completion is verified by a person; it is distinct from source-confirmed completion.
       if (!command.reference.trim() || !command.note.trim()) return action;
       status = 'finalized'; note = `اجرای دستی با مرجع ${command.reference.trim()} تأیید شد (تأیید انسانی، نه تأیید خودکار منبع): ${command.note.trim()}`;
@@ -90,6 +101,7 @@ export const ACTIONS_DATA: ActionProposal[] = SITES_DATA.flatMap((site, si) => s
     target: ['HIS / ADT', 'سامانه انبار', 'سامانه ایمنی بیمار', 'سامانه نگهداشت', 'سامانه درآمد'][k] ?? 'سامانه مقصد',
     impact: ['آزادسازی ظرفیت و کاهش انتظار انتقال بیماران؛ اثر تخمینی: ۴ تخت.', 'افزایش پوشش موجودی دارو؛ اثر تخمینی: ۱۸۰ ویال.', 'کاهش احتمال خطای دارویی با بررسی مستقل.', 'بازگرداندن سه دستگاه به برنامه نگهداشت.', 'کاهش برگشت اسناد با بازبینی ثبت خدمات.'][k] ?? '',
     risk: 'اثرها تخمینی هستند؛ صحت داده منبع و ظرفیت اجرایی باید پیش از ارسال بررسی شود.',
+    expiresAt: '۱۴۰۵/۰۷/۲۶ · ۱۸:۰۰',
     diff: diffs[k] ? [diffs[k]] : [], taskId: `tk-${si}-${i}`, alertId: `al-${si}-${i}`, history,
     ...(i >= 1 ? { approvedBy: 'reviewer' } : {}),
     ...(i >= 2 ? { dispatchKey: `dispatch-${id}` } : {}),

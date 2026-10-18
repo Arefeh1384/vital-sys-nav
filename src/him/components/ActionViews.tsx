@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { ArrowRight, ArrowLeft, ClipboardCheck, History, Search, ShieldCheck, AlertTriangle, GitCompareArrows, Send, CheckCircle2, FileSearch } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useApp } from '../context/AppContext';
-import { ACTION_STATUS_LABEL, approvalError, scopedActions, type ActionStatus, type ActionProposal } from '../data/actionData';
+import { ACTION_STATUS_LABEL, approvalError, manualVerificationError, scopedActions, type ActionStatus, type ActionProposal } from '../data/actionData';
 
 const statusClass: Record<ActionStatus, string> = {
   proposed: 'bg-muted text-muted-foreground', approved: 'bg-action-success/10 text-action-success',
@@ -33,9 +34,56 @@ export function ActionProposalListView() {
   </div>;
 }
 
+const STEP_UP_SAMPLE_CODE = '123456';
+function ApprovalDialog({ action, open, onOpenChange }: { action: ActionProposal; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { runActionCommand, user, scope } = useApp();
+  const [reviewed, setReviewed] = useState(false);
+  const [step, setStep] = useState<'summary' | 'stepup'>('summary');
+  const [code, setCode] = useState('');
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const reset = () => { setReviewed(false); setStep('summary'); setCode(''); setCodeError(null); };
+  const change = (o: boolean) => { if (!o) reset(); onOpenChange(o); };
+  const confirm = () => {
+    if (code.trim() !== STEP_UP_SAMPLE_CODE) { setCodeError('کد تأیید هویت نادرست است.'); return; }
+    // Re-check at commit time: scope, creator and role rules are enforced by the command itself.
+    runActionCommand(action.id, { kind: 'approve' });
+    change(false);
+  };
+  const blocked = approvalError(action, user, scope.siteId);
+  return <Dialog open={open} onOpenChange={change}>
+    <DialogContent dir="rtl" data-testid="approval-dialog" className="max-w-lg text-right">
+      <DialogHeader className="text-right sm:text-right">
+        <DialogTitle>تأیید پیشنهاد اقدام</DialogTitle>
+        <DialogDescription><bdi dir="ltr">{action.code}</bdi> · {action.title}</DialogDescription>
+      </DialogHeader>
+      {step === 'summary' ? <div className="space-y-4">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm" data-testid="approval-summary">
+          <dt className="text-muted-foreground">مقصد</dt><dd><bdi dir="auto">{action.target}</bdi></dd>
+          {action.diff.map(d => <div key={d.field} className="contents"><dt className="text-muted-foreground">{d.field}</dt><dd>{d.before} ← <strong>{d.after}</strong></dd></div>)}
+          <dt className="text-muted-foreground">انقضای تأیید</dt><dd>{action.expiresAt}</dd>
+          <dt className="text-muted-foreground">سازنده</dt><dd>{action.creatorName}</dd>
+        </dl>
+        <p className="text-xs leading-6 text-muted-foreground">{action.risk}</p>
+        {blocked && <p role="status" className="text-sm text-action-warning">{blocked}</p>}
+        <label className="flex gap-2 text-sm leading-6"><input type="checkbox" checked={reviewed} disabled={!!blocked} onChange={e => setReviewed(e.target.checked)} className="mt-1 accent-action-brand shrink-0" />تغییرات را مرور کردم</label>
+      </div> : <div className="space-y-3">
+        <p className="text-sm leading-6">برای ثبت تأیید، هویت خود را دوباره تأیید کنید (Step-up). این کد نمونه است: <bdi dir="ltr" className="font-mono">{STEP_UP_SAMPLE_CODE}</bdi></p>
+        <label className="block text-xs">کد تأیید هویت<input inputMode="numeric" dir="ltr" autoFocus value={code} onChange={e => { setCode(e.target.value); setCodeError(null); }} className="mt-2 block w-full border border-input bg-background rounded-md p-2 text-sm font-mono" /></label>
+        {codeError && <p role="alert" className="text-sm text-action-warning">{codeError}</p>}
+      </div>}
+      <DialogFooter className="gap-2 sm:justify-start">
+        {step === 'summary'
+          ? <Button disabled={!reviewed || !!blocked} onClick={() => setStep('stepup')}>ادامه به تأیید هویت</Button>
+          : <Button className="bg-action-brand text-action-brand-foreground hover:bg-action-brand/90" disabled={!code.trim()} onClick={confirm}><ShieldCheck />ثبت تأیید</Button>}
+        <Button variant="outline" onClick={() => change(false)}>انصراف</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>;
+}
+
 function ApprovalPanel({ action }: { action: ActionProposal }) {
   const { user, scope, runActionCommand } = useApp();
-  const [checked, setChecked] = useState(false);
+  const [approveOpen, setApproveOpen] = useState(false);
   const [reference, setReference] = useState('');
   const [note, setNote] = useState('');
   const [escNote, setEscNote] = useState('');
@@ -45,10 +93,11 @@ function ApprovalPanel({ action }: { action: ActionProposal }) {
   const error = approvalError(action, user, scope.siteId);
   const canOperate = !!user && ['executive_viewer', 'process_approver', 'control_approver', 'data_steward', 'integration_administrator'].includes(user.role);
   const reconcile = action.status === 'uncertain' || action.status === 'sent';
+  const manualError = manualVerificationError(action, user);
   return <aside className="border-t lg:border-t-0 lg:border-r border-border pt-6 lg:pt-0 lg:pr-6 space-y-5 min-w-0" data-testid="approval-panel">
     <h2 className="text-base font-bold flex items-center gap-2"><ShieldCheck className="size-5 text-action-brand" />پنل تأیید</h2>
     <dl className="space-y-3 text-sm"><div><dt className="text-xs text-muted-foreground">وضعیت</dt><dd className="mt-1"><Status status={action.status} /></dd></div><div><dt className="text-xs text-muted-foreground">سازنده پیشنهاد</dt><dd className="mt-1">{action.creatorName}</dd></div><div><dt className="text-xs text-muted-foreground">بررسی‌کننده فعلی</dt><dd className="mt-1">{user?.name ?? '—'}</dd></div><div><dt className="text-xs text-muted-foreground">مقصد</dt><dd className="mt-1"><bdi dir="auto">{action.target}</bdi></dd></div></dl>
-    {action.status === 'proposed' && <div className="space-y-3">{error && <p role="status" className="text-sm text-action-warning leading-6">{error}</p>}<label className="flex gap-2 text-sm leading-6"><input type="checkbox" checked={checked} disabled={!!error} onChange={e => setChecked(e.target.checked)} className="mt-1 accent-action-brand shrink-0" />تفاوت‌ها، اثر و ریسک اقدام را بررسی کرده‌ام.</label><Button className="w-full bg-action-brand text-action-brand-foreground hover:bg-action-brand/90" disabled={!!error || !checked} onClick={() => runActionCommand(action.id, { kind: 'approve' })}><ShieldCheck />تأیید پیشنهاد اقدام</Button></div>}
+    {action.status === 'proposed' && <div className="space-y-3">{error && <p role="status" className="text-sm text-action-warning leading-6">{error}</p>}<Button className="w-full bg-action-brand text-action-brand-foreground hover:bg-action-brand/90" disabled={!!error} onClick={() => setApproveOpen(true)}><ShieldCheck />تأیید پیشنهاد اقدام</Button><p className="text-xs text-muted-foreground leading-6">انقضای تأیید: {action.expiresAt}</p><ApprovalDialog action={action} open={approveOpen} onOpenChange={setApproveOpen} /></div>}
     {action.status === 'approved' && <div className="space-y-3"><p className="text-sm text-action-success">تأیید مستقل ثبت شده است.</p><Button className="w-full" disabled={!canOperate} onClick={() => runActionCommand(action.id, { kind: 'send' })}><Send />ثبت ارسال نمونه</Button></div>}
     {action.dispatchKey && <div className="text-xs text-muted-foreground"><p>شناسه یکتای ارسال</p><bdi dir="ltr" className="block mt-1 break-all font-mono">{action.dispatchKey}</bdi></div>}
     {reconcile && <div className="space-y-4 border-t border-border pt-4" data-testid="reconciliation-panel">
@@ -68,7 +117,8 @@ function ApprovalPanel({ action }: { action: ActionProposal }) {
         <p className="text-xs leading-6 text-action-warning">ارجاع‌شده به {action.escalatedTo}. اگر اجرا به‌صورت دستی تأیید شد، ثبت کن (این با «تأیید خودکار منبع» متفاوت است). برای جبران، پیشنهاد اقدام جدید بساز.</p>
         <input aria-label="مرجع اجرای دستی" dir="auto" value={manualRef} onChange={e => setManualRef(e.target.value)} placeholder="مرجع اجرای دستی" className="w-full border border-input bg-background rounded-md p-2 text-sm" />
         <textarea aria-label="شرح اجرای دستی" value={manualNote} onChange={e => setManualNote(e.target.value)} rows={2} placeholder="شرح بررسی" className="w-full border border-input bg-background rounded-md p-2 text-sm" />
-        <Button className="w-full" variant="outline" disabled={!canOperate || !manualRef.trim() || !manualNote.trim()} onClick={() => runActionCommand(action.id, { kind: 'manual', reference: manualRef, note: manualNote })}><CheckCircle2 />ثبت اجرای دستی تأییدشده</Button></div>}
+        {manualError && <p role="status" className="text-xs text-action-warning leading-6">{manualError}</p>}
+        <Button className="w-full" variant="outline" disabled={!canOperate || !!manualError || !manualRef.trim() || !manualNote.trim()} onClick={() => runActionCommand(action.id, { kind: 'manual', reference: manualRef, note: manualNote })}><CheckCircle2 />ثبت اجرای دستی تأییدشده</Button></div>}
       {action.reconciliation && <p role="status" className="text-xs text-muted-foreground leading-6">آخرین مرجع: <bdi>{action.reconciliation.reference}</bdi> · {action.reconciliation.note}</p>}
     </div>}
     {action.status === 'finalized' && <p className="text-sm text-action-success flex gap-2 leading-6"><CheckCircle2 className="size-5 shrink-0" />{action.manualCompletion ? `اجرای دستی با مرجع ${action.manualCompletion.reference} تأیید انسانی و نهایی شد.` : `اجرای اقدام با مرجع ${action.reconciliation?.reference ?? 'ثبت مقصد'} تأیید و نهایی شد.`}</p>}
@@ -94,4 +144,13 @@ export function ActionJournalView() {
   const { actions, scope, openWorkView } = useApp();
   const rows = scopedActions(actions, scope.siteId);
   return <div data-testid="action-journal"><Heading title="ژورنال اقدام" journal /><div className="mb-6 flex flex-wrap items-center gap-2 text-xs">{Object.entries(ACTION_STATUS_LABEL).map(([s, label], i) => <span className="inline-flex items-center gap-2" key={s}>{i > 0 && <ArrowLeft className="size-3 text-muted-foreground" />}<span>{label}</span></span>)}</div>{rows.length ? rows.map(action => <section key={action.id} className="border-t border-border py-6"><div className="flex flex-wrap items-center justify-between gap-3 mb-4"><Button variant="ghost" className="h-auto text-start whitespace-normal p-0 gap-2" onClick={() => openWorkView({ kind: 'proposal', id: action.id })}><bdi dir="ltr" className="font-mono text-xs text-muted-foreground">{action.code}</bdi><span className="font-bold text-sm">{action.title}</span><ArrowLeft /></Button><Status status={action.status} /></div><JournalEntries action={action} />{action.status === 'uncertain' && <Button className="mt-4 text-action-warning" variant="outline" onClick={() => openWorkView({ kind: 'proposal', id: action.id })}><FileSearch />بررسی و تطبیق نتیجه مقصد</Button>}</section>) : <p className="py-12 text-center text-muted-foreground">اقدامی در دامنه فعلی ثبت نشده است.</p>}</div>;
+}
+
+export function ApprovalQueueView() {
+  const { actions, scope, user, openWorkView } = useApp();
+  const rows = scopedActions(actions, scope.siteId).filter(a => a.status === 'proposed' && !approvalError(a, user, scope.siteId));
+  return <div data-testid="approval-queue"><Heading title="صف تأییدهای من" />
+    <p className="mb-5 text-xs leading-6 text-muted-foreground">فقط پیشنهادهای در انتظار تأیید در دامنه فعلی که شما مجاز به تأیید آن‌ها هستید (سازنده‌ی پیشنهاد نمی‌تواند خودش تأیید کند).</p>
+    {rows.length ? <div className="divide-y divide-border border-y border-border">{rows.map(a => <Button key={a.id} variant="ghost" onClick={() => openWorkView({ kind: 'proposal', id: a.id })} className="w-full h-auto min-h-20 rounded-none px-2 py-4 justify-between text-right whitespace-normal gap-4"><div className="min-w-0"><bdi dir="ltr" className="text-xs font-mono text-muted-foreground">{a.code}</bdi><h2 className="text-sm font-bold mt-1">{a.title}</h2><p className="text-xs font-normal text-muted-foreground mt-1">سازنده: {a.creatorName} · انقضا: {a.expiresAt}</p></div><div className="flex items-center gap-2 shrink-0"><Status status={a.status} /><ArrowLeft /></div></Button>)}</div> : <p className="py-12 text-center text-muted-foreground">پیشنهادی در انتظار تأیید شما در این دامنه نیست.</p>}
+  </div>;
 }

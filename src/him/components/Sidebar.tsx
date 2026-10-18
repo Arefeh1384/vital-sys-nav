@@ -9,6 +9,7 @@ import {
   Database, 
   LockKeyhole,
   CheckCircle2,
+  ShieldCheck,
   ChevronRight,
   ChevronLeft,
   Building,
@@ -171,6 +172,7 @@ export const Sidebar: React.FC = () => {
             <nav className="space-y-1 mt-1">
               {([
                 { kind: 'proposals', label: 'پیشنهادهای اقدام', Icon: ClipboardCheck },
+                { kind: 'approvals', label: 'صف تأییدهای من', Icon: ShieldCheck },
                 { kind: 'journal', label: 'ژورنال اقدام', Icon: History },
               ] as const).map(({ kind, label, Icon }) => {
                 const selected = workView?.kind === kind || (kind === 'proposals' && workView?.kind === 'proposal');

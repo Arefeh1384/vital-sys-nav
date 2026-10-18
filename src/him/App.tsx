@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect } from 'react';
-import { AppProvider, useApp } from './context/AppContext';
+import { AppProvider, useApp, type WorkView } from './context/AppContext';
 import { LoginView } from './components/LoginView';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -65,9 +65,9 @@ const AppShell: React.FC = () => {
   );
 };
 
-export default function App() {
+export default function App({ initialWorkView = null }: { initialWorkView?: WorkView | null }) {
   return (
-    <AppProvider>
+    <AppProvider initialWorkView={initialWorkView}>
       <AppShell />
     </AppProvider>
   );
