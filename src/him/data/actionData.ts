@@ -135,6 +135,9 @@ export function applyActionCommand(action: ActionProposal, user: User | null, si
   return { ...action, ...extra, status, history: [...action.history, { from: action.status, status, at, actor: user.name, note, opKey }] };
 }
 
+// One source for the heparin quantities so the diff and the estimated impact can never disagree.
+const HEPARIN_BEFORE = 120;
+const HEPARIN_AFTER = 300;
 const stages: ActionStatus[] = ['proposed', 'approved', 'sent', 'uncertain', 'finalized'];
 const titles = ['بازتوزیع ظرفیت مراقبت ویژه', 'افزایش سفارش هپارین', 'برنامه اصلاح خطای دارویی', 'کالیبراسیون ونتیلاتورها', 'اصلاح اسناد کسورات بیمه'];
 export const ACTIONS_DATA: ActionProposal[] = SITES_DATA.flatMap((site, si) => stages.map((status, i) => {
@@ -154,7 +157,7 @@ export const ACTIONS_DATA: ActionProposal[] = SITES_DATA.flatMap((site, si) => s
   const expiresMs = Date.UTC(2027, 2, 20, 14, 30) + si * 3600000;
   const diffs = [
     { field: 'ظرفیت تخصیص‌یافته ICU', before: '۲۰ تخت', after: '۲۴ تخت' },
-    { field: 'تعداد سفارش هپارین', before: '۱۲۰ ویال', after: '۳۰۰ ویال' },
+    { field: 'تعداد سفارش هپارین', before: `${HEPARIN_BEFORE.toLocaleString('fa-IR')} ویال`, after: `${HEPARIN_AFTER.toLocaleString('fa-IR')} ویال` },
     { field: 'بررسی دوم دارو', before: 'بدون کنترل دوم', after: 'کنترل دو نفره' },
     { field: 'وضعیت کالیبراسیون', before: '۳ دستگاه معوق', after: '۳ دستگاه در برنامه سرویس' },
     { field: 'وضعیت اسناد', before: 'نیازمند اصلاح', after: 'آماده بازبینی بیمه' },
@@ -164,7 +167,7 @@ export const ACTIONS_DATA: ActionProposal[] = SITES_DATA.flatMap((site, si) => s
     description: 'پیشنهاد اصلاح فرایند بر اساس هشدار و وظیفه مرتبط، برای بررسی مسئول تأیید.',
     creatorId: creator?.id ?? 'usr-2', creatorName: creator?.name ?? 'کارشناس', status,
     target: ['HIS / ADT', 'سامانه انبار', 'سامانه ایمنی بیمار', 'سامانه نگهداشت', 'سامانه درآمد'][k] ?? 'سامانه مقصد',
-    impact: ['آزادسازی ظرفیت و کاهش انتظار انتقال بیماران؛ اثر تخمینی: ۴ تخت.', 'افزایش پوشش موجودی دارو؛ اثر تخمینی: ۱۸۰ ویال.', 'کاهش احتمال خطای دارویی با بررسی مستقل.', 'بازگرداندن سه دستگاه به برنامه نگهداشت.', 'کاهش برگشت اسناد با بازبینی ثبت خدمات.'][k] ?? '',
+    impact: ['آزادسازی ظرفیت و کاهش انتظار انتقال بیماران؛ اثر تخمینی: ۴ تخت.', `افزایش پوشش موجودی دارو؛ اثر تخمینی: ${(HEPARIN_AFTER - HEPARIN_BEFORE).toLocaleString('fa-IR')} ویال (${HEPARIN_AFTER.toLocaleString('fa-IR')} − ${HEPARIN_BEFORE.toLocaleString('fa-IR')}).`, 'کاهش احتمال خطای دارویی با بررسی مستقل.', 'بازگرداندن سه دستگاه به برنامه نگهداشت.', 'کاهش برگشت اسناد با بازبینی ثبت خدمات.'][k] ?? '',
     risk: 'اثرها تخمینی هستند؛ صحت داده منبع و ظرفیت اجرایی باید پیش از ارسال بررسی شود.',
     tier: (k === 1 ? 't3' : 't2') as ActionTier,
     approvals: i >= 1 ? [{ userId: 'rev-1', name: 'مسئول بررسی', at: history[1]?.at ?? '' }, ...(k === 1 ? [{ userId: 'rev-2', name: 'مسئول بررسی دوم', at: history[1]?.at ?? '' }] : [])] : [],

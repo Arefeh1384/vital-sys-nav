@@ -16,6 +16,24 @@ export function pathForWorkView(v: WorkView | null): string {
   return '/';
 }
 
+/** Inverse of pathForWorkView: the work view a browser path stands for (null = dashboard). */
+export function workViewForPath(path: string): WorkView | null {
+  const p = path.replace(/\/+$/, '') || '/';
+  if (p === '/actions') return { kind: 'proposals' };
+  if (p === '/approvals') return { kind: 'approvals' };
+  if (p === '/journal') return { kind: 'journal' };
+  const m = /^\/actions\/([^/]+)$/.exec(p);
+  return m ? { kind: 'proposal', id: decodeURIComponent(m[1]!) } : null;
+}
+
+const SESSION_KEY = 'him.session.v1';
+function readSession(): { userId: string | null; siteId: string | null } | null {
+  try {
+    const raw = typeof window !== 'undefined' ? window.localStorage.getItem(SESSION_KEY) : null;
+    return raw ? (JSON.parse(raw) as { userId: string | null; siteId: string | null }) : null;
+  } catch { return null; }
+}
+
 export interface AppNotification { id: string; title: string; body: string; at: string; target: WorkView }
 
 interface AppContextType {
@@ -67,20 +85,28 @@ function loadStored<T extends { id: string }>(key: string, base: T[]): T[] {
     return base.map(b => ({ ...b, ...(byId.get(b.id) ?? {}) }));
   } catch { return base; }
 }
+function saveStored2(key: string, value: unknown) {
+  try { window.localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+}
 function saveStored(key: string, value: unknown) {
   try { window.localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
 }
 
-export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?: WorkView | null }> = ({ children, initialWorkView = null }) => {
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Initial state: logged in with the chief executive for immediate evaluation,
   // but with full capability to log out and use the LoginView.
-  const [user, setUser] = useState<User | null>(DEMO_USERS[0] ?? null);
+  // The mock identity and hospital survive refresh and route changes (the provider lives above the routes).
+  const [session] = useState(readSession);
+  const [user, setUser] = useState<User | null>(() => {
+    if (session && session.userId === null) return null;
+    return DEMO_USERS.find(u => u.id === session?.userId) ?? DEMO_USERS[0] ?? null;
+  });
   
   const [scope, setScope] = useState<Scope>(() => {
-    // A direct link to one proposal opens in that proposal's hospital when the user may see it.
-    const linked = initialWorkView?.kind === 'proposal' ? ACTIONS_DATA.find(a => a.id === initialWorkView.id) : undefined;
-    const linkedSite = linked && DEMO_USERS[0]?.permittedSiteIds.includes(linked.siteId) ? SITES_DATA.find(x => x.id === linked.siteId) : undefined;
-    const initialSite = linkedSite ?? SITES_DATA[0]!;
+    // Only a hospital the restored user may see is restored; an unknown or forbidden one falls back to the default.
+    const restoredUser = DEMO_USERS.find(u => u.id === session?.userId) ?? DEMO_USERS[0];
+    const stored = SITES_DATA.find(x => x.id === session?.siteId && restoredUser?.permittedSiteIds.includes(x.id));
+    const initialSite = stored ?? SITES_DATA[0]!;
     return {
       orgId: CURRENT_ORGANIZATION.id,
       orgName: CURRENT_ORGANIZATION.name,
@@ -91,14 +117,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?
     };
   });
 
+  useEffect(() => { saveStored2(SESSION_KEY, { userId: user?.id ?? null, siteId: scope.siteId }); }, [user, scope.siteId]);
   const [activeModule, setActiveModuleRaw] = useState<ModuleKey>('EXE');
-  const [workView, setWorkView] = useState<WorkView | null>(initialWorkView);
+  const [workView, setWorkView] = useState<WorkView | null>(() => (typeof window === 'undefined' ? null : workViewForPath(window.location.pathname)));
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const path = pathForWorkView(workView);
     const current = window.location.pathname.replace(/\/+$/, '') || '/';
     if (current !== path) window.history.pushState(null, '', path);
   }, [workView]);
+  // Back/forward changes the path; follow it without remounting the provider.
+  useEffect(() => {
+    const onPop = () => setWorkView(workViewForPath(window.location.pathname));
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
   // Sample actions are kept in this browser only so a refresh does not undo a recorded approval;
   // no command is ever dispatched to a real hospital system.
   const [actions, setActions] = useState<ActionProposal[]>(() =>
@@ -282,9 +315,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?
 
   const loginAsDemoUser = (demoUser: User, siteId?: string) => {
     setUser(demoUser);
-    const chosenSiteId = siteId && demoUser.permittedSiteIds.includes(siteId) 
-      ? siteId 
-      : demoUser.permittedSiteIds[0];
+    // Switching mock identity keeps the current hospital when the new user may also see it.
+    const chosenSiteId = siteId && demoUser.permittedSiteIds.includes(siteId)
+      ? siteId
+      : scope.siteId && demoUser.permittedSiteIds.includes(scope.siteId)
+        ? scope.siteId
+        : demoUser.permittedSiteIds[0];
 
     const targetSite = SITES_DATA.find(s => s.id === chosenSiteId) || SITES_DATA[0]!;
     

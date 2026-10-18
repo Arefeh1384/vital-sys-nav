@@ -15,7 +15,10 @@ function Status({ status }: { status: ActionStatus }) {
 function Heading({ title, journal = false }: { title: string; journal?: boolean }) {
   const { scope } = useApp();
   const Icon = journal ? History : ClipboardCheck;
-  return <header className="mb-6 flex items-start gap-3"><Icon className="mt-1 size-6 text-action-brand shrink-0" /><div className="min-w-0"><h1 className="text-xl font-bold text-foreground">{title}</h1><p className="mt-1 text-xs text-muted-foreground">{scope.siteName} · داده و عملیات نمونه</p></div></header>;
+  return <>
+    <div role="note" data-testid="mock-banner" className="mb-4 flex items-start gap-2 rounded-md border border-action-warning/40 bg-action-warning/10 px-3 py-2 text-xs leading-6 text-foreground"><AlertTriangle className="mt-1 size-4 shrink-0 text-action-warning" aria-hidden /><p><strong>داده نمونه (Mock):</strong> همه‌ی پیشنهادها، تأییدها و ارسال‌ها فقط نمایشی‌اند و هیچ فرمانی به سامانه‌ی واقعی بیمارستان ارسال نمی‌شود.</p></div>
+    <header className="mb-6 flex items-start gap-3"><Icon className="mt-1 size-6 text-action-brand shrink-0" /><div className="min-w-0"><h1 className="text-xl font-bold text-foreground">{title}</h1><p className="mt-1 text-xs text-muted-foreground">{scope.siteName} · داده و عملیات نمونه</p></div></header>
+  </>;
 }
 function JournalEntries({ action }: { action: ActionProposal }) {
   return <ol className="border-r border-border mr-2 space-y-5 py-2">{action.history.map((event, i) => {
@@ -151,7 +154,7 @@ function ApprovalPanel({ action }: { action: ActionProposal }) {
     {action.dispatchKey && <div className="text-xs text-muted-foreground"><p>شناسه یکتای ارسال</p><bdi dir="ltr" className="block mt-1 break-all font-mono">{action.dispatchKey}</bdi></div>}
     {reconcile && <div className="space-y-4 border-t border-border pt-4" data-testid="reconciliation-panel">
       <h3 className="text-sm font-bold flex items-center gap-2"><FileSearch className="size-4" />تطبیق نتیجه مقصد (Reconciliation)</h3>
-      {action.status === 'uncertain' && <p className="text-sm leading-6 text-action-warning">هشدار: نتیجه ارسال نامشخص است و ممکن است اقدام پیش‌تر در مقصد اجرا یا پذیرفته شده باشد. نبود پاسخ قطعی به معنای شکست نیست. تلاش مجدد یا ارسال دوباره مسدود است تا رکورد مقصد با شناسه یکتای ارسال تطبیق داده شود.</p>}
+      {action.status === 'uncertain' && <p className="text-sm leading-6 font-bold text-action-warning" data-testid="uncertain-warning">هشدار: نتیجه ارسال نامشخص است و ممکن است اقدام پیش‌تر در مقصد اجرا یا پذیرفته شده باشد. نبود پاسخ قطعی به معنای شکست نیست. تلاش مجدد یا ارسال دوباره مسدود است تا رکورد مقصد با شناسه یکتای ارسال تطبیق داده شود.</p>}
       <p className="text-xs leading-6 text-muted-foreground">مرجع بررسی: {action.target} · رکورد مقصد یا گزارش دریافت</p>
       {canOperate ? <>
       <label className="block text-xs">مرجع رکورد یا گزارش مقصد<input className="block mt-2 w-full border border-input bg-background rounded-md p-2 text-sm" dir="auto" value={reference} onChange={e => setReference(e.target.value)} /></label>

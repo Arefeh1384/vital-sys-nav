@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pathForWorkView } from '@/him/context/AppContext';
+import { pathForWorkView, workViewForPath } from '@/him/context/AppContext';
 import { ACTIONS_DATA, applyActionCommand, cancelError, requiredApprovals, formatEventTime, minutesUntil, scopedActions, type ActionProposal } from '@/him/data/actionData';
 import { DEMO_USERS, SITES_DATA } from '@/him/data/mockData';
 import { ALERTS_DATA, TASKS_DATA } from '@/him/data/workData';
@@ -155,5 +155,20 @@ describe('Action approval and journal rules', () => {
     expect(pathForWorkView({ kind: 'approvals' })).toBe('/approvals');
     expect(pathForWorkView({ kind: 'journal' })).toBe('/journal');
     expect(pathForWorkView(null)).toBe('/');
+  });
+  it('reads the same views back from the browser path', () => {
+    for (const v of [{ kind: 'proposals' }, { kind: 'proposal', id: 'ap-1-2' }, { kind: 'approvals' }, { kind: 'journal' }] as const) {
+      expect(workViewForPath(pathForWorkView(v))).toEqual(v);
+    }
+    expect(workViewForPath('/')).toBeNull();
+  });
+  it('keeps the heparin impact consistent with its before/after diff', () => {
+    const heparin = ACTIONS_DATA.filter(a => a.target === 'سامانه انبار');
+    expect(heparin.length).toBeGreaterThan(0);
+    for (const a of heparin) {
+      const [before, after] = [a.diff[0]?.before, a.diff[0]?.after].map(v => Number(String(v).replace(/[۰-۹]/g, d => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/\D/g, '')));
+      expect(after! - before!).toBeGreaterThan(0);
+      expect(a.impact).toContain((after! - before!).toLocaleString('fa-IR'));
+    }
   });
 });
