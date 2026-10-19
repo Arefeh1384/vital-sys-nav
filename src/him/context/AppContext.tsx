@@ -3,12 +3,14 @@ import { User, Scope, ModuleKey, ViewState, Site } from '../types';
 import { CURRENT_ORGANIZATION, SITES_DATA, DEMO_USERS } from '../data/mockData';
 import { TASKS_DATA, ALERTS_DATA, type WorkTask, type WorkAlert, type TaskStatus, type AlertStatus } from '../data/workData';
 import { ACTIONS_DATA, applyActionCommand, type ActionProposal, type ActionCommand } from '../data/actionData';
+import { useCopilotState } from './useCopilotState';
 
-export type WorkView = { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' };
+export type WorkView = { kind: 'copilot' } | { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' };
 
 /** Browser path that mirrors the visible work view, so refresh and direct links land on the same page. */
 export function pathForWorkView(v: WorkView | null): string {
   if (!v) return '/';
+  if (v.kind === 'copilot') return '/copilot';
   if (v.kind === 'proposals') return '/actions';
   if (v.kind === 'proposal') return `/actions/${encodeURIComponent(v.id)}`;
   if (v.kind === 'approvals') return '/approvals';
@@ -24,6 +26,7 @@ export function pathForWorkView(v: WorkView | null): string {
 /** Inverse of pathForWorkView: the work view a browser path stands for (null = dashboard). */
 export function workViewForPath(path: string): WorkView | null {
   const p = path.replace(/\/+$/, '') || '/';
+  if (p === '/copilot') return { kind: 'copilot' };
   if (p === '/actions') return { kind: 'proposals' };
   if (p === '/approvals') return { kind: 'approvals' };
   if (p === '/journal') return { kind: 'journal' };
@@ -33,7 +36,8 @@ export function workViewForPath(path: string): WorkView | null {
   const m = /^\/(actions|tasks|alerts)\/([^/]+)$/.exec(p);
   if (!m) return null;
   let id: string;
-  try { id = decodeURIComponent(m[2]!); } catch { return null; }
+  if (!m[2]) return null;
+  try { id = decodeURIComponent(m[2]); } catch { return null; }
   return m[1] === 'actions' ? { kind: 'proposal', id } : m[1] === 'tasks' ? { kind: 'task', id } : { kind: 'alert', id };
 }
 
@@ -48,6 +52,7 @@ function readSession(): { userId: string | null; siteId: string | null } | null 
 export interface AppNotification { id: string; title: string; body: string; at: string; target: WorkView }
 
 interface AppContextType {
+  copilot: ReturnType<typeof useCopilotState>;
   user: User | null;
   scope: Scope;
   permittedSites: Site[];
@@ -103,7 +108,7 @@ function saveStored(key: string, value: unknown) {
   try { window.localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
 }
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?: WorkView | null }> = ({ children, initialWorkView = null }) => {
   // Initial state: logged in with the chief executive for immediate evaluation,
   // but with full capability to log out and use the LoginView.
   // The mock identity and hospital survive refresh and route changes (the provider lives above the routes).
@@ -130,7 +135,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => { saveStored2(SESSION_KEY, { userId: user?.id ?? null, siteId: scope.siteId }); }, [user, scope.siteId]);
   const [activeModule, setActiveModuleRaw] = useState<ModuleKey>('EXE');
-  const [workView, setWorkView] = useState<WorkView | null>(() => (typeof window === 'undefined' ? null : workViewForPath(window.location.pathname)));
+  const [workView, setWorkView] = useState<WorkView | null>(() => (typeof window === 'undefined' ? initialWorkView : workViewForPath(window.location.pathname) ?? initialWorkView));
+  const copilot = useCopilotState(user, scope.siteId);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const path = pathForWorkView(workView);
@@ -345,7 +351,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     setViewState('normal');
     showNotification(`ورود موفق به سامانه با هویت «${demoUser.name}»`);
-    setWorkView(null);
+    setWorkView(prev => prev?.kind === 'copilot' ? prev : null);
   };
 
   const logout = () => {
@@ -358,6 +364,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider
       value={{
+        copilot,
         user,
         scope,
         permittedSites,
