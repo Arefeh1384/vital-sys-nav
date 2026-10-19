@@ -8,6 +8,8 @@ import {
 } from '../data/workData';
 import { alertEvidence, taskEvidence, EVIDENCE_KIND_LABEL, type EvidenceItem } from '../data/evidenceData';
 import { EmptyState } from './states/EmptyState';
+import {demoStore} from '../phase6/store';
+import {legacyAsPhase6} from '../phase6/Phase6';
 
 const moduleTitle = (k: string) => MODULES_CONFIG.find(m => m.key === k)?.shortTitle ?? k;
 
@@ -65,48 +67,17 @@ const SearchBox: React.FC<{ value: string; onChange: (v: string) => void }> = ({
 );
 
 export const TaskListView: React.FC = () => {
-  const { tasks, scope, openWorkView } = useApp();
-  const [status, setStatus] = useState<TaskStatus | 'all'>('all');
-  const [q, setQ] = useState('');
-  const rows = useMemo(() => tasks.filter(t => t.siteId === scope.siteId
-    && (status === 'all' || t.status === status)
-    && (!q || t.title.includes(q) || t.code.toLowerCase().includes(q.toLowerCase()))), [tasks, scope.siteId, status, q]);
-
-  return (
-    <div data-testid="task-list">
-      <Header icon={<ClipboardList className="w-5 h-5" />} title="فهرست وظایف" subtitle={`وظایف عملیاتی «${scope.siteName}»`} />
-      <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between mb-4">
-        <Filters value={status} onChange={setStatus} options={TASK_STATUS_LABEL} />
-        <SearchBox value={q} onChange={setQ} />
-      </div>
-      {rows.length === 0 ? <EmptyState
-        title={q || status !== 'all' ? 'وظیفه‌ای مطابق جستجو و فیلترها یافت نشد' : undefined}
-        description={q || status !== 'all' ? 'عبارت جستجو یا فیلتر وضعیت را تغییر دهید.' : undefined}
-        resetLabel="پاک‌کردن جستجو و فیلترها"
-        onReset={() => { setQ(''); setStatus('all'); }}
-      /> : (
-        <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100 overflow-hidden">
-          {rows.map(t => (
-            <button key={t.id} type="button" onClick={() => openWorkView({ kind: 'task', id: t.id })}
-              className="w-full text-start p-4 hover:bg-slate-50 flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <bdi dir="ltr" className="text-[11px] font-mono text-slate-400">{t.code}</bdi>
-                  <span className="text-[11px] text-slate-500">· {moduleTitle(t.module)}</span>
-                </div>
-                <div className="text-sm font-bold text-slate-800">{t.title}</div>
-                <div className="text-[11px] text-slate-500 mt-1">مسئول: {t.assignee} · سررسید: {t.dueDate}</div>
-              </div>
-              <div className="flex gap-2 shrink-0">
-                <Badge className={PRIORITY_CLASS[t.priority]}>{PRIORITY_LABEL[t.priority]}</Badge>
-                <Badge className={TASK_STATUS_CLASS[t.status]}>{TASK_STATUS_LABEL[t.status]}</Badge>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+ const {tasks,scope,openWorkView}=useApp();
+ const [status,setStatus]=useState('all');const [q,setQ]=useState('');
+ // One list and one detail page for legacy and Copilot-created tasks.
+ const overrides=demoStore.tasks();
+ const rows=[...tasks.map(t=>overrides.find(o=>o.id===t.id)||legacyAsPhase6(t)),...overrides.filter(t=>!tasks.some(l=>l.id===t.id))]
+  .filter(t=>t.siteId===scope.siteId&&(status==='all'||t.status===status)&&(!q||t.title.includes(q)||t.id.toLowerCase().includes(q.toLowerCase())));
+ const labels={open:'باز',assigned:'تخصیص‌یافته',in_progress:'در حال انجام',blocked:'مسدود',submitted_for_review:'در انتظار بررسی',completed:'تکمیل‌شده',canceled:'لغوشده'};
+ return <div data-testid="task-list"><Header icon={<ClipboardList className="w-5 h-5"/>} title="فهرست وظایف" subtitle={`وظایف عملیاتی «${scope.siteName}» · داده نمایشی`}/>
+ <div className="flex flex-wrap gap-3 mb-4"><select aria-label="فیلتر وضعیت" className="border rounded-lg p-2 text-sm" value={status} onChange={e=>setStatus(e.target.value)}><option value="all">همه وضعیت‌ها</option>{Object.entries(labels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><SearchBox value={q} onChange={setQ}/></div>
+ {rows.length===0?<EmptyState title="وظیفه‌ای یافت نشد" onReset={()=>{setStatus('all');setQ('')}} resetLabel="پاک کردن فیلترها"/>:<div className="bg-white border rounded-xl divide-y">{rows.map(t=><button key={t.id} className="w-full text-right flex justify-between p-4 hover:bg-slate-50 gap-3" onClick={()=>openWorkView({kind:'task',id:t.id})}><span><b>{t.title}</b><span className="block text-xs text-slate-500">{t.id} · {t.owner||t.queue||'بدون مسئول'}</span></span><span className="text-sm">{labels[t.status]}</span></button>)}</div>}
+ </div>;
 };
 
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (

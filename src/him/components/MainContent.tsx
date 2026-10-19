@@ -70,8 +70,8 @@ export const MainContent: React.FC = () => {
         {viewState === 'empty' && <EmptyState />}
         {viewState === 'error' && <ErrorState />}
         {viewState === 'normal' && <>
-          {workView.kind === 'tasks' && <><TaskListView /><section className="mt-6 rounded-xl border bg-white p-4 space-y-3"><h2 className="font-bold">وظایف ایجادشده از یادداشت و کوپایلت (نمایشی)</h2>{demoStore.tasks().filter(t=>t.siteId===scope.siteId).map(t=><button key={t.id} className="block w-full text-right border-b py-2 text-teal-700" onClick={()=>(window.location.href='/tasks/'+encodeURIComponent(t.id))}>{t.title} · {t.status}</button>)}</section></>}
-          {workView.kind === 'task' && (workView.id.startsWith('TASK-') ? <Phase6View mode="task" id={workView.id}/> : <TaskDetailView id={workView.id} />)}
+          {workView.kind === 'tasks' && <TaskListView />}
+          {workView.kind === 'task' && <Phase6View mode="task" id={workView.id}/>}
           {workView.kind === 'alerts' && <AlertListView />}
           {workView.kind === 'alert' && <AlertDetailView id={workView.id} />}
           {workView.kind === 'notifications' && <NotificationCenterView />}
