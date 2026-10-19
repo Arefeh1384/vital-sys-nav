@@ -5,6 +5,7 @@ import {
   type AnswerArtifact, type CopilotTurn,
 } from '@/him/data/copilotData';
 import { DEMO_USERS, SITES_DATA } from '@/him/data/mockData';
+import { TASKS_DATA } from '@/him/data/workData';
 
 const [taleghani, imam, , , hq] = SITES_DATA;
 const ALL = SITES_DATA.map(s => s.id);
@@ -103,6 +104,31 @@ describe('Copilot grounded answers', () => {
     expect(JSON.stringify(checked)).not.toContain(target.title);
     expect(checked.blocks.length).toBeLessThan(a.blocks.length);
     expect(evidenceForDisplay({ ...target, revoked: true }).excerpt).toBe('');
+  });
+  it('abstains generically on external hospital requests such as Shariati without returning current hospital values', () => {
+    const a = ask('اشغال تخت بیمارستان شریعتی چقدر است؟');
+    expect(a.status).toBe('abstained');
+    expect(a.reasonCodes).toEqual(['scope_not_authorized']);
+    expect(a.evidence).toHaveLength(0);
+    expect(a.blocks).toHaveLength(0);
+    expect(JSON.stringify(a)).not.toContain('۸۰');
+  });
+  it('links overtime conflict policy source to overtime policy task rather than unrelated access review task', () => {
+    const a = ask('سیاست اضافه‌کار و مأموریت چیست؟');
+    expect(a.status).toBe('partial');
+    expect(a.conflict?.linkA).toBeTruthy();
+    expect(a.conflict?.titleA).toContain('سیاست اضافه‌کار — نسخه الف');
+    const taskA = TASKS_DATA.find(t => t.id === a.conflict?.linkA?.id);
+    expect(taskA).toBeTruthy();
+    expect(taskA?.title).toContain('سیاست اضافه‌کار — نسخه الف');
+    expect(taskA?.description).toContain('نسخه الف: اضافه‌کار');
+    expect(taskA?.title).not.toContain('تأیید فصلی دسترسی کاربران');
+  });
+  it('labels week-old stale ICU report with historical source date and does not label it as today', () => {
+    const a = ask('گزارش هفته‌ی قبل تخت‌های ICU');
+    expect(a.reasonCodes).toContain('source_stale');
+    expect(a.blocks[0]?.text).toContain('۲۰۲۶-۱۰-۱۲');
+    expect(a.blocks[0]?.text).not.toContain('امروز');
   });
 });
 

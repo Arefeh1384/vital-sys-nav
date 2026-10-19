@@ -39,7 +39,24 @@ export function useCopilotState(user: User | null, siteId: string | null) {
     if (previous.userId !== user?.id || previous.siteId !== siteId || previous.permissions !== permissions) {
       cancel(); setSelectedId(null); setDraft(''); setContext(c => ({ ...c, attachmentIds: [] })); setContextChanged(true); setScopeMessage('دامنه تغییر کرد');
       if (previous.permissions !== permissions || previous.userId !== user?.id) {
-        commit(prev => prev.map(t => user?.permittedSiteIds.includes(t.siteId) || !t.answer ? t : { ...t, answer: validateAnswer({ ...t.answer, evidence: t.answer.evidence.map(e => ({ ...e, revoked: true })) }) }));
+        commit(prev => prev.map(t => {
+          if (t.userId && user?.id && t.userId !== user.id) return t;
+          if (!t.answer && !t.originalAnswer) return t;
+          if (user?.permittedSiteIds.includes(t.siteId)) {
+            const restored = t.originalAnswer ?? (!t.answer?.scopeRedacted ? t.answer : answerQuestion(t.question, t.siteId, user.permittedSiteIds, t.at, { range: t.context?.range, language: t.language }));
+            return {
+              ...t,
+              answer: restored,
+              originalAnswer: t.originalAnswer ?? restored,
+            };
+          }
+          const raw = t.originalAnswer ?? t.answer!;
+          return {
+            ...t,
+            originalAnswer: raw,
+            answer: validateAnswer({ ...raw, evidence: raw.evidence.map(e => ({ ...e, revoked: true })) }),
+          };
+        }));
       }
     }
     identityRef.current = { userId: user?.id, siteId, permissions };
@@ -66,7 +83,8 @@ export function useCopilotState(user: User | null, siteId: string | null) {
       else {
         const answer = answerQuestion(question, siteId, user.permittedSiteIds, at, { range: context.range, language: context.language });
         const state = runStateForAnswer(answer.status);
-        commit(prev => prev.map(t => t.id === id ? { ...t, state, jobState: jobStateForRun(state), answer: { ...answer, runId: id } } : t));
+        const artifact = { ...answer, runId: id };
+        commit(prev => prev.map(t => t.id === id ? { ...t, state, jobState: jobStateForRun(state), answer: artifact, originalAnswer: artifact } : t));
       }
       active.timers.forEach(clearTimeout); activeRef.current = null;
     }, 1450));
@@ -74,7 +92,13 @@ export function useCopilotState(user: User | null, siteId: string | null) {
     return true;
   };
   const visibleTurns = user && siteId && user.permittedSiteIds.includes(siteId) ? turns.filter(t => t.siteId === siteId && (!t.userId || t.userId === user.id)) : [];
-  const selected = visibleTurns.find(t => t.id === selectedId);
+  const selectedRaw = visibleTurns.find(t => t.id === selectedId);
+  const selected = (selectedRaw && user && user.permittedSiteIds.includes(selectedRaw.siteId) && selectedRaw.answer?.scopeRedacted)
+    ? {
+        ...selectedRaw,
+        answer: selectedRaw.originalAnswer ?? answerQuestion(selectedRaw.question, selectedRaw.siteId, user.permittedSiteIds, selectedRaw.at, { range: selectedRaw.context?.range, language: selectedRaw.language }),
+      }
+    : selectedRaw;
   const running = visibleTurns.find(t => ACTIVE_STATES.includes(t.state));
   const newConversation = () => { if (activeRef.current) return; setSelectedId(null); setDraft(''); setError(null); };
   const feedback = (id: string, patch: Partial<NonNullable<CopilotTurn['feedback']>>) => commit(prev => prev.map(t => t.id === id ? { ...t, feedback: { helpful: null, errorType: '', text: '', ...t.feedback, ...patch } } : t));

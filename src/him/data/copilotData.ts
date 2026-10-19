@@ -27,7 +27,7 @@ export interface AnswerArtifact {
 export interface CopilotTurn {
   id: string; siteId: string; userId?: string; question: string; at: string; language: 'fa' | 'en';
   state: RunState; jobState: 'queued' | 'running' | 'succeeded' | 'failed' | 'canceling';
-  idempotencyKey: string; answer?: AnswerArtifact;
+  idempotencyKey: string; answer?: AnswerArtifact; originalAnswer?: AnswerArtifact;
   context?: { purpose: string; range: string; attachmentIds: string[] };
   feedback?: { helpful: boolean | null; errorType: string; text: string };
 }
@@ -62,13 +62,16 @@ export const OCCUPANCY_METRICS = SITES_DATA.map(s => s.activeBeds === 0
   ? { siteId: s.id, numerator: 0, denominator: 0, version: 'occ-v2', dataAsOf: DATA_AS_OF }
   : { siteId: s.id, numerator: 80, denominator: 100, version: 'occ-v2', dataAsOf: DATA_AS_OF });
 export function approvedDocuments(siteId: string) {
-  const task = TASKS_DATA.find(t => t.siteId === siteId && t.module === 'PLT');
+  const taskA = TASKS_DATA.find(t => t.siteId === siteId && t.title.includes('اضافه‌کار') && t.title.includes('الف'))
+    ?? TASKS_DATA.find(t => t.siteId === siteId && t.module === 'PLT');
+  const taskB = TASKS_DATA.find(t => t.siteId === siteId && t.title.includes('اضافه‌کار') && t.title.includes('ب'))
+    ?? taskA;
   const capacity = TASKS_DATA.find(t => t.siteId === siteId && t.module === 'OPS');
-  if (!task || !capacity) return [];
+  if (!taskA || !capacity) return [];
   return [
     { id: `${siteId}-capacity`, title: 'سیاست ظرفیت تخت (نمونه)', version: 'cap-v1', taskId: capacity.id },
-    { id: `${siteId}-policy-a`, title: 'سیاست اضافه‌کار — نسخه الف (نمونه)', version: 'policy-a-v1', taskId: task.id },
-    { id: `${siteId}-policy-b`, title: 'سیاست اضافه‌کار — نسخه ب (نمونه)', version: 'policy-b-v2', taskId: task.id },
+    { id: `${siteId}-policy-a`, title: 'سیاست اضافه‌کار — نسخه الف (نمونه)', version: 'policy-a-v1', taskId: taskA.id },
+    { id: `${siteId}-policy-b`, title: 'سیاست اضافه‌کار — نسخه ب (نمونه)', version: 'policy-b-v2', taskId: taskB ? taskB.id : taskA.id },
   ];
 }
 function hash(s: string) { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return (h >>> 0).toString(16); }
@@ -108,8 +111,35 @@ export function answerQuestion(question: string, siteId: string, userPermittedSi
     generatedAt: now, dataAsOf: DATA_AS_OF, followUps: SUGGESTIONS.slice(0, 5), aiAssisted: true, professionalReviewRequired: true, reviewed: false,
     relatedActionIds: [], relatedTaskIds: [], relatedAlertIds: [] };
   const abstain = (reason: ReasonCode, nextStep: string) => ({ ...base, reasonCodes: [reason], nextStep });
+  const currentSite = SITES_DATA.find(s => s.id === siteId);
+  const currentAliases = [
+    currentSite?.name,
+    currentSite?.code,
+    currentSite?.name.replace(/^بیمارستان |^مرکز تخصصی /, ''),
+    currentSite?.id,
+    ...(currentSite ? (SITE_ALIASES[currentSite.code] ?? []) : []),
+    'فعلی',
+    'همین بیمارستان',
+    'این بیمارستان',
+  ].filter(Boolean).map(n => normalizeQuestion(n!));
+
   const otherSite = SITES_DATA.some(s => s.id !== siteId && [s.name, s.code, s.name.replace(/^بیمارستان |^مرکز تخصصی /, ''), s.id, ...(SITE_ALIASES[s.code] ?? [])].some(n => q.includes(normalizeQuestion(n))));
-  if (!userPermittedSiteIds.includes(siteId) || !SITES_DATA.some(s => s.id === siteId) || otherSite || /بیمارستان دیگر|دامنه غیرمجاز|همه بیمارستان/.test(q))
+
+  const isOtherHospitalRequested = () => {
+    if (otherSite) return true;
+    if (/شریعتی|بیمارستان دیگر|دامنه غیرمجاز|همه بیمارستان|بیمارستان های دیگر/.test(q)) return true;
+    const hospMatch = q.match(/(?:بیمارستان|مرکز)\s+([^\s؟?,،.]+)/);
+    if (hospMatch && hospMatch[1]) {
+      const target = normalizeQuestion(hospMatch[1]);
+      const isCurrent = currentAliases.some(alias => alias.includes(target) || target.includes(alias));
+      if (!isCurrent && target !== 'فعلی' && target !== 'ها' && target !== 'های') {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  if (!userPermittedSiteIds.includes(siteId) || !SITES_DATA.some(s => s.id === siteId) || isOtherHospitalRequested())
     return abstain('scope_not_authorized', 'این درخواست خارج از دامنه‌ی فعلی شماست؛ سؤال را به بیمارستان فعلی محدود کنید.');
   if (/تایید کن|تأیید کن|ارسال کن|اجرا کن|approve|dispatch/.test(q)) return abstain('unsupported_task', 'کوپایلت اقدام اجرا نمی‌کند؛ برای بررسی مجاز به صف تأییدها بروید.');
   if (/مرخصی|استعلاجی/.test(q)) return abstain('missing_evidence', 'کارشناس منابع انسانی/مالک سیاست را مطلع کنید.');
@@ -126,7 +156,7 @@ export function answerQuestion(question: string, siteId: string, userPermittedSi
     if (!a || !b) return abstain('missing_evidence', 'مالک سیاست را مطلع کنید.');
     const ea = { ...evidence(a.id, 'retrieved', a.title, 'نسخه الف: اضافه‌کار نیازمند تأیید پیش از ثبت است (سند نمونه فعال).', { kind: 'task', id: a.taskId }), version: a.version, locator: 'پیوست سیاست الف / بخش تأیید' };
     const eb = { ...evidence(b.id, 'retrieved', b.title, 'نسخه ب: ثبت اضافه‌کار قبل از تأیید مجاز است (سند نمونه فعال).', { kind: 'task', id: b.taskId }), version: b.version, locator: 'پیوست سیاست ب / بخش ثبت' };
-    return validateAnswer({ ...base, status: 'partial', reasonCodes: ['conflicting_evidence'], evidence: [ea, eb], blocks: [{ text: 'دو نسخه‌ی فعال درباره‌ی ترتیب ثبت و تأیید متعارض‌اند؛ هیچ سیاست ترکیبی ارائه نمی‌شود.', evidenceIds: [ea.id, eb.id] }], limitations: ['رفع تعارض بر عهده‌ی کمیته‌ی سیاست‌گذاری (نمونه) است.'], conflict: { titleA: a.title, titleB: b.title, linkA: ea.link, linkB: eb.link }, relatedTaskIds: [a.taskId] });
+    return validateAnswer({ ...base, status: 'partial', reasonCodes: ['conflicting_evidence'], evidence: [ea, eb], blocks: [{ text: 'دو نسخه‌ی فعال درباره‌ی ترتیب ثبت و تأیید متعارض‌اند؛ هیچ سیاست ترکیبی ارائه نمی‌شود.', evidenceIds: [ea.id, eb.id] }], limitations: ['رفع تعارض بر عهده‌ی کمیته‌ی سیاست‌گذاری (نمونه) است.'], conflict: { titleA: a.title, titleB: b.title, linkA: ea.link, linkB: eb.link }, relatedTaskIds: [a.taskId, b.taskId] });
   }
   if (/هپارین|موجودی دارو|سفارش|heparin/.test(q)) {
     const action = ACTIONS_DATA.find(a => a.siteId === siteId && a.title.includes('هپارین'));
@@ -151,8 +181,9 @@ export function answerQuestion(question: string, siteId: string, userPermittedSi
     const source = alertEvidence(alert).find(x => x.kind === 'record');
     const rec = evidence(`${alert.id}-copilot`, 'retrieved', 'رکورد مرتبط مراقبت ویژه', source?.detail ?? alert.description, { kind: 'alert', id: alert.id });
     const notComputable = result.status === 'not_computable';
+    const rangeText = stale ? ' (تاریخ منبع: ۲۰۲۶-۱۰-۱۲)' : (ctx?.range ? ` (بازه: ${ctx.range})` : '');
     return validateAnswer({ ...base, status: stale || notComputable ? 'partial' : 'answered', reasonCodes: stale ? ['source_stale'] : notComputable ? ['missing_evidence'] : [], dataAsOf, evidence: [e, policy, rec],
-      blocks: [{ text: result.status === 'not_computable' ? 'اشغال تخت قابل محاسبه نیست (not_computable).' : `اشغال کل تخت‌های بیمارستان فعلی ${result.value.toLocaleString('fa-IR')}٪ است${ctx?.range ? ` (بازه: ${ctx.range})` : ''}.`, evidenceIds: [e.id, policy.id] }, { text: rec.excerpt, evidenceIds: [rec.id] }], limitations: [...(stale ? ['داده‌ی تازه‌ی گزارش ICU در دسترس نیست؛ این پاسخ فقط بخش تاریخی معتبر را نشان می‌دهد.'] : []), ...(notComputable ? ['مخرج (تخت‌های فعال) صفر است؛ اشغال تخت قابل محاسبه نیست و ۰٪ فرض نمی‌شود.'] : []), ...(ctx?.language === 'en' ? ['ترجمه‌ی انگلیسی پاسخ در نسخه‌ی نمونه ارائه نمی‌شود؛ متن پاسخ فارسی است.'] : [])], relatedTaskIds: [task.id], relatedAlertIds: [alert.id] });
+      blocks: [{ text: result.status === 'not_computable' ? 'اشغال تخت قابل محاسبه نیست (not_computable).' : `اشغال کل تخت‌های بیمارستان فعلی ${result.value.toLocaleString('fa-IR')}٪ است${rangeText}.`, evidenceIds: [e.id, policy.id] }, { text: rec.excerpt, evidenceIds: [rec.id] }], limitations: [...(stale ? ['داده‌ی تازه‌ی گزارش ICU در دسترس نیست؛ این پاسخ فقط بخش تاریخی معتبر را نشان می‌دهد.'] : []), ...(notComputable ? ['مخرج (تخت‌های فعال) صفر است؛ اشغال تخت قابل محاسبه نیست و ۰٪ فرض نمی‌شود.'] : []), ...(ctx?.language === 'en' ? ['ترجمه‌ی انگلیسی پاسخ در نسخه‌ی نمونه ارائه نمی‌شود؛ متن پاسخ فارسی است.'] : [])], relatedTaskIds: [task.id], relatedAlertIds: [alert.id] });
   }
   if (/سیاست|policy/.test(q)) return abstain('missing_evidence', 'مالک سیاست را مطلع کنید.');
   return abstain('unsupported_task', 'یکی از پرسش‌های پشتیبانی‌شده درباره‌ی اشغال تخت یا موجودی دارو را انتخاب کنید.');

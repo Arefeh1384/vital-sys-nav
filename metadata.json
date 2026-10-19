@@ -1,0 +1,8 @@
+{
+  "name": "HIM-OS - سامانه هوشمندی سلامت",
+  "description": "سامانه یکپارچه مدیریت و هوشمندی سلامت بیمارستانی دانشگاه علوم پزشکی شهید بهشتی",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
