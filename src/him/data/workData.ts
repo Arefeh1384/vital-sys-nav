@@ -78,6 +78,8 @@ const baseTasks: (Omit<WorkTask, 'id' | 'code' | 'siteId' | 'alertId'> & { alert
   { title: 'برنامه‌ریزی کالیبراسیون ونتیلاتورها', description: 'هماهنگی با شرکت پشتیبان برای کالیبراسیون سه دستگاه.', module: 'AST', assignee: 'واحد تجهیزات پزشکی', priority: 'medium', status: 'open', dueDate: '۱۴۰۵/۰۷/۲۸', history: [{ at: '۱۴:۱۰', text: 'وظیفه ایجاد شد.' }], alertIdx: 3 },
   { title: 'بازبینی اسناد کسورات بیمه', description: 'بررسی علل کسورات و اصلاح فرایند ثبت خدمات.', module: 'FIN', assignee: 'واحد درآمد', priority: 'medium', status: 'done', dueDate: '۱۴۰۵/۰۷/۲۱', history: [{ at: '۱۰:۴۰', text: 'وظیفه ایجاد شد.' }, { at: '۱۶:۰۰', text: 'وظیفه انجام شد.' }], alertIdx: 4 },
   { title: 'تأیید فصلی دسترسی کاربران', description: 'بازبینی نقش‌ها و مجوزهای کاربران سامانه برای فصل جاری.', module: 'PLT', assignee: 'مدیر امنیت', priority: 'low', status: 'open', dueDate: '۱۴۰۵/۰۷/۳۰', history: [{ at: '۰۹:۰۰', text: 'وظیفه دوره‌ای ایجاد شد.' }] },
+  { title: 'سیاست اضافه‌کار — نسخه الف (نمونه)', description: 'نسخه الف: اضافه‌کار نیازمند تأیید پیش از ثبت است (سند نمونه فعال).', module: 'PLT', assignee: 'کمیته سیاست‌گذاری', priority: 'medium', status: 'open', dueDate: '۱۴۰۵/۰۸/۰۱', history: [{ at: '۰۸:۰۰', text: 'سند سیاست اضافه‌کار نسخه الف بارگذاری شد.' }] },
+  { title: 'سیاست اضافه‌کار — نسخه ب (نمونه)', description: 'نسخه ب: ثبت اضافه‌کار قبل از تأیید مجاز است (سند نمونه فعال).', module: 'PLT', assignee: 'کمیته سیاست‌گذاری', priority: 'low', status: 'open', dueDate: '۱۴۰۵/۰۸/۰۵', history: [{ at: '۰۸:۳۰', text: 'سند سیاست اضافه‌کار نسخه ب بارگذاری شد.' }] },
 ];
 
 export const TASKS_DATA: WorkTask[] = S.flatMap((_, si) =>

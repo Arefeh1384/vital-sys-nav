@@ -10,6 +10,7 @@ import {
   LockKeyhole,
   CheckCircle2,
   ShieldCheck,
+  Bot,
   ChevronRight,
   ChevronLeft,
   Building,
@@ -174,8 +175,11 @@ export const Sidebar: React.FC = () => {
                 { kind: 'proposals', label: 'پیشنهادهای اقدام', Icon: ClipboardCheck },
                 { kind: 'approvals', label: 'صف تأییدهای من', Icon: ShieldCheck },
                 { kind: 'journal', label: 'ژورنال اقدام', Icon: History },
+                { kind: 'copilot', label: 'کوپایلت', Icon: Bot },
+                { kind: 'memos', label: 'یادداشت‌های تصمیم', Icon: ClipboardList },
+                { kind: 'supply', label: 'زنجیره تأمین و کمبود', Icon: PackageOpen },
               ] as const).map(({ kind, label, Icon }) => {
-                const selected = workView?.kind === kind || (kind === 'proposals' && workView?.kind === 'proposal');
+                const selected = workView?.kind === kind || (kind === 'proposals' && workView?.kind === 'proposal') || (kind === 'supply' && typeof workView?.kind === 'string' && workView.kind.startsWith('supply'));
                 return <Button key={kind} variant="ghost" data-testid={`sidebar-item-${kind}`}
                   title={label} aria-label={label} aria-pressed={selected}
                   onClick={() => { openWorkView({ kind }); if (window.innerWidth < 768) setSidebarCollapsed(true); }}

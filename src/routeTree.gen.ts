@@ -9,13 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as SplatRouteImport } from './routes/$'
 import { Route as ApprovalsRouteImport } from './routes/approvals'
 import { Route as JournalRouteImport } from './routes/journal'
-import { Route as IndexRouteImport } from './routes/index'
 import { Route as ActionsIndexRouteImport } from './routes/actions/index'
 import { Route as ActionsIdRouteImport } from './routes/actions/$id'
 
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SplatRoute = SplatRouteImport.update({
   id: '/$',
   path: '/$',
@@ -29,11 +34,6 @@ const ApprovalsRoute = ApprovalsRouteImport.update({
 const JournalRoute = JournalRouteImport.update({
   id: '/journal',
   path: '/journal',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ActionsIndexRoute = ActionsIndexRouteImport.update({
@@ -74,10 +74,18 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/$' | '/approvals' | '/journal' | '/actions/$id' | '/actions/'
+  fullPaths:
+    '/' | '/$' | '/approvals' | '/journal' | '/actions/$id' | '/actions/'
   fileRoutesByTo: FileRoutesByTo
   to: '/' | '/$' | '/approvals' | '/journal' | '/actions/$id' | '/actions'
-  id: '__root__' | '/' | '/$' | '/approvals' | '/journal' | '/actions/$id' | '/actions/'
+  id:
+    | '__root__'
+    | '/'
+    | '/$'
+    | '/approvals'
+    | '/journal'
+    | '/actions/$id'
+    | '/actions/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -91,6 +99,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/$': {
       id: '/$'
       path: '/$'
@@ -112,16 +127,9 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JournalRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/actions/': {
       id: '/actions/'
-      path: '/actions/'
+      path: '/actions'
       fullPath: '/actions/'
       preLoaderRoute: typeof ActionsIndexRouteImport
       parentRoute: typeof rootRouteImport

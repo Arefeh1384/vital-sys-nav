@@ -1,3 +1,6 @@
+import {Phase6View} from '../phase6/Phase6';
+import {SupplyViews} from '../supply/SupplyViews';
+import {demoStore} from '../phase6/store';
 import React from 'react';
 import { 
   Building2, 
@@ -34,6 +37,7 @@ import { LoadingState } from './states/LoadingState';
 import { EmptyState } from './states/EmptyState';
 import { ErrorState } from './states/ErrorState';
 import { TaskListView, TaskDetailView, AlertListView, AlertDetailView, NotificationCenterView } from './WorkViews';
+import { CopilotView } from './CopilotView';
 import { ActionProposalListView, ActionProposalDetailView, ActionJournalView, ApprovalQueueView } from './ActionViews';
 
 export const MainContent: React.FC = () => {
@@ -45,7 +49,9 @@ export const MainContent: React.FC = () => {
     setIsScopeModalOpen, 
     user,
     isScopeSwitching,
-    workView
+    workView,
+    openWorkView,
+    showNotification
   } = useApp();
 
   const currentModuleDef = MODULES_CONFIG.find(m => m.key === activeModule) || MODULES_CONFIG[0]!;
@@ -68,7 +74,7 @@ export const MainContent: React.FC = () => {
         {viewState === 'error' && <ErrorState />}
         {viewState === 'normal' && <>
           {workView.kind === 'tasks' && <TaskListView />}
-          {workView.kind === 'task' && <TaskDetailView id={workView.id} />}
+          {workView.kind === 'task' && <Phase6View mode="task" id={workView.id}/>}
           {workView.kind === 'alerts' && <AlertListView />}
           {workView.kind === 'alert' && <AlertDetailView id={workView.id} />}
           {workView.kind === 'notifications' && <NotificationCenterView />}
@@ -76,6 +82,11 @@ export const MainContent: React.FC = () => {
           {workView.kind === 'approvals' && <ApprovalQueueView key={scope.siteId} />}
           {workView.kind === 'proposal' && <ActionProposalDetailView id={workView.id} />}
           {workView.kind === 'journal' && <ActionJournalView />}
+          {workView.kind === 'copilot' && <CopilotView />}
+          {workView.kind === 'memos' && <Phase6View mode="list" />}
+          {workView.kind === 'memo-new' && <Phase6View key={scope.siteId} mode="new" />}
+          {workView.kind === 'memo' && <Phase6View key={workView.id} mode="detail" id={workView.id} />}
+          {workView.kind === 'memo-edit' && <Phase6View key={workView.id} mode="edit" id={workView.id} />}
         </>}
       </main>
     );
@@ -89,7 +100,7 @@ export const MainContent: React.FC = () => {
       case 'OPS':
         return renderOpsContent();
       case 'SUP':
-        return renderSupContent();
+        return <SupplyViews view={{kind:'supply'}} open={openWorkView} siteName={scope.siteName} siteId={scope.siteId || ""} notify={showNotification}/>;
       case 'QLT':
         return renderQltContent();
       case 'AST':

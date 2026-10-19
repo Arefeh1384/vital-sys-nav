@@ -3,12 +3,25 @@ import { User, Scope, ModuleKey, ViewState, Site } from '../types';
 import { CURRENT_ORGANIZATION, SITES_DATA, DEMO_USERS } from '../data/mockData';
 import { TASKS_DATA, ALERTS_DATA, type WorkTask, type WorkAlert, type TaskStatus, type AlertStatus } from '../data/workData';
 import { ACTIONS_DATA, applyActionCommand, type ActionProposal, type ActionCommand } from '../data/actionData';
+import { useCopilotState } from './useCopilotState';
 
-export type WorkView = { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' };
+export type WorkView = { kind: 'copilot'; answerId?: string } | { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' } | {kind:'memos'} | {kind:'memo-new'} | {kind:'memo';id:string} | {kind:'memo-edit';id:string} | {kind:'supply'} | {kind:'supply-risk';id:string} | {kind:'supply-proposals'} | {kind:'supply-proposal';id:string} | {kind:'supply-cases'} | {kind:'supply-case';id:string} | {kind:'supply-new';riskId:string;type:'replenishment'|'transfer';proposalId?:string};
 
 /** Browser path that mirrors the visible work view, so refresh and direct links land on the same page. */
 export function pathForWorkView(v: WorkView | null): string {
   if (!v) return '/';
+  if (v.kind === 'copilot') return v.answerId ? `/copilot?answer=${encodeURIComponent(v.answerId)}` : '/copilot';
+  if(v.kind==='memos')return '/executive/memos';
+  if(v.kind==='memo-new')return '/executive/memos/new';
+  if(v.kind==='memo')return `/executive/memos/${encodeURIComponent(v.id)}`;
+  if(v.kind==='memo-edit')return `/executive/memos/${encodeURIComponent(v.id)}/edit`;
+  if(v.kind==='supply')return '/supply';
+  if(v.kind==='supply-risk')return `/supply/risks/${encodeURIComponent(v.id)}`;
+  if(v.kind==='supply-proposals')return '/supply/recommendations';
+  if(v.kind==='supply-proposal')return `/supply/recommendations/${encodeURIComponent(v.id)}`;
+  if(v.kind==='supply-cases')return '/supply/cases';
+  if(v.kind==='supply-case')return `/supply/cases/${encodeURIComponent(v.id)}`;
+  if(v.kind==='supply-new')return `/supply/recommendations/new?type=${v.type}&risk=${encodeURIComponent(v.riskId)}${v.proposalId?`&proposal=${encodeURIComponent(v.proposalId)}`:''}`;
   if (v.kind === 'proposals') return '/actions';
   if (v.kind === 'proposal') return `/actions/${encodeURIComponent(v.id)}`;
   if (v.kind === 'approvals') return '/approvals';
@@ -24,6 +37,20 @@ export function pathForWorkView(v: WorkView | null): string {
 /** Inverse of pathForWorkView: the work view a browser path stands for (null = dashboard). */
 export function workViewForPath(path: string): WorkView | null {
   const p = path.replace(/\/+$/, '') || '/';
+  if (p === '/copilot') return { kind: 'copilot', answerId: typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('answer') || undefined : undefined };
+  if(p==='/supply')return {kind:'supply'};
+  if(p==='/supply/recommendations')return {kind:'supply-proposals'};
+  if(p==='/supply/cases')return {kind:'supply-cases'};
+  if(p.startsWith('/supply/recommendations/new'))return {kind:'supply-new',riskId:typeof window!=='undefined'?new URLSearchParams(window.location.search).get('risk')||'RISK-1001':'RISK-1001',type:typeof window!=='undefined'&&new URLSearchParams(window.location.search).get('type')==='transfer'?'transfer':'replenishment',proposalId:typeof window!=='undefined'?new URLSearchParams(window.location.search).get('proposal')||undefined:undefined};
+  const supplyProposal=/^\/supply\/recommendations\/([^/]+)$/.exec(p);if(supplyProposal)return {kind:'supply-proposal',id:decodeURIComponent(supplyProposal[1]!)};
+  const supplyCase=/^\/supply\/cases\/([^/]+)$/.exec(p);if(supplyCase)return {kind:'supply-case',id:decodeURIComponent(supplyCase[1]!)};
+  const supplyRisk=/^\/supply\/risks\/([^/]+)$/.exec(p);if(supplyRisk)return {kind:'supply-risk',id:decodeURIComponent(supplyRisk[1]!)};
+  if(p==='/executive/memos')return {kind:'memos'};
+  if(p==='/executive/memos/new')return {kind:'memo-new'};
+  const memoEdit=/^\/executive\/memos\/([^/]+)\/edit$/.exec(p);
+  if(memoEdit)return {kind:'memo-edit',id:decodeURIComponent(memoEdit[1]!)};
+  const memoDetail=/^\/executive\/memos\/([^/]+)$/.exec(p);
+  if(memoDetail)return {kind:'memo',id:decodeURIComponent(memoDetail[1]!)};
   if (p === '/actions') return { kind: 'proposals' };
   if (p === '/approvals') return { kind: 'approvals' };
   if (p === '/journal') return { kind: 'journal' };
@@ -33,7 +60,8 @@ export function workViewForPath(path: string): WorkView | null {
   const m = /^\/(actions|tasks|alerts)\/([^/]+)$/.exec(p);
   if (!m) return null;
   let id: string;
-  try { id = decodeURIComponent(m[2]!); } catch { return null; }
+  if (!m[2]) return null;
+  try { id = decodeURIComponent(m[2]); } catch { return null; }
   return m[1] === 'actions' ? { kind: 'proposal', id } : m[1] === 'tasks' ? { kind: 'task', id } : { kind: 'alert', id };
 }
 
@@ -48,6 +76,7 @@ function readSession(): { userId: string | null; siteId: string | null } | null 
 export interface AppNotification { id: string; title: string; body: string; at: string; target: WorkView }
 
 interface AppContextType {
+  copilot: ReturnType<typeof useCopilotState>;
   user: User | null;
   scope: Scope;
   permittedSites: Site[];
@@ -103,7 +132,7 @@ function saveStored(key: string, value: unknown) {
   try { window.localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
 }
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?: WorkView | null }> = ({ children, initialWorkView = null }) => {
   // Initial state: logged in with the chief executive for immediate evaluation,
   // but with full capability to log out and use the LoginView.
   // The mock identity and hospital survive refresh and route changes (the provider lives above the routes).
@@ -130,19 +159,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => { saveStored2(SESSION_KEY, { userId: user?.id ?? null, siteId: scope.siteId }); }, [user, scope.siteId]);
   const [activeModule, setActiveModuleRaw] = useState<ModuleKey>('EXE');
-  const [workView, setWorkView] = useState<WorkView | null>(() => (typeof window === 'undefined' ? null : workViewForPath(window.location.pathname)));
+  const [workView, setWorkView] = useState<WorkView | null>(() => (typeof window === 'undefined' ? initialWorkView : workViewForPath(window.location.pathname) ?? initialWorkView));
+  const copilot = useCopilotState(user, scope.siteId);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const path = pathForWorkView(workView);
-    const current = window.location.pathname.replace(/\/+$/, '') || '/';
+    const current = (window.location.pathname.replace(/\/+$/, '') || '/') + window.location.search;
     if (current !== path) window.history.pushState(null, '', path);
   }, [workView]);
   // Back/forward changes the path; follow it without remounting the provider.
   useEffect(() => {
-    const onPop = () => setWorkView(workViewForPath(window.location.pathname));
+    const onPop = () => { if (!window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) { window.history.pushState(null, '', pathForWorkView(workView)); return; } setWorkView(workViewForPath(window.location.pathname)); };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, []);
+  }, [workView]);
   // Sample actions are kept in this browser only so a refresh does not undo a recorded approval;
   // no command is ever dispatched to a real hospital system.
   const [actions, setActions] = useState<ActionProposal[]>(() =>
@@ -195,8 +225,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
     return [...fromAlerts, ...fromTasks];
   }, [alerts, tasks, scope.siteId]);
-  const setActiveModule = (m: ModuleKey) => { setActiveModuleRaw(m); setWorkView(null); };
-  const openWorkView = (v: WorkView | null) => { setWorkView(v); setViewState('normal'); };
+  const setActiveModule = (m: ModuleKey) => { if (typeof window !== 'undefined' && !window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) return; setActiveModuleRaw(m); setWorkView(null); };
+  const openWorkView = (v: WorkView | null) => { if (typeof window !== 'undefined' && !window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) return; setWorkView(v); setViewState('normal'); };
   const updateTaskStatus = (id: string, status: TaskStatus) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status, history: [...t.history, { at: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }), text: `وضعیت توسط ${user?.name ?? 'کاربر'} تغییر کرد.` }] } : t));
     showNotification('وضعیت وظیفه به‌روزرسانی شد.');
@@ -345,7 +375,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     setViewState('normal');
     showNotification(`ورود موفق به سامانه با هویت «${demoUser.name}»`);
-    setWorkView(null);
+    setWorkView(prev => prev?.kind === 'copilot' ? prev : null);
   };
 
   const logout = () => {
@@ -358,6 +388,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider
       value={{
+        copilot,
         user,
         scope,
         permittedSites,

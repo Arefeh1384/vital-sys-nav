@@ -33,7 +33,7 @@ export function alertEvidence(a: WorkAlert): EvidenceItem[] {
 /** Evidence for a task: its own records plus the linked alert's package. */
 export function taskEvidence(t: WorkTask, alert?: WorkAlert): EvidenceItem[] {
   const own: Omit<EvidenceItem, 'hash'>[] = [
-    { id: `${t.id}-d`, kind: 'document', title: 'فرم ثبت وظیفه', source: 'کارتابل HIM-OS', capturedAt: t.history[0]?.at ?? t.dueDate, detail: t.description },
+    { id: `${t.id}-d`, kind: 'document', title: t.title.includes('سیاست') ? t.title : 'فرم ثبت وظیفه', source: 'کارتابل HIM-OS', capturedAt: t.history[0]?.at ?? t.dueDate, detail: t.description },
     ...t.history.map((h, i) => ({ id: `${t.id}-h${i}`, kind: 'log' as const, title: 'رخداد تاریخچه وظیفه', source: 'کارتابل HIM-OS', capturedAt: h.at, detail: h.text })),
   ];
   return [...own.map(i => ({ ...i, hash: hashOf(i.id + i.detail) })), ...(alert ? alertEvidence(alert) : [])];
