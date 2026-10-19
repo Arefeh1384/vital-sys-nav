@@ -10,6 +10,7 @@ import {
   LockKeyhole,
   CheckCircle2,
   ShieldCheck,
+  Bot,
   ChevronRight,
   ChevronLeft,
   Building,
@@ -174,6 +175,7 @@ export const Sidebar: React.FC = () => {
                 { kind: 'proposals', label: 'پیشنهادهای اقدام', Icon: ClipboardCheck },
                 { kind: 'approvals', label: 'صف تأییدهای من', Icon: ShieldCheck },
                 { kind: 'journal', label: 'ژورنال اقدام', Icon: History },
+                { kind: 'copilot', label: 'کوپایلت', Icon: Bot },
               ] as const).map(({ kind, label, Icon }) => {
                 const selected = workView?.kind === kind || (kind === 'proposals' && workView?.kind === 'proposal');
                 return <Button key={kind} variant="ghost" data-testid={`sidebar-item-${kind}`}

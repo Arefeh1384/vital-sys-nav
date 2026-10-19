@@ -10,10 +10,10 @@ import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { MainContent } from './components/MainContent';
 import { ScopeModal } from './components/ScopeModal';
-import { X, Info } from 'lucide-react';
+import { X, Info, Bot } from 'lucide-react';
 
 const AppShell: React.FC = () => {
-  const { user, notificationMessage, clearNotification } = useApp();
+  const { user, notificationMessage, clearNotification, workView, openWorkView } = useApp();
 
   // Auto-dismiss notification after 4 seconds
   useEffect(() => {
@@ -48,6 +48,21 @@ const AppShell: React.FC = () => {
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
+      )}
+
+      {/* Always-visible Copilot entry: opens the chat page from anywhere */}
+      {workView?.kind !== 'copilot' && (
+        <button
+          type="button"
+          data-testid="copilot-fab"
+          onClick={() => openWorkView({ kind: 'copilot' })}
+          aria-label="باز کردن کوپایلت"
+          title="کوپایلت؛ پرسش از شواهد"
+          className="fixed bottom-5 left-5 z-40 inline-flex items-center gap-2 rounded-full bg-teal-700 px-4 py-3 text-sm font-bold text-white shadow-xl hover:bg-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Bot className="w-5 h-5" aria-hidden />
+          <span>کوپایلت</span>
+        </button>
       )}
 
       {/* Main Top Header */}
