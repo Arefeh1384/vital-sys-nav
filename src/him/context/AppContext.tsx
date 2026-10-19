@@ -5,12 +5,16 @@ import { TASKS_DATA, ALERTS_DATA, type WorkTask, type WorkAlert, type TaskStatus
 import { ACTIONS_DATA, applyActionCommand, type ActionProposal, type ActionCommand } from '../data/actionData';
 import { useCopilotState } from './useCopilotState';
 
-export type WorkView = { kind: 'copilot' } | { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' };
+export type WorkView = { kind: 'copilot' } | { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' } | {kind:'memos'} | {kind:'memo-new'} | {kind:'memo';id:string} | {kind:'memo-edit';id:string};
 
 /** Browser path that mirrors the visible work view, so refresh and direct links land on the same page. */
 export function pathForWorkView(v: WorkView | null): string {
   if (!v) return '/';
   if (v.kind === 'copilot') return '/copilot';
+  if(v.kind==='memos')return '/executive/memos';
+  if(v.kind==='memo-new')return '/executive/memos/new';
+  if(v.kind==='memo')return `/executive/memos/${encodeURIComponent(v.id)}`;
+  if(v.kind==='memo-edit')return `/executive/memos/${encodeURIComponent(v.id)}/edit`;
   if (v.kind === 'proposals') return '/actions';
   if (v.kind === 'proposal') return `/actions/${encodeURIComponent(v.id)}`;
   if (v.kind === 'approvals') return '/approvals';
@@ -27,6 +31,12 @@ export function pathForWorkView(v: WorkView | null): string {
 export function workViewForPath(path: string): WorkView | null {
   const p = path.replace(/\/+$/, '') || '/';
   if (p === '/copilot') return { kind: 'copilot' };
+  if(p==='/executive/memos')return {kind:'memos'};
+  if(p==='/executive/memos/new')return {kind:'memo-new'};
+  const memoEdit=/^\/executive\/memos\/([^/]+)\/edit$/.exec(p);
+  if(memoEdit)return {kind:'memo-edit',id:decodeURIComponent(memoEdit[1]!)};
+  const memoDetail=/^\/executive\/memos\/([^/]+)$/.exec(p);
+  if(memoDetail)return {kind:'memo',id:decodeURIComponent(memoDetail[1]!)};
   if (p === '/actions') return { kind: 'proposals' };
   if (p === '/approvals') return { kind: 'approvals' };
   if (p === '/journal') return { kind: 'journal' };

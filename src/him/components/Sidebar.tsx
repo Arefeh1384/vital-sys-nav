@@ -176,6 +176,7 @@ export const Sidebar: React.FC = () => {
                 { kind: 'approvals', label: 'صف تأییدهای من', Icon: ShieldCheck },
                 { kind: 'journal', label: 'ژورنال اقدام', Icon: History },
                 { kind: 'copilot', label: 'کوپایلت', Icon: Bot },
+                { kind: 'memos', label: 'یادداشت‌های تصمیم', Icon: ClipboardList },
               ] as const).map(({ kind, label, Icon }) => {
                 const selected = workView?.kind === kind || (kind === 'proposals' && workView?.kind === 'proposal');
                 return <Button key={kind} variant="ghost" data-testid={`sidebar-item-${kind}`}

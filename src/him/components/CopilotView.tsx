@@ -1,3 +1,5 @@
+import {demoStore,fromAnswer} from '../phase6/store';
+import {TaskDrawer} from '../phase6/Phase6';
 import { useRef, useState } from 'react';
 import { Bot, Send, Plus, CheckCircle2, AlertTriangle, HelpCircle, Ban, FileSearch, Copy, Download, ThumbsUp, ThumbsDown, X, Building2, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -45,6 +47,8 @@ function Related({ answer }: { answer: AnswerArtifact }) {
 export function CopilotView() {
   const { copilot: c, scope, user, setIsScopeModalOpen, openWorkView, showNotification } = useApp();
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [taskSource,setTaskSource]=useState<{answer:AnswerArtifact}|null>(null);
+  const [artifactTick,setArtifactTick]=useState(0);
   const opener = useRef<HTMLElement | null>(null);
   const answer = c.selected?.answer ? validateAnswer(c.selected.answer) : undefined;
   const documents = scope.siteId ? approvedDocuments(scope.siteId) : [];
@@ -91,7 +95,7 @@ export function CopilotView() {
           {answer.blocks.map((b, i) => <div key={i} className="mb-4"><p className="text-xs font-semibold text-action-brand mb-1">{KIND_LABEL[answer.evidence.find(e => b.evidenceIds.includes(e.id))?.kind ?? 'retrieved']}</p><p className="text-sm leading-8">{b.text} {b.evidenceIds.map(id => <Button data-testid="citation" key={id} size="sm" variant="ghost" className="inline-flex px-1 h-7 text-action-brand" aria-label={`شاهد ${answer.evidence.findIndex(e => e.id === id) + 1}`} onClick={e => citation(id, e)}>[{(answer.evidence.findIndex(e => e.id === id) + 1).toLocaleString('fa-IR')}]</Button>)}</p></div>)}
           {!!answer.limitations.length && <section className="border-r-2 border-action-warning pr-3 mt-4"><h3 className="text-sm font-bold">منابع/بخش‌های ناموجود</h3>{answer.limitations.map(l => <p key={l} className="text-sm leading-7">{l}</p>)}</section>}
           {answer.evidence.length > 0 && <Button variant="outline" className="mt-4" onClick={e => { const first = answer.evidence[0]; if (first) citation(first.id, e); }}><FileSearch className="size-4" />شواهد پاسخ</Button>}
-          <Related answer={answer} />
+          {(answer.status==='answered'||answer.status==='partial')&&<div className="flex flex-wrap gap-2 border-t pt-3"><Button onClick={()=>{try{const memo=demoStore.saveMemo(fromAnswer(answer,scope.siteId||'',scope.siteName,user?.name||'کاربر',c.selected?.context?.range));showNotification('پیش‌نویس یادداشت با موفقیت ذخیره شد');openWorkView({kind:'memo-edit',id:memo.id})}catch{showNotification('ذخیره پیش‌نویس ناموفق بود')}}}>ساخت یادداشت تصمیم</Button><Button variant="outline" onClick={()=>setTaskSource({answer})}>ایجاد وظیفه</Button><Button variant="outline" onClick={e=>{if(answer.evidence[0])citation(answer.evidence[0].id,e)}}>مشاهده شواهد</Button></div>}<div className="space-y-2 mt-3">{demoStore.memos().filter(m=>m.siteId===scope.siteId&&m.answerId===answer.id).map(m=><Button variant="outline" key={m.id} onClick={()=>openWorkView({kind:'memo',id:m.id})}>یادداشت مرتبط: {m.title}</Button>)}{demoStore.tasks().filter(t=>t.siteId===scope.siteId&&t.answerId===answer.id).map(t=><Button variant="outline" key={t.id} onClick={()=>openWorkView({kind:'task',id:t.id})}>وظیفه مرتبط: {t.title}</Button>)}</div><Related answer={answer} />
           <section className="border-t border-border mt-4 pt-4 space-y-3"><div className="flex flex-wrap gap-2"><Button variant="outline" disabled={!canExport} title={!canExport ? 'ناظر فقط‌خواندنی مجوز کپی ندارد' : 'کپی پیش‌نویس'} onClick={copy}><Copy className="size-4" />کپی پاسخ</Button><Button variant="outline" disabled={!canExport} title={!canExport ? 'ناظر فقط‌خواندنی مجوز دانلود ندارد' : 'دانلود پیش‌نویس'} onClick={download}><Download className="size-4" />دانلود</Button></div><p className="text-xs text-muted-foreground">پیش‌نویس تا زمان بازبینی حرفه‌ای{!canExport && ' · ناظر فقط‌خواندنی مجوز کپی و دانلود ندارد'}</p>
             <div className="flex flex-wrap gap-2"><Button variant={c.selected?.feedback?.helpful === true ? 'secondary' : 'ghost'} onClick={() => c.selected && c.feedback(c.selected.id, { helpful: true })}><ThumbsUp className="size-4" />مفید بود</Button><Button variant={c.selected?.feedback?.helpful === false ? 'secondary' : 'ghost'} onClick={() => c.selected && c.feedback(c.selected.id, { helpful: false })}><ThumbsDown className="size-4" />مفید نبود</Button><select aria-label="نوع خطا" value={c.selected?.feedback?.errorType ?? ''} className={fieldClass} onChange={e => c.selected && c.feedback(c.selected.id, { errorType: e.target.value })}><option value="">نوع خطا</option><option>اشتباه واقعی</option><option>ارجاع نادرست</option><option>ناقص</option></select></div><textarea aria-label="توضیح بازخورد اختیاری" placeholder="توضیح اختیاری…" className={`${fieldClass} w-full`} value={c.selected?.feedback?.text ?? ''} onChange={e => c.selected && c.feedback(c.selected.id, { text: e.target.value })} /><p className="text-xs text-muted-foreground">برای آموزش مدل استفاده نمی‌شود</p>
           </section>
@@ -99,6 +103,7 @@ export function CopilotView() {
         </section>}
       </div>
     </div>
+    <TaskDrawer source={taskSource} close={()=>setTaskSource(null)} created={t=>{setArtifactTick(artifactTick+1);showNotification('وظیفه ایجاد شد');openWorkView({kind:'task',id:t.id})}} />
     {answer && <EvidenceDrawer evidence={answer.evidence} focusId={focusId} close={() => setFocusId(null)} opener={opener} />}
   </div>;
 }
