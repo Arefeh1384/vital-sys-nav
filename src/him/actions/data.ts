@@ -391,9 +391,10 @@ export function resumeHeldAction(action: ActionProposal, user: DemoUser, atUtc: 
   // Resume = back to validation, requiring NEW approval (slots reset), never auto-dispatch.
   const slots: ApprovalSlot[] = action.slots.map(s => (s.siteId ? { slot: s.slot, siteId: s.siteId, decision: 'empty' } : { slot: s.slot, decision: 'empty' }));
   const next: ActionProposal = {
-    ...action, status: 'validating', heldReason: undefined, slots, revision: action.revision + 1, updatedAt: atUtc,
+    ...action, status: 'validating', slots, revision: action.revision + 1, updatedAt: atUtc,
     journal: [...action.journal, pushJournal(action, 'validating', user.name, 'ازسرگیری: بازگشت به اعتبارسنجی؛ تأیید جدید لازم است.', atUtc)],
   };
+  delete next.heldReason;
   return { ok: true, next };
 }
 

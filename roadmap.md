@@ -1,3 +1,6 @@
 - [x] Add scoped action proposal list and detail with diff, impact and approval panel.
 - [x] Add action journal and explicit uncertain-state reconciliation flow (reconcile, escalate, verified manual completion).
-- [ ] Run `bunx vitest run` to verify approval separation, transitions and scope isolation; verify preview flow.
+- [ ] Verify existing action regressions and repair current preview errors.
+- [ ] Add mock grounded Copilot engine and scoped persistent conversation state.
+- [ ] Add Copilot workspace, evidence drawer and navigation without changing existing flows.
+- [ ] Test safety rules and verify Copilot end-to-end, refresh and mobile layout.
