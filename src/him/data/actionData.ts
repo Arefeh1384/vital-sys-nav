@@ -147,8 +147,8 @@ export function applyActionCommand(action: ActionProposal, user: User | null, si
 }
 
 // One source for the heparin quantities so the diff and the estimated impact can never disagree.
-const HEPARIN_BEFORE = 120;
-const HEPARIN_AFTER = 300;
+export const HEPARIN_BEFORE = 120;
+export const HEPARIN_AFTER = 300;
 const stages: ActionStatus[] = ['proposed', 'approved', 'sent', 'uncertain', 'finalized'];
 const titles = ['بازتوزیع ظرفیت مراقبت ویژه', 'افزایش سفارش هپارین', 'برنامه اصلاح خطای دارویی', 'کالیبراسیون ونتیلاتورها', 'اصلاح اسناد کسورات بیمه'];
 export const ACTIONS_DATA: ActionProposal[] = SITES_DATA.flatMap((site, si) => stages.map((status, i) => {

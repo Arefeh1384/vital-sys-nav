@@ -53,7 +53,7 @@ export function useCopilotState(user: User | null, siteId: string | null) {
     const idempotencyKey = key ?? `${user.id}-${siteId}-${at}-${turnsRef.current.length}`;
     if (turnsRef.current.some(t => t.idempotencyKey === idempotencyKey) || activeRef.current) return false;
     const id = `turn-${idempotencyKey}`;
-    const turn: CopilotTurn = { id, siteId, question: question.trim(), at, language: context.language, state: 'queued', jobState: 'queued', idempotencyKey, context: { purpose: context.purpose, range: context.range, attachmentIds: [...context.attachmentIds] } };
+    const turn: CopilotTurn = { id, siteId, userId: user.id, question: question.trim(), at, language: context.language, state: 'queued', jobState: 'queued', idempotencyKey, context: { purpose: context.purpose, range: context.range, attachmentIds: [...context.attachmentIds] } };
     commit(prev => appendTurn(prev, turn)); setSelectedId(id); setDraft(''); setContextChanged(false); setScopeMessage('');
     const active = { id, siteId, userId: user.id, timers: [] as ReturnType<typeof setTimeout>[] }; activeRef.current = active;
     const update = (state: CopilotTurn['state']) => { if (activeRef.current !== active) return; commit(prev => prev.map(t => t.id === id ? { ...t, state, jobState: jobStateForRun(state) } : t)); };
@@ -64,7 +64,7 @@ export function useCopilotState(user: User | null, siteId: string | null) {
       if (identity.siteId !== siteId || identity.userId !== user.id) { cancel(); return; }
       if (simulateFailure) update('failed');
       else {
-        const answer = answerQuestion(question, siteId, user.permittedSiteIds, at);
+        const answer = answerQuestion(question, siteId, user.permittedSiteIds, at, { range: context.range, language: context.language });
         const state = runStateForAnswer(answer.status);
         commit(prev => prev.map(t => t.id === id ? { ...t, state, jobState: jobStateForRun(state), answer: { ...answer, runId: id } } : t));
       }
@@ -73,7 +73,7 @@ export function useCopilotState(user: User | null, siteId: string | null) {
     active.timers.push(setTimeout(() => { update('timed_out'); active.timers.forEach(clearTimeout); activeRef.current = null; }, RUN_DEADLINE_MS));
     return true;
   };
-  const visibleTurns = user && siteId && user.permittedSiteIds.includes(siteId) ? turns.filter(t => t.siteId === siteId) : [];
+  const visibleTurns = user && siteId && user.permittedSiteIds.includes(siteId) ? turns.filter(t => t.siteId === siteId && (!t.userId || t.userId === user.id)) : [];
   const selected = visibleTurns.find(t => t.id === selectedId);
   const running = visibleTurns.find(t => ACTIVE_STATES.includes(t.state));
   const newConversation = () => { if (activeRef.current) return; setSelectedId(null); setDraft(''); setError(null); };

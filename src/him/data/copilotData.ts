@@ -1,4 +1,4 @@
-import { ACTIONS_DATA } from './actionData';
+import { ACTIONS_DATA, HEPARIN_AFTER, HEPARIN_BEFORE } from './actionData';
 import { ALERTS_DATA, TASKS_DATA } from './workData';
 import { alertEvidence, taskEvidence } from './evidenceData';
 import { SITES_DATA } from './mockData';
@@ -10,7 +10,7 @@ export type EvidenceKind = 'computed' | 'retrieved' | 'hypothesis' | 'recommenda
 export interface SourceLink { kind: 'proposal' | 'task' | 'alert'; id: string }
 export interface EvidenceItem {
   id: string; kind: EvidenceKind; title: string; version: string; locator: string; dataAsOf: string;
-  freshness: 'fresh' | 'stale'; excerpt: string; numerator?: number; denominator?: number; metricVersion?: string;
+  freshness: 'fresh' | 'stale'; excerpt: string; numerator?: number; denominator?: number; metricVersion?: string; value?: string;
   link?: SourceLink; revoked?: boolean;
 }
 export interface AnswerBlock { text: string; evidenceIds: string[] }
@@ -25,7 +25,7 @@ export interface AnswerArtifact {
   nextStep?: string; scopeRedacted?: boolean;
 }
 export interface CopilotTurn {
-  id: string; siteId: string; question: string; at: string; language: 'fa' | 'en';
+  id: string; siteId: string; userId?: string; question: string; at: string; language: 'fa' | 'en';
   state: RunState; jobState: 'queued' | 'running' | 'succeeded' | 'failed' | 'canceling';
   idempotencyKey: string; answer?: AnswerArtifact;
   context?: { purpose: string; range: string; attachmentIds: string[] };
@@ -57,7 +57,10 @@ export function questionError(q: string): string | null {
 export function metricResult(numerator: number, denominator: number): { status: 'computed'; value: number } | { status: 'not_computable' } {
   return denominator === 0 ? { status: 'not_computable' } : { status: 'computed', value: numerator / denominator * 100 };
 }
-export const OCCUPANCY_METRICS = SITES_DATA.map(s => ({ siteId: s.id, numerator: 80, denominator: 100, version: 'occ-v2', dataAsOf: DATA_AS_OF }));
+// The central office has no active beds: its occupancy has a zero denominator and must read "not computable", never 0%.
+export const OCCUPANCY_METRICS = SITES_DATA.map(s => s.activeBeds === 0
+  ? { siteId: s.id, numerator: 0, denominator: 0, version: 'occ-v2', dataAsOf: DATA_AS_OF }
+  : { siteId: s.id, numerator: 80, denominator: 100, version: 'occ-v2', dataAsOf: DATA_AS_OF });
 export function approvedDocuments(siteId: string) {
   const task = TASKS_DATA.find(t => t.siteId === siteId && t.module === 'PLT');
   const capacity = TASKS_DATA.find(t => t.siteId === siteId && t.module === 'OPS');
@@ -94,14 +97,18 @@ export function jobStateForRun(state: RunState): CopilotTurn['jobState'] {
   if (state === 'canceled') return 'canceling';
   return state === 'queued' ? 'queued' : 'running';
 }
-export function answerQuestion(question: string, siteId: string, userPermittedSiteIds: string[], now: string): AnswerArtifact {
+// Short names people actually type; the full registered name (e.g. with "(ع)") would not match a natural question.
+const SITE_ALIASES: Record<string, string[]> = {
+  'SITE-TALEGHANI': ['طالقانی'], 'SITE-IMAM-HOSSEIN': ['امام حسین'], 'SITE-SHOHADA': ['شهدا', 'تجریش'], 'SITE-MOFID': ['مفید'], 'SITE-HQ': ['ستاد'],
+};
+export function answerQuestion(question: string, siteId: string, userPermittedSiteIds: string[], now: string, ctx?: { range?: string; language?: 'fa' | 'en' }): AnswerArtifact {
   const q = normalizeQuestion(question);
   const id = `answer-${hash(siteId + q + now)}`;
   const base: AnswerArtifact = { id, runId: `run-${hash(siteId + q + now)}`, revision: 1, status: 'abstained', reasonCodes: [], blocks: [], limitations: [], evidence: [],
     generatedAt: now, dataAsOf: DATA_AS_OF, followUps: SUGGESTIONS.slice(0, 5), aiAssisted: true, professionalReviewRequired: true, reviewed: false,
     relatedActionIds: [], relatedTaskIds: [], relatedAlertIds: [] };
   const abstain = (reason: ReasonCode, nextStep: string) => ({ ...base, reasonCodes: [reason], nextStep });
-  const otherSite = SITES_DATA.some(s => s.id !== siteId && [s.name, s.code, s.name.replace(/^بیمارستان |^مرکز تخصصی /, ''), s.id].some(n => q.includes(normalizeQuestion(n))));
+  const otherSite = SITES_DATA.some(s => s.id !== siteId && [s.name, s.code, s.name.replace(/^بیمارستان |^مرکز تخصصی /, ''), s.id, ...(SITE_ALIASES[s.code] ?? [])].some(n => q.includes(normalizeQuestion(n))));
   if (!userPermittedSiteIds.includes(siteId) || !SITES_DATA.some(s => s.id === siteId) || otherSite || /بیمارستان دیگر|دامنه غیرمجاز|همه بیمارستان/.test(q))
     return abstain('scope_not_authorized', 'این درخواست خارج از دامنه‌ی فعلی شماست؛ سؤال را به بیمارستان فعلی محدود کنید.');
   if (/تایید کن|تأیید کن|ارسال کن|اجرا کن|approve|dispatch/.test(q)) return abstain('unsupported_task', 'کوپایلت اقدام اجرا نمی‌کند؛ برای بررسی مجاز به صف تأییدها بروید.');
@@ -124,8 +131,13 @@ export function answerQuestion(question: string, siteId: string, userPermittedSi
   if (/هپارین|موجودی دارو|سفارش|heparin/.test(q)) {
     const action = ACTIONS_DATA.find(a => a.siteId === siteId && a.title.includes('هپارین'));
     if (!action) return abstain('missing_evidence', 'مسئول داروخانه را مطلع کنید.');
-    const e = evidence(action.id, 'retrieved', action.title, `تفاوت سفارش: ${action.diff[0]?.before ?? ''} ← ${action.diff[0]?.after ?? ''}. ${action.impact}`, { kind: 'proposal', id: action.id });
-    return validateAnswer({ ...base, status: 'partial', reasonCodes: ['source_unavailable'], evidence: [e], blocks: [{ text: e.excerpt, evidenceIds: [e.id] }], limitations: ['داده‌ی مصرف ماهانه‌ی دارو در دسترس نیست'], relatedActionIds: [action.id], relatedTaskIds: [action.taskId], relatedAlertIds: [action.alertId] });
+    const e = evidence(action.id, 'retrieved', action.title, `تفاوت سفارش: ${action.diff[0]?.before ?? ''} ← ${action.diff[0]?.after ?? ''}.`, { kind: 'proposal', id: action.id });
+    const gain = HEPARIN_AFTER - HEPARIN_BEFORE;
+    const calc: EvidenceItem = { ...evidence(`${action.id}-calc`, 'computed', 'اثر تخمینی افزایش سفارش', `${HEPARIN_AFTER.toLocaleString('fa-IR')} − ${HEPARIN_BEFORE.toLocaleString('fa-IR')} = ${gain.toLocaleString('fa-IR')} ویال`, { kind: 'proposal', id: action.id }), metricVersion: 'hep-v1', value: `${gain.toLocaleString('fa-IR')} ویال`, locator: 'نتیجه‌ی محاسبه‌شده' };
+    const hyp = evidence(`${action.id}-hyp`, 'hypothesis', 'فرضیه‌ی مرتبط با هشدار', 'کاهش پوشش موجودی ممکن است هم‌زمان با هشدار مرتبط باشد؛ این فرضیه است و رابطه‌ی علّی اثبات نشده است.', { kind: 'alert', id: action.alertId });
+    return validateAnswer({ ...base, status: 'partial', reasonCodes: ['source_unavailable'], evidence: [e, calc, hyp],
+      blocks: [{ text: e.excerpt, evidenceIds: [e.id] }, { text: `اثر تخمینی بر پوشش موجودی ${gain.toLocaleString('fa-IR')} ویال است (محاسبه‌ی متریک، نه متن مدل).`, evidenceIds: [calc.id] }, { text: hyp.excerpt, evidenceIds: [hyp.id] }],
+      limitations: ['داده‌ی مصرف ماهانه‌ی دارو در دسترس نیست'], relatedActionIds: [action.id], relatedTaskIds: [action.taskId], relatedAlertIds: [action.alertId] });
   }
   if (/اشغال|تخت|occupancy/.test(q)) {
     const metric = OCCUPANCY_METRICS.find(m => m.siteId === siteId);
@@ -138,8 +150,9 @@ export function answerQuestion(question: string, siteId: string, userPermittedSi
     const policy = evidence(`${siteId}-cap`, 'retrieved', 'سند نمونه‌ی سیاست ظرفیت', `${packageRecord?.detail ?? task.description}؛ سیاست نمونه: متریک کل تخت‌ها جدا از ICU گزارش می‌شود.`, { kind: 'task', id: task.id });
     const source = alertEvidence(alert).find(x => x.kind === 'record');
     const rec = evidence(`${alert.id}-copilot`, 'retrieved', 'رکورد مرتبط مراقبت ویژه', source?.detail ?? alert.description, { kind: 'alert', id: alert.id });
-    return validateAnswer({ ...base, status: stale ? 'partial' : 'answered', reasonCodes: stale ? ['source_stale'] : [], dataAsOf, evidence: [e, policy, rec],
-      blocks: [{ text: result.status === 'not_computable' ? 'اشغال تخت قابل محاسبه نیست (not_computable).' : `اشغال کل تخت‌های بیمارستان فعلی ${result.value.toLocaleString('fa-IR')}٪ است.`, evidenceIds: [e.id, policy.id] }, { text: rec.excerpt, evidenceIds: [rec.id] }], limitations: stale ? ['داده‌ی تازه‌ی گزارش ICU در دسترس نیست؛ این پاسخ فقط بخش تاریخی معتبر را نشان می‌دهد.'] : [], relatedTaskIds: [task.id], relatedAlertIds: [alert.id] });
+    const notComputable = result.status === 'not_computable';
+    return validateAnswer({ ...base, status: stale || notComputable ? 'partial' : 'answered', reasonCodes: stale ? ['source_stale'] : notComputable ? ['missing_evidence'] : [], dataAsOf, evidence: [e, policy, rec],
+      blocks: [{ text: result.status === 'not_computable' ? 'اشغال تخت قابل محاسبه نیست (not_computable).' : `اشغال کل تخت‌های بیمارستان فعلی ${result.value.toLocaleString('fa-IR')}٪ است${ctx?.range ? ` (بازه: ${ctx.range})` : ''}.`, evidenceIds: [e.id, policy.id] }, { text: rec.excerpt, evidenceIds: [rec.id] }], limitations: [...(stale ? ['داده‌ی تازه‌ی گزارش ICU در دسترس نیست؛ این پاسخ فقط بخش تاریخی معتبر را نشان می‌دهد.'] : []), ...(notComputable ? ['مخرج (تخت‌های فعال) صفر است؛ اشغال تخت قابل محاسبه نیست و ۰٪ فرض نمی‌شود.'] : []), ...(ctx?.language === 'en' ? ['ترجمه‌ی انگلیسی پاسخ در نسخه‌ی نمونه ارائه نمی‌شود؛ متن پاسخ فارسی است.'] : [])], relatedTaskIds: [task.id], relatedAlertIds: [alert.id] });
   }
   if (/سیاست|policy/.test(q)) return abstain('missing_evidence', 'مالک سیاست را مطلع کنید.');
   return abstain('unsupported_task', 'یکی از پرسش‌های پشتیبانی‌شده درباره‌ی اشغال تخت یا موجودی دارو را انتخاب کنید.');
