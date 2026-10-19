@@ -5,12 +5,12 @@ import { TASKS_DATA, ALERTS_DATA, type WorkTask, type WorkAlert, type TaskStatus
 import { ACTIONS_DATA, applyActionCommand, type ActionProposal, type ActionCommand } from '../data/actionData';
 import { useCopilotState } from './useCopilotState';
 
-export type WorkView = { kind: 'copilot' } | { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' } | {kind:'memos'} | {kind:'memo-new'} | {kind:'memo';id:string} | {kind:'memo-edit';id:string};
+export type WorkView = { kind: 'copilot'; answerId?: string } | { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' } | {kind:'memos'} | {kind:'memo-new'} | {kind:'memo';id:string} | {kind:'memo-edit';id:string};
 
 /** Browser path that mirrors the visible work view, so refresh and direct links land on the same page. */
 export function pathForWorkView(v: WorkView | null): string {
   if (!v) return '/';
-  if (v.kind === 'copilot') return '/copilot';
+  if (v.kind === 'copilot') return v.answerId ? `/copilot?answer=${encodeURIComponent(v.answerId)}` : '/copilot';
   if(v.kind==='memos')return '/executive/memos';
   if(v.kind==='memo-new')return '/executive/memos/new';
   if(v.kind==='memo')return `/executive/memos/${encodeURIComponent(v.id)}`;
@@ -30,7 +30,7 @@ export function pathForWorkView(v: WorkView | null): string {
 /** Inverse of pathForWorkView: the work view a browser path stands for (null = dashboard). */
 export function workViewForPath(path: string): WorkView | null {
   const p = path.replace(/\/+$/, '') || '/';
-  if (p === '/copilot') return { kind: 'copilot' };
+  if (p === '/copilot') return { kind: 'copilot', answerId: typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('answer') || undefined : undefined };
   if(p==='/executive/memos')return {kind:'memos'};
   if(p==='/executive/memos/new')return {kind:'memo-new'};
   const memoEdit=/^\/executive\/memos\/([^/]+)\/edit$/.exec(p);
@@ -150,15 +150,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const path = pathForWorkView(workView);
-    const current = window.location.pathname.replace(/\/+$/, '') || '/';
+    const current = (window.location.pathname.replace(/\/+$/, '') || '/') + window.location.search;
     if (current !== path) window.history.pushState(null, '', path);
   }, [workView]);
   // Back/forward changes the path; follow it without remounting the provider.
   useEffect(() => {
-    const onPop = () => setWorkView(workViewForPath(window.location.pathname));
+    const onPop = () => { if (!window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) { window.history.pushState(null, '', pathForWorkView(workView)); return; } setWorkView(workViewForPath(window.location.pathname)); };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, []);
+  }, [workView]);
   // Sample actions are kept in this browser only so a refresh does not undo a recorded approval;
   // no command is ever dispatched to a real hospital system.
   const [actions, setActions] = useState<ActionProposal[]>(() =>
@@ -211,8 +211,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?
     }));
     return [...fromAlerts, ...fromTasks];
   }, [alerts, tasks, scope.siteId]);
-  const setActiveModule = (m: ModuleKey) => { setActiveModuleRaw(m); setWorkView(null); };
-  const openWorkView = (v: WorkView | null) => { setWorkView(v); setViewState('normal'); };
+  const setActiveModule = (m: ModuleKey) => { if (typeof window !== 'undefined' && !window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) return; setActiveModuleRaw(m); setWorkView(null); };
+  const openWorkView = (v: WorkView | null) => { if (typeof window !== 'undefined' && !window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) return; setWorkView(v); setViewState('normal'); };
   const updateTaskStatus = (id: string, status: TaskStatus) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status, history: [...t.history, { at: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }), text: `وضعیت توسط ${user?.name ?? 'کاربر'} تغییر کرد.` }] } : t));
     showNotification('وضعیت وظیفه به‌روزرسانی شد.');

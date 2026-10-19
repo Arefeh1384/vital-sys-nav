@@ -7,7 +7,7 @@ export type AnswerStatus = 'answered' | 'partial' | 'clarification_required' | '
 export type RunState = 'queued' | 'running' | 'validating' | 'completed' | 'completed_partial' | 'awaiting_input' | 'abstained' | 'canceled' | 'timed_out' | 'failed';
 export type ReasonCode = 'missing_evidence' | 'conflicting_evidence' | 'ambiguous_request' | 'scope_not_authorized' | 'source_stale' | 'source_unavailable' | 'unsupported_task' | 'validation_failed';
 export type EvidenceKind = 'computed' | 'retrieved' | 'hypothesis' | 'recommendation';
-export interface SourceLink { kind: 'proposal' | 'task' | 'alert'; id: string }
+export interface SourceLink { kind: 'proposal' | 'task' | 'alert' | 'metric'; id: string }
 export interface EvidenceItem {
   id: string; kind: EvidenceKind; title: string; version: string; locator: string; dataAsOf: string;
   freshness: 'fresh' | 'stale'; excerpt: string; numerator?: number; denominator?: number; metricVersion?: string; value?: string;
@@ -175,7 +175,7 @@ export function answerQuestion(question: string, siteId: string, userPermittedSi
     const stale = /هفته.*قبل|کهنه/.test(q);
     const dataAsOf = stale ? '2026-10-12T05:00:00.000Z' : metric.dataAsOf;
     const result = metricResult(metric.numerator, metric.denominator);
-    const e: EvidenceItem = { ...evidence(`${siteId}-occ`, 'computed', 'متریک تأییدشده‌ی اشغال کل تخت‌ها (نمونه)', 'متریک کل تخت‌ها است؛ با هشدار اشغال ICU متفاوت است.', { kind: 'task', id: task.id }), numerator: metric.numerator, denominator: metric.denominator, metricVersion: metric.version, dataAsOf, freshness: stale ? 'stale' : 'fresh', locator: 'بسته متریک نمونه / کل تخت‌ها' };
+    const e: EvidenceItem = { ...evidence(`${siteId}-occ`, 'computed', 'متریک تأییدشده‌ی اشغال کل تخت‌ها (نمونه)', 'متریک کل تخت‌ها است؛ با هشدار اشغال ICU متفاوت است.', { kind: 'metric', id: `${siteId}-occ` }), numerator: metric.numerator, denominator: metric.denominator, metricVersion: metric.version, dataAsOf, freshness: stale ? 'stale' : 'fresh', locator: 'بسته متریک نمونه / کل تخت‌ها' };
     const packageRecord = taskEvidence(task, alert).find(x => x.kind === 'document');
     const policy = evidence(`${siteId}-cap`, 'retrieved', 'سند نمونه‌ی سیاست ظرفیت', `${packageRecord?.detail ?? task.description}؛ سیاست نمونه: متریک کل تخت‌ها جدا از ICU گزارش می‌شود.`, { kind: 'task', id: task.id });
     const source = alertEvidence(alert).find(x => x.kind === 'record');

@@ -159,3 +159,16 @@ describe('Copilot turns, states and routing', () => {
     expect(DEMO_USERS.some(u => u.role === 'data_steward')).toBe(true);
   });
 });
+
+describe('Phase 6 navigation regressions', () => {
+  it('links the total-bed occupancy evidence to the metric, never an ICU task', () => {
+    const evidence = ask('اشغال تخت بیمارستان فعلی چقدر است؟').evidence[0]!;
+    expect(evidence).toMatchObject({ kind: 'computed', metricVersion: 'occ-v2', numerator: 80, denominator: 100 });
+    expect(evidence.link).toEqual({ kind: 'metric', id: `${taleghani!.id}-occ` });
+    expect(evidence.link?.kind).not.toBe('task');
+  });
+  it('encodes an originating answer ID in the Copilot route', () => {
+    expect(pathForWorkView({ kind: 'copilot', answerId: 'answer/occupancy 1' }))
+      .toBe('/copilot?answer=answer%2Foccupancy%201');
+  });
+});

@@ -1,6 +1,6 @@
 import {demoStore,fromAnswer} from '../phase6/store';
 import {TaskDrawer} from '../phase6/Phase6';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Bot, Send, Plus, CheckCircle2, AlertTriangle, HelpCircle, Ban, FileSearch, Copy, Download, ThumbsUp, ThumbsDown, X, Building2, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -17,11 +17,13 @@ const banners = {
   abstained: { Icon: Ban, cls: 'text-muted-foreground bg-muted border-border' },
 };
 function Timestamp({ at }: { at: string }) { const time = formatEventTime(at); return <span className="text-xs text-muted-foreground break-words">{time.tehran} (تهران) · <bdi dir="ltr">{time.utc}</bdi></span>; }
-function SourceButton({ link, children }: { link: SourceLink; children: React.ReactNode }) {
+function SourceButton({ link, children, metric }: { link: SourceLink; children: React.ReactNode; metric?: EvidenceItem }) {
+  const [showMetric,setShowMetric]=useState(false);
   const { openWorkView, actions, tasks, alerts, scope } = useApp();
+  if (link.kind === 'metric') return <div className="space-y-2"><Button variant="outline" size="sm" aria-expanded={showMetric} onClick={() => setShowMetric(v=>!v)}>{children}</Button>{showMetric && metric && <div role="region" aria-label="منبع متریک اشغال کل تخت‌ها" className="rounded border border-action-brand/30 p-3 text-xs space-y-1"><p>منبع: {metric.locator}</p><p>نسخه متریک: <bdi dir="ltr">{metric.metricVersion}</bdi></p><p>تخت اشغال‌شده: {metric.numerator?.toLocaleString('fa-IR')} · تخت فعال: {metric.denominator?.toLocaleString('fa-IR')}</p><p>تاریخ داده: <Timestamp at={metric.dataAsOf}/></p><p>این متریک مستقل از وظایف و هشدارهای ICU است.</p></div>}</div>;
   const rows = link.kind === 'proposal' ? actions : link.kind === 'task' ? tasks : alerts;
   if (!rows.some(r => r.id === link.id && r.siteId === scope.siteId)) return null;
-  return <Button variant="outline" size="sm" onClick={() => openWorkView(link)}>{children}</Button>;
+  return <Button variant="outline" size="sm" onClick={() => openWorkView(link.kind === 'proposal' ? {kind:'proposal',id:link.id} : link.kind === 'task' ? {kind:'task',id:link.id} : {kind:'alert',id:link.id})}>{children}</Button>;
 }
 function EvidenceDrawer({ evidence, focusId, close, opener }: { evidence: EvidenceItem[]; focusId: string | null; close: () => void; opener: React.RefObject<HTMLElement | null> }) {
   return <Dialog open={focusId !== null} onOpenChange={open => { if (!open) close(); }}>
@@ -30,7 +32,7 @@ function EvidenceDrawer({ evidence, focusId, close, opener }: { evidence: Eviden
       {evidence.map(raw => { const e = evidenceForDisplay(raw); return <section key={e.id} id={`ev-${e.id}`} tabIndex={-1} data-testid="evidence-item" className={`border rounded-md p-4 space-y-3 outline-none focus-visible:ring-2 focus-visible:ring-ring ${focusId === e.id ? 'border-action-brand bg-action-brand/5' : 'border-border'}`}>
         {e.revoked ? <p>شواهد دیگر در دسترس نیست</p> : <><h3 className="font-bold text-sm">{e.title}</h3><p className="text-xs text-action-brand">{KIND_LABEL[e.kind]} · {e.freshness === 'fresh' ? 'تازه' : 'کهنه'}</p><p className="text-xs">نسخه: <bdi dir="ltr">{e.version}</bdi> · محل ارجاع: {e.locator}</p><Timestamp at={e.dataAsOf} /><p className="text-sm leading-7">{e.excerpt}</p>
           {e.kind === 'computed' && <dl className="grid grid-cols-2 gap-2 text-xs">{e.numerator !== undefined && <><dt>صورت</dt><dd>{e.numerator.toLocaleString('fa-IR')}</dd></>}{e.denominator !== undefined && <><dt>مخرج</dt><dd>{e.denominator.toLocaleString('fa-IR')}</dd></>}{e.value && <><dt>مقدار</dt><dd>{e.value}</dd></>}<dt>نسخه متریک</dt><dd><bdi dir="ltr">{e.metricVersion}</bdi></dd>{e.denominator === 0 && <dd className="col-span-2">قابل محاسبه نیست (<bdi dir="ltr">not_computable</bdi>)</dd>}</dl>}
-          {e.link && <SourceButton link={e.link}>باز کردن منبع</SourceButton>}</>}
+          {e.link && <SourceButton link={e.link} metric={e}>باز کردن منبع</SourceButton>}</>}
       </section>; })}
     </DialogContent>
   </Dialog>;
@@ -45,7 +47,8 @@ function Related({ answer }: { answer: AnswerArtifact }) {
   return <section className="border-t border-border mt-6 pt-4"><h3 className="font-bold text-sm mb-3">اقدام‌ها، وظایف و هشدارهای مرتبط</h3>{rows.length ? <ul className="divide-y divide-border">{rows.map(r => <li key={r.id} className="py-3 flex flex-wrap items-center justify-between gap-2"><div className="min-w-0"><p className="text-xs text-muted-foreground"><bdi dir="ltr">{r.code}</bdi> · {r.status}</p><p className="text-sm leading-6">{r.title}</p></div><SourceButton link={{ kind: r.kind, id: r.id }}>مشاهده</SourceButton></li>)}</ul> : <p className="text-sm text-muted-foreground">موردی مرتبط نیست</p>}</section>;
 }
 export function CopilotView() {
-  const { copilot: c, scope, user, setIsScopeModalOpen, openWorkView, showNotification } = useApp();
+  const { copilot: c, scope, user, setIsScopeModalOpen, openWorkView, workView, showNotification } = useApp();
+  useEffect(() => { if(workView?.kind !== 'copilot' || !workView.answerId)return; const turn=c.turns.find(t=>t.answer?.id===workView.answerId || t.id===workView.answerId); if(turn && c.selected?.id!==turn.id)c.selectTurn(turn.id); },[workView,c.turns,c.selected?.id]);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [taskSource,setTaskSource]=useState<{answer:AnswerArtifact}|null>(null);
   const [artifactTick,setArtifactTick]=useState(0);
