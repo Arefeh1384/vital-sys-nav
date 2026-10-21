@@ -4,3 +4,6 @@
 - [x] Add mock grounded Copilot engine and scoped persistent conversation state.
 - [x] Add Copilot workspace, evidence drawer and navigation without changing existing flows.
 - [ ] Test safety rules and verify Copilot end-to-end, refresh and mobile layout.
+- [ ] Complete Supply scoped fixtures, governed calculations, scenario overrides and constraints.
+- [ ] Complete connected Supply investigation, forms, review, revisions and case/Task follow-up.
+- [ ] Verify Supply acceptance journeys, persistence, scope isolation and frontend regressions.
