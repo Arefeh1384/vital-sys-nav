@@ -177,8 +177,9 @@ export const Sidebar: React.FC = () => {
                 { kind: 'journal', label: 'ژورنال اقدام', Icon: History },
                 { kind: 'copilot', label: 'کوپایلت', Icon: Bot },
                 { kind: 'memos', label: 'یادداشت‌های تصمیم', Icon: ClipboardList },
+                { kind: 'supply', label: 'زنجیره تأمین و کمبود', Icon: PackageOpen },
               ] as const).map(({ kind, label, Icon }) => {
-                const selected = workView?.kind === kind || (kind === 'proposals' && workView?.kind === 'proposal');
+                const selected = workView?.kind === kind || (kind === 'proposals' && workView?.kind === 'proposal') || (kind === 'supply' && typeof workView?.kind === 'string' && workView.kind.startsWith('supply'));
                 return <Button key={kind} variant="ghost" data-testid={`sidebar-item-${kind}`}
                   title={label} aria-label={label} aria-pressed={selected}
                   onClick={() => { openWorkView({ kind }); if (window.innerWidth < 768) setSidebarCollapsed(true); }}

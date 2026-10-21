@@ -1,4 +1,5 @@
 import {Phase6View} from '../phase6/Phase6';
+import {SupplyViews} from '../supply/SupplyViews';
 import {demoStore} from '../phase6/store';
 import React from 'react';
 import { 
@@ -48,7 +49,9 @@ export const MainContent: React.FC = () => {
     setIsScopeModalOpen, 
     user,
     isScopeSwitching,
-    workView
+    workView,
+    openWorkView,
+    showNotification
   } = useApp();
 
   const currentModuleDef = MODULES_CONFIG.find(m => m.key === activeModule) || MODULES_CONFIG[0]!;
@@ -80,6 +83,17 @@ export const MainContent: React.FC = () => {
           {workView.kind === 'proposal' && <ActionProposalDetailView id={workView.id} />}
           {workView.kind === 'journal' && <ActionJournalView />}
           {workView.kind === 'copilot' && <CopilotView />}
+          {(['supply', 'supply-risk', 'supply-proposals', 'supply-proposal', 'supply-cases', 'supply-case', 'supply-new'] as const).includes(workView.kind as 'supply') && (
+            <SupplyViews
+              key={workView.kind === 'supply-new' ? `${workView.kind}:${workView.riskId}:${workView.type}:${workView.proposalId ?? ''}` : workView.kind}
+              view={workView as Extract<typeof workView, {kind: 'supply' | 'supply-risk' | 'supply-proposals' | 'supply-proposal' | 'supply-cases' | 'supply-case' | 'supply-new'}>}
+              open={openWorkView}
+              siteName={scope.siteName}
+              siteId={scope.siteId || ''}
+              notify={showNotification}
+            />
+          )}
+
           {workView.kind === 'memos' && <Phase6View mode="list" />}
           {workView.kind === 'memo-new' && <Phase6View key={scope.siteId} mode="new" />}
           {workView.kind === 'memo' && <Phase6View key={workView.id} mode="detail" id={workView.id} />}
@@ -97,7 +111,7 @@ export const MainContent: React.FC = () => {
       case 'OPS':
         return renderOpsContent();
       case 'SUP':
-        return renderSupContent();
+        return <SupplyViews view={{kind:'supply'}} open={openWorkView} siteName={scope.siteName} siteId={scope.siteId || ""} notify={showNotification}/>;
       case 'QLT':
         return renderQltContent();
       case 'AST':

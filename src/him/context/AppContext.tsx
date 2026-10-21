@@ -5,7 +5,7 @@ import { TASKS_DATA, ALERTS_DATA, type WorkTask, type WorkAlert, type TaskStatus
 import { ACTIONS_DATA, applyActionCommand, type ActionProposal, type ActionCommand } from '../data/actionData';
 import { useCopilotState } from './useCopilotState';
 
-export type WorkView = { kind: 'copilot'; answerId?: string } | { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' } | {kind:'memos'} | {kind:'memo-new'} | {kind:'memo';id:string} | {kind:'memo-edit';id:string};
+export type WorkView = { kind: 'copilot'; answerId?: string } | { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' } | {kind:'memos'} | {kind:'memo-new'} | {kind:'memo';id:string} | {kind:'memo-edit';id:string} | {kind:'supply'} | {kind:'supply-risk';id:string} | {kind:'supply-proposals'} | {kind:'supply-proposal';id:string} | {kind:'supply-cases'} | {kind:'supply-case';id:string} | {kind:'supply-new';riskId:string;type:'replenishment'|'transfer';proposalId?:string};
 
 /** Browser path that mirrors the visible work view, so refresh and direct links land on the same page. */
 export function pathForWorkView(v: WorkView | null): string {
@@ -15,6 +15,13 @@ export function pathForWorkView(v: WorkView | null): string {
   if(v.kind==='memo-new')return '/executive/memos/new';
   if(v.kind==='memo')return `/executive/memos/${encodeURIComponent(v.id)}`;
   if(v.kind==='memo-edit')return `/executive/memos/${encodeURIComponent(v.id)}/edit`;
+  if(v.kind==='supply')return '/supply';
+  if(v.kind==='supply-risk')return `/supply/risks/${encodeURIComponent(v.id)}`;
+  if(v.kind==='supply-proposals')return '/supply/recommendations';
+  if(v.kind==='supply-proposal')return `/supply/recommendations/${encodeURIComponent(v.id)}`;
+  if(v.kind==='supply-cases')return '/supply/cases';
+  if(v.kind==='supply-case')return `/supply/cases/${encodeURIComponent(v.id)}`;
+  if(v.kind==='supply-new')return `/supply/recommendations/new?type=${v.type}&risk=${encodeURIComponent(v.riskId)}${v.proposalId?`&proposal=${encodeURIComponent(v.proposalId)}`:''}`;
   if (v.kind === 'proposals') return '/actions';
   if (v.kind === 'proposal') return `/actions/${encodeURIComponent(v.id)}`;
   if (v.kind === 'approvals') return '/approvals';
@@ -31,6 +38,13 @@ export function pathForWorkView(v: WorkView | null): string {
 export function workViewForPath(path: string): WorkView | null {
   const p = path.replace(/\/+$/, '') || '/';
   if (p === '/copilot') return { kind: 'copilot', answerId: typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('answer') || undefined : undefined };
+  if(p==='/supply')return {kind:'supply'};
+  if(p==='/supply/recommendations')return {kind:'supply-proposals'};
+  if(p==='/supply/cases')return {kind:'supply-cases'};
+  if(p.startsWith('/supply/recommendations/new'))return {kind:'supply-new',riskId:typeof window!=='undefined'?new URLSearchParams(window.location.search).get('risk')||'RISK-1001':'RISK-1001',type:typeof window!=='undefined'&&new URLSearchParams(window.location.search).get('type')==='transfer'?'transfer':'replenishment',proposalId:typeof window!=='undefined'?new URLSearchParams(window.location.search).get('proposal')||undefined:undefined};
+  const supplyProposal=/^\/supply\/recommendations\/([^/]+)$/.exec(p);if(supplyProposal)return {kind:'supply-proposal',id:decodeURIComponent(supplyProposal[1]!)};
+  const supplyCase=/^\/supply\/cases\/([^/]+)$/.exec(p);if(supplyCase)return {kind:'supply-case',id:decodeURIComponent(supplyCase[1]!)};
+  const supplyRisk=/^\/supply\/risks\/([^/]+)$/.exec(p);if(supplyRisk)return {kind:'supply-risk',id:decodeURIComponent(supplyRisk[1]!)};
   if(p==='/executive/memos')return {kind:'memos'};
   if(p==='/executive/memos/new')return {kind:'memo-new'};
   const memoEdit=/^\/executive\/memos\/([^/]+)\/edit$/.exec(p);
