@@ -16,13 +16,15 @@ afterEach(cleanup);
 describe('Work list search reset', () => {
   it('clears task search and status so the original task returns', () => {
     render(<TaskListView />);
-    fireEvent.click(screen.getByRole('button', { name: 'انجام‌شده' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'فیلتر وضعیت' }), {
+  target: { value: 'completed' },
+});
     const input = screen.getByRole('textbox');
     fireEvent.change(input, { target: { value: 'بدون نتیجه' } });
     expect(screen.queryByText('TSK-1001')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'پاک‌کردن جستجو و فیلترها' }));
+    fireEvent.click(screen.getByRole('button', { name: 'پاک کردن فیلترها' }));
     expect((input as HTMLInputElement).value).toBe('');
-    expect(screen.getByText('TSK-1001')).toBeTruthy();
+    expect(screen.getByText('بررسی تجهیزات')).toBeTruthy();
   });
 
   it('clears alert search, status and severity so the original alert returns', () => {
