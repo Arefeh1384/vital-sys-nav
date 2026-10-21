@@ -6,7 +6,7 @@ import {Input} from '@/components/ui/input';
 import {Textarea} from '@/components/ui/textarea';
 import {Tabs,TabsContent,TabsList,TabsTrigger} from '@/components/ui/tabs';
 import {Badge} from '@/components/ui/badge';
-import {getCases,getProposals,proposalStatusLabels,saveCase,saveProposal,statusLabels,supplyCases,supplyRisks,type SupplyProposal,type SupplyRisk} from './store';
+import {initProposal,getCases,getProposals,proposalStatusLabels,saveCase,saveProposal,statusLabels,supplyCases,supplyRisks,type SupplyProposal,type SupplyRisk} from './store';
 import type {WorkView} from '../context/AppContext';
 
 type Props={view:Extract<WorkView,{kind:'supply'|'supply-risk'|'supply-proposals'|'supply-proposal'|'supply-cases'|'supply-case'|'supply-new'}>;open:(v:WorkView|null)=>void;siteName:string;siteId:string;notify:(s:string)=>void};
@@ -15,7 +15,6 @@ const fmt=(n:number)=>n.toLocaleString('fa-IR');
 const riskLabel={high:'زیاد',medium:'متوسط',low:'کم'};
 const severity=(s:string)=>s==='high'?'destructive':s==='medium'?'secondary':'outline';
 const newId=()=>`SUP-${Date.now().toString(36).toUpperCase()}`;
-const initProposal=(risk:SupplyRisk,type:'replenishment'|'transfer'):SupplyProposal=>({id:newId(),type,riskId:risk.id,caseId:risk.caseId,item:risk.item,site:risk.site,source:type==='transfer'?'بیمارستان همکار · انبار مرکزی':undefined,destination:risk.location,quantity:type==='replenishment'?Math.max(0,Math.ceil(Math.max(0,risk.targetStock-(risk.usable+risk.inbound-risk.outbound))/risk.pack)*risk.pack):10,unit:risk.lots[0]?.unit||'واحد پایه',price:risk.price,currency:risk.currency,status:'draft',owner:risk.owner,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),revision:0,reason:'',assumptions:`پیش‌بینی ${risk.forecastRef}؛ زمان تأمین ${risk.leadTime} روز`,editReason:'',leadTime:risk.leadTime,arrival:new Date(Date.now()+risk.leadTime*86400000).toISOString().slice(0,10),supplier:risk.supplier,constraints:[{label:'تبدیل واحد',state:risk.lots.every(l=>!!l.conversion)?'passed':'unknown',detail:'بر اساس نسخه تبدیل ثبت‌شده'},{label:'کیفیت داده موجودی',state:risk.quality==='good'?'passed':'warning',detail:risk.quality==='good'?'تصویر موجودی قابل استفاده است':'کیفیت داده نیازمند بازبینی است'},{label:'قیمت تأمین‌کننده',state:risk.price?'passed':'unknown',detail:risk.price?'قیمت در داده نمایشی موجود است':'قیمت نامشخص'},{label:'زمان تأمین',state:risk.leadTime>0?'passed':'unknown',detail:risk.leadTime?`${risk.leadTime} روز`:'زمان تأمین ثبت نشده'}],history:[]});
 export function SupplyViews({view,open,siteName,siteId,notify}:Props){
  const [search,setSearch]=useState(''),[criticality,setCriticality]=useState('all'),[quality,setQuality]=useState('all'),[sort,setSort]=useState<'risk'|'stockout'>('risk'),[page,setPage]=useState(1),[tab,setTab]=useState('overview');
  const [proposal,setProposal]=useState<SupplyProposal|null>(null),[scenarioDemand,setScenarioDemand]=useState('16'),[scenarioLead,setScenarioLead]=useState('5'),[overrideReason,setOverrideReason]=useState(''),[overrideExpiry,setOverrideExpiry]=useState('');
