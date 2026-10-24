@@ -21,7 +21,23 @@ const MAPPING_DEPENDENCIES = (siteId:string): DownstreamImpact[] => [
  {id:'DRAFT-TAL-001',title:'پیشنهاد تأمین پیش‌نویس نمایشی',kind:'draft_recommendation',siteId,snapshot:'DRAFT-v1 · SNAP-202610',dependency:'inventory.unit_code → derived_quantity → recommendation quantity',reason:'مقدار ورودی این پیش‌نویس در فیکسچر ۲ بسته است؛ پیشنهاد اجراشده تغییر نمی‌کند',current:'20 tablets (مبنای محاسبه پیش‌نویس)',proposed:null,formula:'2 pack × conversion factor',state:'known',revalidation:'بازمحاسبه پیش‌نویس جدید؛ حفظ ورودی و نسخه تاریخی'},
  {id:'ACT-TAL-REVALIDATE-001',title:'اقدام کنترل کیفیت پیش از انتشار',kind:'pending_action',siteId,snapshot:'ACTION-v1 · pending',dependency:'mapping proposal → impacted metric/forecast/draft → approval gate',reason:'وابستگی‌های شاخص، پیش‌بینی و پیش‌نویس باید دوباره کنترل شوند',current:'در انتظار اعتبارسنجی',proposed:'در انتظار اعتبارسنجی نسخه پیشنهادی',state:'known',revalidation:'تأیید مستقل نتایج نمایشی قبل از هر اقدام بعدی'}
 ];
-export function mappingProposalFactor(detail:string):number|null {const values=[...detail.matchAll(/(?:=|به|to)\s*(\d+)\s*(?:tablets?|قرص)/gi)].map(x=>Number(x[1]));return values.length>=2&&values[0]===10&&values[1]>0?values[1]:null;}
+// Parse a *proposed* pack-to-tablet mapping in either language. The existing
+// fixture defines the baseline as 10 tablets/pack; the user need not repeat it.
+// Unsupported/ambiguous descriptions do not silently create an empty preview.
+export function mappingProposalFactor(detail:string):number|null {
+ const normalized=detail.normalize('NFKC')
+  .replace(/[۰-۹]/g,ch=>String(ch.charCodeAt(0)-0x06F0))
+  .replace(/[٠-٩]/g,ch=>String(ch.charCodeAt(0)-0x0660))
+  .replace(/[ك]/g,'ک').replace(/[ي]/g,'ی').replace(/[\u200c\u200f\u200e]/g,' ');
+ const matches=[...normalized.matchAll(/(?:\b(?:1\s*)?packs?\b|(?:هر\s*)?(?:1\s*)?بسته)\s*(?:=|:|معادل|برابر\s+با|is)\s*([0-9]+)\s*(?:tablets?\b|قرص)/gi)];
+ if(!matches.length)return null;
+ const values=matches.map(m=>Number(m[1]));
+ if(values.some(v=>!Number.isSafeInteger(v)||v<=0))return null;
+ if(values.length>2)return null;
+ // A two-sided comparison must refer to the known, immutable fixture baseline.
+ if(values.length===2&&values[0]!==10)return null;
+ return values[values.length-1];
+}
 export function proposalSignature(r:Resolution):string {return JSON.stringify([r.type,r.detail,r.oldVersion,r.newVersion,r.scope,r.sourceRef]);}
 export function getImpactOutput(id:string,outputId:string,siteId:string){const issue=getQualityIssue(id);if(!issue||issue.siteId!==siteId)return undefined;return issue.resolution?.preview?.outputs.find(o=>o.id===outputId&&o.siteId===siteId);}
 
@@ -69,6 +85,7 @@ export function previewResolutionImpact(id:string,actor:string){
  const i=getQualityIssue(id);if(!i?.resolution||i.state!=='resolution_proposed')throw Error('پیشنهاد اصلاح در انتظار بررسی پیدا نشد');
  const r=i.resolution;
  const factor=r.type==='platform_mapping_change'&&i.fields.includes('unit_code')?mappingProposalFactor(r.detail):null;
+ if(r.type==='platform_mapping_change'&&i.id==='DQ-TALEGHANI-003'&&factor===null)throw Error('شرح نگاشت قابل تشخیص نیست. نمونه معتبر: «هر بسته = ۲۰ قرص» یا «1 pack = 20 tablets». پیش‌نمایش ساخته نشد.');
  const fixture=i.id==='DQ-TALEGHANI-003' && factor!==null;
  const outputs:DownstreamImpact[]=fixture?MAPPING_DEPENDENCIES(i.siteId).map(o=>({...o,proposed:o.formula?`${2*factor} tablets`:o.proposed})):[];
  const preview:ImpactPreview={version:i.recordVersion+1,signature:proposalSignature(r),generatedAt:new Date().toISOString(),partitions:[i.partition],records:i.observations.at(-1)?.count??null,metrics:i.impact.metrics,reports:i.impact.reports,forecasts:i.impact.models,actions:outputs.filter(o=>o.kind==='pending_action').map(o=>o.id),outputs,uncertainty:['پیش‌نمایش مصنوعی است؛ هیچ نگاشت یا ورودی تاریخی اجرا یا تغییر نمی‌کند',...(fixture?['خروجی پیش‌بینی قابل محاسبه نیست: ضرایب مدل در فیکسچر موجود نیست']:['برای این پیشنهاد رابطه محاسباتی تایپ‌شده ثبت نشده است'])],...(fixture?{mapping:{oldVersion:r.oldVersion,newVersion:r.newVersion,fromUnits:10,toUnits:factor!,samplePacks:2,before:20,after:2*factor!,fixtureResult:`قبول: ۲ بسته × ${factor} قرص = ${2*factor} قرص (داده مصنوعی)`},checks:[`آزمون واحد: ۲ × ${factor} = ${2*factor} (موفق؛ مصنوعی)`,'بازاعتبارسنجی مدل پیش‌بینی هنوز اجرا نشده است']}: {})};
