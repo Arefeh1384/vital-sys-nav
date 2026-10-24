@@ -1,3 +1,4 @@
+import {ManualViews} from '../manual/ManualViews';
 import {ExecutiveDashboard} from '../executive/ExecutiveDashboard';
 import {StewardshipViews} from '../stewardship/StewardshipViews';
 import {Phase6View} from '../phase6/Phase6';
@@ -75,6 +76,13 @@ export const MainContent: React.FC = () => {
         {viewState === 'empty' && <EmptyState />}
         {viewState === 'error' && <ErrorState />}
         {viewState === 'normal' && <>
+          {(['manual-list', 'manual-new', 'manual-detail'] as const).includes(workView.kind as 'manual-list') && (
+            <ManualViews
+              view={workView as Extract<typeof workView, {kind:'manual-list'|'manual-new'|'manual-detail'}>}
+              open={openWorkView}
+              siteId={scope.siteId || ''}
+            />
+          )}
           {workView.kind === 'tasks' && <TaskListView />}
           {workView.kind === 'task' && <Phase6View mode="task" id={workView.id}/>}
           {workView.kind === 'alerts' && <AlertListView />}
