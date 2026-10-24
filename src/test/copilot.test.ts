@@ -113,17 +113,22 @@ describe('Copilot grounded answers', () => {
     expect(a.blocks).toHaveLength(0);
     expect(JSON.stringify(a)).not.toContain('۸۰');
   });
-  it('links overtime conflict policy source to overtime policy task rather than unrelated access review task', () => {
-    const a = ask('سیاست اضافه‌کار و مأموریت چیست؟');
-    expect(a.status).toBe('partial');
-    expect(a.conflict?.linkA).toBeTruthy();
-    expect(a.conflict?.titleA).toContain('سیاست اضافه‌کار — نسخه الف');
-    const taskA = TASKS_DATA.find(t => t.id === a.conflict?.linkA?.id);
-    expect(taskA).toBeTruthy();
-    expect(taskA?.title).toContain('سیاست اضافه‌کار — نسخه الف');
-    expect(taskA?.description).toContain('نسخه الف: اضافه‌کار');
-    expect(taskA?.title).not.toContain('تأیید فصلی دسترسی کاربران');
+  it('links overtime conflict policies to their documents', () => {
+  const a = ask('سیاست اضافه‌کار و مأموریت چیست؟');
+
+  expect(a.status).toBe('partial');
+  expect(a.conflict?.titleA).toContain('سیاست اضافه‌کار — نسخه الف');
+
+  expect(a.conflict?.linkA).toEqual({
+    kind: 'document',
+    id: `${taleghani!.id}-policy-a`,
   });
+
+  expect(a.conflict?.linkB).toEqual({
+    kind: 'document',
+    id: `${taleghani!.id}-policy-b`,
+  });
+});
   it('labels week-old stale ICU report with historical source date and does not label it as today', () => {
     const a = ask('گزارش هفته‌ی قبل تخت‌های ICU');
     expect(a.reasonCodes).toContain('source_stale');

@@ -7,7 +7,7 @@ export type AnswerStatus = 'answered' | 'partial' | 'clarification_required' | '
 export type RunState = 'queued' | 'running' | 'validating' | 'completed' | 'completed_partial' | 'awaiting_input' | 'abstained' | 'canceled' | 'timed_out' | 'failed';
 export type ReasonCode = 'missing_evidence' | 'conflicting_evidence' | 'ambiguous_request' | 'scope_not_authorized' | 'source_stale' | 'source_unavailable' | 'unsupported_task' | 'validation_failed';
 export type EvidenceKind = 'computed' | 'retrieved' | 'hypothesis' | 'recommendation';
-export interface SourceLink { kind: 'proposal' | 'task' | 'alert' | 'metric'; id: string }
+export interface SourceLink { kind: 'proposal' | 'task' | 'alert' | 'metric' | 'document'; id: string }
 export interface EvidenceItem {
   id: string; kind: EvidenceKind; title: string; version: string; locator: string; dataAsOf: string;
   freshness: 'fresh' | 'stale'; excerpt: string; numerator?: number; denominator?: number; metricVersion?: string; value?: string;
@@ -154,8 +154,8 @@ export function answerQuestion(question: string, siteId: string, userPermittedSi
     const docs = approvedDocuments(siteId).slice(1);
     const [a, b] = docs;
     if (!a || !b) return abstain('missing_evidence', 'مالک سیاست را مطلع کنید.');
-    const ea = { ...evidence(a.id, 'retrieved', a.title, 'نسخه الف: اضافه‌کار نیازمند تأیید پیش از ثبت است (سند نمونه فعال).', { kind: 'task', id: a.taskId }), version: a.version, locator: 'پیوست سیاست الف / بخش تأیید' };
-    const eb = { ...evidence(b.id, 'retrieved', b.title, 'نسخه ب: ثبت اضافه‌کار قبل از تأیید مجاز است (سند نمونه فعال).', { kind: 'task', id: b.taskId }), version: b.version, locator: 'پیوست سیاست ب / بخش ثبت' };
+    const ea = { ...evidence(a.id, 'retrieved', a.title, 'نسخه الف: اضافه‌کار نیازمند تأیید پیش از ثبت است (سند نمونه فعال).', { kind: 'document', id: a.id }), version: a.version, locator: 'پیوست سیاست الف / بخش تأیید' };
+    const eb = { ...evidence(b.id, 'retrieved', b.title, 'نسخه ب: ثبت اضافه‌کار قبل از تأیید مجاز است (سند نمونه فعال).', { kind: 'document', id: b.id }), version: b.version, locator: 'پیوست سیاست ب / بخش ثبت' };
     return validateAnswer({ ...base, status: 'partial', reasonCodes: ['conflicting_evidence'], evidence: [ea, eb], blocks: [{ text: 'دو نسخه‌ی فعال درباره‌ی ترتیب ثبت و تأیید متعارض‌اند؛ هیچ سیاست ترکیبی ارائه نمی‌شود.', evidenceIds: [ea.id, eb.id] }], limitations: ['رفع تعارض بر عهده‌ی کمیته‌ی سیاست‌گذاری (نمونه) است.'], conflict: { titleA: a.title, titleB: b.title, linkA: ea.link, linkB: eb.link }, relatedTaskIds: [a.taskId, b.taskId] });
   }
   if (/هپارین|موجودی دارو|سفارش|heparin/.test(q)) {
@@ -177,7 +177,7 @@ export function answerQuestion(question: string, siteId: string, userPermittedSi
     const result = metricResult(metric.numerator, metric.denominator);
     const e: EvidenceItem = { ...evidence(`${siteId}-occ`, 'computed', 'متریک تأییدشده‌ی اشغال کل تخت‌ها (نمونه)', 'متریک کل تخت‌ها است؛ با هشدار اشغال ICU متفاوت است.', { kind: 'metric', id: `${siteId}-occ` }), numerator: metric.numerator, denominator: metric.denominator, metricVersion: metric.version, dataAsOf, freshness: stale ? 'stale' : 'fresh', locator: 'بسته متریک نمونه / کل تخت‌ها' };
     const packageRecord = taskEvidence(task, alert).find(x => x.kind === 'document');
-    const policy = evidence(`${siteId}-cap`, 'retrieved', 'سند نمونه‌ی سیاست ظرفیت', `${packageRecord?.detail ?? task.description}؛ سیاست نمونه: متریک کل تخت‌ها جدا از ICU گزارش می‌شود.`, { kind: 'task', id: task.id });
+    const policy = evidence(`${siteId}-cap`, 'retrieved', 'سند نمونه‌ی سیاست ظرفیت', `${packageRecord?.detail ?? task.description}؛ سیاست نمونه: متریک کل تخت‌ها جدا از ICU گزارش می‌شود.`, { kind: 'document', id: `${siteId}-capacity` });
     const source = alertEvidence(alert).find(x => x.kind === 'record');
     const rec = evidence(`${alert.id}-copilot`, 'retrieved', 'رکورد مرتبط مراقبت ویژه', source?.detail ?? alert.description, { kind: 'alert', id: alert.id });
     const notComputable = result.status === 'not_computable';

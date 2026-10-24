@@ -10,6 +10,7 @@ import { alertEvidence, taskEvidence, EVIDENCE_KIND_LABEL, type EvidenceItem } f
 import { EmptyState } from './states/EmptyState';
 import {demoStore} from '../phase6/store';
 import {legacyAsPhase6} from '../phase6/Phase6';
+import {canonicalTasks,unfinishedTask} from '../executive/taskProjection';
 
 const moduleTitle = (k: string) => MODULES_CONFIG.find(m => m.key === k)?.shortTitle ?? k;
 
@@ -68,14 +69,14 @@ const SearchBox: React.FC<{ value: string; onChange: (v: string) => void }> = ({
 
 export const TaskListView: React.FC = () => {
  const {tasks,scope,openWorkView}=useApp();
- const [status,setStatus]=useState('all');const [q,setQ]=useState('');
+ const [status,setStatus]=useState(()=>new URLSearchParams(window.location.search).get('filter')==='unfinished'?'unfinished':'all');const [q,setQ]=useState('');
  // One list and one detail page for legacy and Copilot-created tasks.
  const overrides=demoStore.tasks();
  const rows=[...tasks.map(t=>overrides.find(o=>o.id===t.id)||legacyAsPhase6(t)),...overrides.filter(t=>!tasks.some(l=>l.id===t.id))]
-  .filter(t=>t.siteId===scope.siteId&&(status==='all'||t.status===status)&&(!q||t.title.includes(q)||t.id.toLowerCase().includes(q.toLowerCase())));
+  .filter(t=>t.siteId===scope.siteId&&(status==='all'||(status==='unfinished'?unfinishedTask(t.status):t.status===status))&&(!q||t.title.includes(q)||t.id.toLowerCase().includes(q.toLowerCase())));
  const labels={open:'باز',assigned:'تخصیص‌یافته',in_progress:'در حال انجام',blocked:'مسدود',submitted_for_review:'در انتظار بررسی',completed:'تکمیل‌شده',canceled:'لغوشده'};
  return <div data-testid="task-list"><Header icon={<ClipboardList className="w-5 h-5"/>} title="فهرست وظایف" subtitle={`وظایف عملیاتی «${scope.siteName}» · داده نمایشی`}/>
- <div className="flex flex-wrap gap-3 mb-4"><select aria-label="فیلتر وضعیت" className="border rounded-lg p-2 text-sm" value={status} onChange={e=>setStatus(e.target.value)}><option value="all">همه وضعیت‌ها</option>{Object.entries(labels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><SearchBox value={q} onChange={setQ}/></div>
+ <div className="flex flex-wrap gap-3 mb-4"><select aria-label="فیلتر وضعیت" className="border rounded-lg p-2 text-sm" value={status} onChange={e=>setStatus(e.target.value)}><option value="all">همه وضعیت‌ها</option><option value="unfinished">انجام‌نشده</option>{Object.entries(labels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><SearchBox value={q} onChange={setQ}/></div>
  {rows.length===0?<EmptyState title="وظیفه‌ای یافت نشد" onReset={()=>{setStatus('all');setQ('')}} resetLabel="پاک کردن فیلترها"/>:<div className="bg-white border rounded-xl divide-y">{rows.map(t=><button key={t.id} className="w-full text-right flex justify-between p-4 hover:bg-slate-50 gap-3" onClick={()=>openWorkView({kind:'task',id:t.id})}><span><b>{t.title}</b><span className="block text-xs text-slate-500">{t.id} · {t.owner||t.queue||'بدون مسئول'}</span></span><span className="text-sm">{labels[t.status]}</span></button>)}</div>}
  </div>;
 };
@@ -156,19 +157,21 @@ export const TaskDetailView: React.FC<{ id: string }> = ({ id }) => {
 export const AlertListView: React.FC = () => {
   const { alerts, scope, openWorkView } = useApp();
   const [status, setStatus] = useState<AlertStatus | 'all'>('all');
+  const [activeOnly,setActiveOnly]=useState(()=>new URLSearchParams(window.location.search).get('filter')==='active');
   const [severity, setSeverity] = useState<Priority | 'all'>('all');
   const [q, setQ] = useState('');
   const rows = useMemo(() => alerts.filter(a => a.siteId === scope.siteId
+    && (!activeOnly || a.status !== 'resolved')
     && (status === 'all' || a.status === status)
     && (severity === 'all' || a.severity === severity)
-    && (!q || a.title.includes(q) || a.code.toLowerCase().includes(q.toLowerCase()))), [alerts, scope.siteId, status, severity, q]);
+    && (!q || a.title.includes(q) || a.code.toLowerCase().includes(q.toLowerCase()))), [alerts, scope.siteId, status, severity, q, activeOnly]);
 
   return (
     <div data-testid="alert-list">
       <Header icon={<Bell className="w-5 h-5" />} title="فهرست هشدارها" subtitle={`هشدارهای فعال و سوابق «${scope.siteName}»`} />
       <div className="flex flex-col gap-3 mb-4">
         <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
-          <Filters value={status} onChange={setStatus} options={ALERT_STATUS_LABEL} />
+          <button type="button" aria-pressed={activeOnly} onClick={()=>setActiveOnly(v=>!v)} className={`rounded-lg px-3 py-1 text-xs border ${activeOnly?'bg-teal-600 text-white':'bg-white text-slate-700'}`}>فقط فعال</button><Filters value={status} onChange={setStatus} options={ALERT_STATUS_LABEL} />
           <SearchBox value={q} onChange={setQ} />
         </div>
         <Filters value={severity} onChange={setSeverity} options={PRIORITY_LABEL} />
@@ -177,7 +180,7 @@ export const AlertListView: React.FC = () => {
         title={q || status !== 'all' || severity !== 'all' ? 'هشداری مطابق جستجو و فیلترها یافت نشد' : undefined}
         description={q || status !== 'all' || severity !== 'all' ? 'عبارت جستجو یا فیلترهای وضعیت و شدت را تغییر دهید.' : undefined}
         resetLabel="پاک‌کردن جستجو و فیلترها"
-        onReset={() => { setQ(''); setStatus('all'); setSeverity('all'); }}
+        onReset={() => { setQ(''); setStatus('all'); setSeverity('all'); setActiveOnly(false); }}
       /> : (
         <div className="grid md:grid-cols-2 gap-3">
           {rows.map(a => (
@@ -205,7 +208,7 @@ export const AlertDetailView: React.FC<{ id: string }> = ({ id }) => {
   const a = alerts.find(x => x.id === id);
   const back = () => openWorkView({ kind: 'alerts' });
   if (!a || a.siteId !== scope.siteId) return <NotFound onBack={back} text="این هشدار در دامنه کاری فعلی یافت نشد." />;
-  const linked = tasks.filter(t => t.alertId === a.id);
+  const linked = canonicalTasks(tasks).filter(t => tasks.some(original => original.id===t.id && original.alertId === a.id));
 
   return (
     <div data-testid="alert-detail">
@@ -231,7 +234,7 @@ export const AlertDetailView: React.FC<{ id: string }> = ({ id }) => {
                     <button type="button" onClick={() => openWorkView({ kind: 'task', id: t.id })}
                       className="w-full text-start flex items-center justify-between gap-2 p-3 rounded-xl border border-slate-100 hover:bg-slate-50">
                       <span className="text-sm text-slate-800">{t.title}</span>
-                      <Badge className={TASK_STATUS_CLASS[t.status]}>{TASK_STATUS_LABEL[t.status]}</Badge>
+                      <Badge className={unfinishedTask(t.status) ? 'bg-sky-100 text-sky-800 border-sky-200' : 'bg-emerald-100 text-emerald-800 border-emerald-200'}>{t.status==='completed'||t.status==='done'?'تکمیل‌شده':t.status==='canceled'?'لغوشده':'در جریان'}</Badge>
                     </button>
                   </li>
                 ))}

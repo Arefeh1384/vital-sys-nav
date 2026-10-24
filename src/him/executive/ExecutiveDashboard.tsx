@@ -10,7 +10,8 @@ const button='rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font
 const nf=(n:number|null,unit='')=>n===null?'—':`${n.toLocaleString('fa-IR')}${unit==='٪'?'٪':''}`;
 export function ExecutiveDashboard(){
  const {scope,alerts,tasks,openWorkView,setIsScopeModalOpen,setActiveModule}=useApp();
- const [period,setPeriod]=useState<Period>('day');
+ const [period,setPeriod]=useState<Period>(()=>{try{const p=sessionStorage.getItem('him.executive.period');return p==='week'||p==='month'?p:'day'}catch{return 'day'}});
+ useEffect(()=>{try{sessionStorage.setItem('him.executive.period',period)}catch{}},[period]);
  const [revision,setRevision]=useState(0);
  const [selected,setSelected]=useState<string|null>(null);
  const [evidence,setEvidence]=useState<MetricEvidence|null>(null);
@@ -20,10 +21,10 @@ export function ExecutiveDashboard(){
  const metric=snapshot.metrics.find(m=>m.key===selected);
  const go=(key:DashboardMetric['key'])=>{
   if(key==='occupancy')return setActiveModule('OPS');
-  if(key==='alerts'||key==='criticalAlerts')return openWorkView({kind:'alerts'});
+  if(key==='alerts'||key==='criticalAlerts')return openWorkView({kind:'alerts',filter:'active'});
   if(key==='quality')return openWorkView({kind:'stewardship-issues'});
   if(key==='supply')return openWorkView({kind:'supply'});
-  return openWorkView({kind:'tasks'});
+  return openWorkView({kind:'tasks',filter:'unfinished'});
  };
  return <div dir="rtl" className="space-y-5" data-testid="executive-dashboard">
   <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm space-y-3">

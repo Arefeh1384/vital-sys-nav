@@ -21,6 +21,7 @@ import {
   History
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import {canonicalTasks,unfinishedTask} from '../executive/taskProjection';
 import { MODULES_CONFIG } from '../data/mockData';
 import { ModuleKey } from '../types';
 import { Button } from '@/components/ui/button';
@@ -197,7 +198,7 @@ export const Sidebar: React.FC = () => {
             )}
             <nav className="space-y-1">
               {([
-                { kind: 'tasks', label: 'فهرست وظایف', Icon: ClipboardList, count: tasks.filter(t => t.siteId === scope.siteId && t.status !== 'done').length },
+                { kind: 'tasks', label: 'فهرست وظایف', Icon: ClipboardList, count: canonicalTasks(tasks).filter(t => t.siteId === scope.siteId && unfinishedTask(t.status)).length },
                 { kind: 'alerts', label: 'فهرست هشدارها', Icon: Bell, count: alerts.filter(a => a.siteId === scope.siteId && a.status === 'new').length },
               ] as const).map(({ kind, label, Icon, count }) => {
                 const sel = workView?.kind === kind || workView?.kind === kind.slice(0, -1);
