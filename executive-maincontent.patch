@@ -1,0 +1,16 @@
+--- a/src/him/components/MainContent.tsx
++++ b/src/him/components/MainContent.tsx
+@@ -1,3 +1,4 @@
++import {ExecutiveDashboard} from '../executive/ExecutiveDashboard';
+ import {StewardshipViews} from '../stewardship/StewardshipViews';
+ import {Phase6View} from '../phase6/Phase6';
+ import {SupplyViews} from '../supply/SupplyViews';
+@@ -124,7 +125,7 @@
+         return renderDatContent();
+       case 'EXE':
+       default:
+-        return renderExeContent();
++        return <ExecutiveDashboard/>;
+     }
+   };
+ 
