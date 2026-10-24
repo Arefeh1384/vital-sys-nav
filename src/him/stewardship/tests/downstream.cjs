@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict'),fs=require('fs'),path=require('path'),vm=require('vm');
+const ts=require('/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript');
+const code=ts.transpileModule(fs.readFileSync(path.join(__dirname,'../store.ts'),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
+const storage=new Map();const sites=[{id:'taleghani',orgId:'org',code:'SITE-TALEGHANI',name:'Taleghani'},{id:'imam',orgId:'org',code:'SITE-IMAM-HOSSEIN',name:'Imam'}];const m={exports:{}};
+vm.runInNewContext(code,{module:m,exports:m.exports,require:()=>({SITES_DATA:sites}),localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},Date,Math,Error});const s=m.exports;
+const i=s.listQualityIssues().find(q=>q.id==='DQ-TALEGHANI-003');assert.ok(i);
+s.triageIssue(i.id,'Steward','2026-10-30','triage','Steward');s.transitionIssue(i.id,'in_progress','Steward','start');s.saveInvestigation(i.id,'finding','cause','Steward');
+s.createResolutionProposal(i.id,{id:'P1',type:'platform_mapping_change',detail:'from 1 pack = 10 tablets to 1 pack = 20 tablets',evidence:'',sourceOwner:'Source',sourceRef:'T-1',scope:i.siteId,controls:'',expiry:'',oldVersion:'v2',newVersion:'v3',review:'pending'},'Steward');
+const before=JSON.stringify(s.getQualityIssue(i.id).observations);
+s.previewResolutionImpact(i.id,'Steward');let p=s.getQualityIssue(i.id).resolution.preview;
+assert.equal(p.mapping.before,20);assert.equal(p.mapping.after,40);assert.equal(p.outputs.length,4);assert.equal(p.outputs.find(x=>x.kind==='metric').proposed,'40 tablets');assert.equal(p.outputs.find(x=>x.kind==='forecast').proposed,null);assert.equal(p.outputs.find(x=>x.kind==='draft_recommendation').proposed,'40 tablets');assert.equal(p.outputs.find(x=>x.kind==='pending_action').state,'known');assert.equal(JSON.stringify(s.getQualityIssue(i.id).observations),before);console.log('PASS central typed impacts; 2 packs -> 20/40, unknown forecast not fabricated, history unchanged');
+const persisted=s.getQualityIssue(i.id).resolution.preview;assert.equal(persisted.signature,s.proposalSignature(s.getQualityIssue(i.id).resolution));console.log('PASS preview persists in saved mock state');
+s.editResolutionProposal(i.id,{detail:'from 1 pack = 10 tablets to 1 pack = 30 tablets'},'Steward');assert.equal(s.getQualityIssue(i.id).resolution.preview,undefined);assert.throws(()=>s.reviewResolution(i.id,true,'Independent','Steward'));console.log('PASS editing invalidates preview and blocks approval');
+s.previewResolutionImpact(i.id,'Steward');p=s.getQualityIssue(i.id).resolution.preview;assert.equal(p.mapping.after,60);assert.equal(p.outputs.find(x=>x.kind==='metric').proposed,'60 tablets');console.log('PASS new preview 2 packs -> 60');
+assert.equal(s.getImpactOutput(i.id,'MET-TAL-UNIT-001','imam'),undefined);assert.ok(s.getImpactOutput(i.id,'MET-TAL-UNIT-001','taleghani'));console.log('PASS scoped impact details');
+const other=s.listQualityIssues().find(x=>x.id==='DQ-IMAM-HOSSEIN-001');const crit=s.getQualityDashboardMetrics(s.listQualityIssues()).critical;s.mutateQualityIssue(other.id,'x','test','closed',{state:'closed'});assert.equal(s.getQualityDashboardMetrics(s.listQualityIssues()).critical,crit-1);console.log('PASS critical counter regression');

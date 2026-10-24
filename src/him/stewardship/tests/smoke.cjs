@@ -1,0 +1,24 @@
+// Dependency-free runtime smoke test for the central mock adapter; runs with Node.js.
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const ts=require('/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript');
+const src=fs.readFileSync(require('path').join(__dirname,'../store.ts'),'utf8');
+const out=ts.transpileModule(src,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
+const sites=[1,2].map(n=>({id:`site-${n}`,orgId:'org',code:`SITE-${n}`,name:`Site ${n}`}));
+const data=new Map();const localStorage={getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v)};
+const mod={exports:{}};vm.runInNewContext(out,{module:mod,exports:mod.exports,require:()=>({SITES_DATA:sites}),localStorage,Date,Math,Error,console});
+const s=mod.exports;const check=(cond,label)=>{assert.ok(cond,label);console.log('PASS',label)};
+const initial=s.listQualityIssues();check(initial.length===12,'six distinct synthetic issues per site');
+const id=initial[0].id;const owner='Steward';
+s.triageIssue(id,owner,'2026-10-30','rule scoped',owner);check(s.getQualityIssue(id).state==='triaged','triage state');
+s.transitionIssue(id,'in_progress',owner,'start');s.saveInvestigation(id,'source mismatch','suspected mapping',owner);
+const p={id:'proposal1',type:'platform_mapping_change',detail:'mapping',evidence:'sample',sourceOwner:'Source',sourceRef:'TICKET',scope:initial[0].siteId,controls:'',expiry:'',oldVersion:'v2',newVersion:'v3',review:'pending'};
+s.createResolutionProposal(id,p,owner);check(s.getQualityIssue(id).state==='resolution_proposed','proposal state');
+let blocked=false;try{s.reviewResolution(id,true,'Reviewer',owner)}catch{blocked=true}check(blocked,'approval blocked without impact preview');
+s.previewResolutionImpact(id,owner);s.reviewResolution(id,true,'Reviewer',owner);s.recordImplementation(id,'TEST-EVIDENCE',owner);s.requestVerification(id,owner);
+blocked=false;try{s.finishVerification(id,'passed',owner,owner)}catch{blocked=true}check(blocked,'independent verifier enforced');
+s.finishVerification(id,'passed','Independent Verifier',owner);s.transitionIssue(id,'resolved',owner,'passed');s.closeIssue(id,'verified',owner);check(s.getQualityIssue(id).state==='closed','verified closure');
+s.reopenIssue(id,'repeat failure',owner);check(s.getQualityIssue(id).state==='reopened'&&s.getQualityIssue(id).observations.length===2,'recurrence keeps identity and observations');
+const count=s.getQualityIssue(id).history.length;check(count>=10,'history retained');
+blocked=false;try{s.bulkAssignIssues([id,'UNKNOWN'],'Other','reason','2026-11-01',['site-1'],owner)}catch{blocked=true}check(blocked&&s.getQualityIssue(id).owner===owner,'atomic bulk assignment validation');
+check(s.getQualityDashboardMetrics(initial).active===12,'dashboard metric computed from issues');
+check(s.QUALITY_HEALTH.passed/s.QUALITY_HEALTH.executed===7/9,'pass rate correct denominator');

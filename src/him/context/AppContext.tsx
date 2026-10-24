@@ -5,7 +5,7 @@ import { TASKS_DATA, ALERTS_DATA, type WorkTask, type WorkAlert, type TaskStatus
 import { ACTIONS_DATA, applyActionCommand, type ActionProposal, type ActionCommand } from '../data/actionData';
 import { useCopilotState } from './useCopilotState';
 
-export type WorkView = { kind: 'copilot'; answerId?: string } | { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' } | {kind:'memos'} | {kind:'memo-new'} | {kind:'memo';id:string} | {kind:'memo-edit';id:string} | {kind:'supply'} | {kind:'supply-risk';id:string} | {kind:'supply-proposals'} | {kind:'supply-proposal';id:string} | {kind:'supply-cases'} | {kind:'supply-case';id:string} | {kind:'supply-new';riskId:string;type:'replenishment'|'transfer';proposalId?:string};
+export type WorkView = { kind: 'copilot'; answerId?: string } | { kind: 'tasks' } | { kind: 'task'; id: string } | { kind: 'alerts' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' } | {kind:'memos'} | {kind:'memo-new'} | {kind:'memo';id:string} | {kind:'memo-edit';id:string} | {kind:'stewardship'} | {kind:'stewardship-issues'} | {kind:'stewardship-issue';id:string} | {kind:'supply'} | {kind:'supply-risk';id:string} | {kind:'supply-proposals'} | {kind:'supply-proposal';id:string} | {kind:'supply-cases'} | {kind:'supply-case';id:string} | {kind:'supply-new';riskId:string;type:'replenishment'|'transfer';proposalId?:string};
 
 /** Browser path that mirrors the visible work view, so refresh and direct links land on the same page. */
 export function pathForWorkView(v: WorkView | null): string {
@@ -15,6 +15,9 @@ export function pathForWorkView(v: WorkView | null): string {
   if(v.kind==='memo-new')return '/executive/memos/new';
   if(v.kind==='memo')return `/executive/memos/${encodeURIComponent(v.id)}`;
   if(v.kind==='memo-edit')return `/executive/memos/${encodeURIComponent(v.id)}/edit`;
+  if(v.kind==='stewardship')return '/knowledge/stewardship';
+  if(v.kind==='stewardship-issues')return '/knowledge/stewardship/issues';
+  if(v.kind==='stewardship-issue')return `/knowledge/stewardship/issues/${encodeURIComponent(v.id)}`;
   if(v.kind==='supply')return '/supply';
   if(v.kind==='supply-risk')return `/supply/risks/${encodeURIComponent(v.id)}`;
   if(v.kind==='supply-proposals')return '/supply/recommendations';
@@ -38,6 +41,9 @@ export function pathForWorkView(v: WorkView | null): string {
 export function workViewForPath(path: string): WorkView | null {
   const p = path.replace(/\/+$/, '') || '/';
   if (p === '/copilot') return { kind: 'copilot', answerId: typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('answer') || undefined : undefined };
+  if(p==='/knowledge/stewardship')return {kind:'stewardship'};
+  if(p==='/knowledge/stewardship/issues')return {kind:'stewardship-issues'};
+  const qualityIssue=/^\/knowledge\/stewardship\/issues\/([^/]+)$/.exec(p);if(qualityIssue)return {kind:'stewardship-issue',id:decodeURIComponent(qualityIssue[1]!)};
   if(p==='/supply')return {kind:'supply'};
   if(p==='/supply/recommendations')return {kind:'supply-proposals'};
   if(p==='/supply/cases')return {kind:'supply-cases'};

@@ -1,0 +1,14 @@
+const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
+const ts=require('/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript');
+const path=require('path');
+const file=fs.readFileSync(path.join(__dirname,'../store.ts'),'utf8');
+const js=ts.transpileModule(file,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
+const storage=new Map(),sites=[{id:'site-1',orgId:'org',code:'SITE-TALEGHANI',name:'Taleghani'},{id:'site-2',orgId:'org',code:'SITE-IMAM-HOSSEIN',name:'Imam Hossein'}];
+const mod={exports:{}};vm.runInNewContext(js,{module:mod,exports:mod.exports,require:()=>({SITES_DATA:sites}),localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},Date,Math,Error});const s=mod.exports;
+function check(name,cb){cb();console.log('PASS',name)}
+function lifecycle(id,reviewer='Other'){const actor='Investigator';s.triageIssue(id,actor,'2026-10-30','notes',actor);s.transitionIssue(id,'in_progress',actor,'start');s.saveInvestigation(id,'finding','cause',actor);s.createResolutionProposal(id,{id:'PR-'+id,type:'source_correction',detail:'test',evidence:'ev',sourceOwner:'Owner',sourceRef:'T',scope:'site-1',controls:'',expiry:'',oldVersion:'1',newVersion:'2',review:'pending'},actor);return actor}
+check('critical dashboard population matches one critical item',()=>{assert.equal(s.getQualityDashboardMetrics(s.listQualityIssues().filter(i=>i.siteId==='site-1')).critical,1)});
+check('independent reviewer cannot be investigator',()=>{const id=s.listQualityIssues()[0].id;const actor=lifecycle(id);assert.throws(()=>s.reviewResolution(id,true,actor,actor));assert.equal(s.getQualityIssue(id).state,'resolution_proposed')});
+check('independent verifier cannot be investigator',()=>{const id=s.listQualityIssues()[0].id;s.reviewResolution(id,true,'Other','Investigator');s.recordImplementation(id,'EVIDENCE','Investigator');s.requestVerification(id,'Investigator');assert.throws(()=>s.finishVerification(id,'passed','Investigator','Investigator'));assert.notEqual(s.getQualityIssue(id).verification.status,'passed')});
+check('independent verifier can pass and recurrence updates lastSeen',()=>{const id=s.listQualityIssues()[0].id;s.finishVerification(id,'passed','Verifier','Investigator');s.transitionIssue(id,'resolved','Investigator','verified');s.closeIssue(id,'closed','Investigator');const before=s.getQualityIssue(id);s.reopenIssue(id,'recurrence','Investigator');const after=s.getQualityIssue(id);assert.equal(after.firstSeen,before.firstSeen);assert.equal(after.lastSeen,after.observations.at(-1).at);assert.equal(after.observations.length,2)});
+check('cross site records have distinct ids',()=>{const list=s.listQualityIssues();assert.equal(list.filter(i=>i.siteId==='site-1').length,6);assert.equal(list.filter(i=>i.siteId==='site-2').length,6)});

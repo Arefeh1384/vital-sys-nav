@@ -178,8 +178,9 @@ export const Sidebar: React.FC = () => {
                 { kind: 'copilot', label: 'کوپایلت', Icon: Bot },
                 { kind: 'memos', label: 'یادداشت‌های تصمیم', Icon: ClipboardList },
                 { kind: 'supply', label: 'زنجیره تأمین و کمبود', Icon: PackageOpen },
+                { kind: 'stewardship', label: 'مدیریت کیفیت داده', Icon: Database },
               ] as const).map(({ kind, label, Icon }) => {
-                const selected = workView?.kind === kind || (kind === 'proposals' && workView?.kind === 'proposal') || (kind === 'supply' && typeof workView?.kind === 'string' && workView.kind.startsWith('supply'));
+                const selected = workView?.kind === kind || (kind === 'proposals' && workView?.kind === 'proposal') || (kind === 'supply' && typeof workView?.kind === 'string' && workView.kind.startsWith('supply')) || (kind === 'stewardship' && typeof workView?.kind === 'string' && workView.kind.startsWith('stewardship'));
                 return <Button key={kind} variant="ghost" data-testid={`sidebar-item-${kind}`}
                   title={label} aria-label={label} aria-pressed={selected}
                   onClick={() => { openWorkView({ kind }); if (window.innerWidth < 768) setSidebarCollapsed(true); }}

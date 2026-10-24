@@ -1,3 +1,4 @@
+import {StewardshipViews} from '../stewardship/StewardshipViews';
 import {Phase6View} from '../phase6/Phase6';
 import {SupplyViews} from '../supply/SupplyViews';
 import {demoStore} from '../phase6/store';
@@ -83,6 +84,7 @@ export const MainContent: React.FC = () => {
           {workView.kind === 'proposal' && <ActionProposalDetailView id={workView.id} />}
           {workView.kind === 'journal' && <ActionJournalView />}
           {workView.kind === 'copilot' && <CopilotView />}
+          {(['stewardship','stewardship-issues','stewardship-issue'] as const).includes(workView.kind as 'stewardship') && <StewardshipViews view={workView as Extract<typeof workView,{kind:'stewardship'|'stewardship-issues'|'stewardship-issue'}>} />}
           {(['supply', 'supply-risk', 'supply-proposals', 'supply-proposal', 'supply-cases', 'supply-case', 'supply-new'] as const).includes(workView.kind as 'supply') && (
             <SupplyViews
               key={workView.kind === 'supply-new' ? `${workView.kind}:${workView.riskId}:${workView.type}:${workView.proposalId ?? ''}` : workView.kind}
