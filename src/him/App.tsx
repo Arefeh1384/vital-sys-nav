@@ -35,7 +35,7 @@ const AppShell: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans antialiased" dir={lang==='en'?'ltr':'rtl'}>
+    <div className="min-h-screen w-full min-w-0 max-w-full overflow-x-clip flex flex-col bg-slate-50 text-slate-900 font-sans antialiased" dir={lang==='en'?'ltr':'rtl'}>
       {/* Toast Notification Bar */}
       {notificationMessage && (
         <div className="fixed bottom-5 right-5 z-50 max-w-md bg-slate-900 text-white text-xs px-4 py-3 rounded-xl shadow-xl flex items-center justify-between gap-3 border border-slate-700 animate-in slide-in-from-bottom-3 duration-200">
@@ -73,7 +73,7 @@ const AppShell: React.FC = () => {
 
       {lang==='en' && <p role="status" className="border-b bg-amber-50 px-4 py-1 text-xs text-amber-900">English LTR shell enabled. Some domain-specific content is not translated yet; this is a localization preview, not completed English acceptance.</p>}
       {/* Shell Layout: Sidebar + Main Content Area */}
-      <div className="flex-1 flex overflow-hidden relative min-w-0 w-full">
+      <div className="flex-1 flex overflow-hidden relative min-w-0 w-full max-w-full">
         <Sidebar />
         <MainContent />
       </div>

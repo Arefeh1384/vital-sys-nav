@@ -818,7 +818,7 @@ export const MainContent: React.FC = () => {
   );
 
   return (
-    <main className="flex-1 p-3.5 sm:p-6 md:p-8 overflow-y-auto space-y-5 min-w-0 w-full" id="main-content-viewport">
+    <main className="flex-1 p-3 sm:p-6 md:p-8 overflow-y-auto overflow-x-hidden space-y-5 min-w-0 w-full max-w-full" id="main-content-viewport">
       {/* Breadcrumb & Scope Header Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200">
         <div className="space-y-1 min-w-0">
