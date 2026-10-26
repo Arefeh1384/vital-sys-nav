@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { validTimeWindow, validMaintenanceReason, normalizeWeights } from './domainDraftRules';
+import {DEMO_AST_EVENTS,DEMO_AST_READINGS,inDateRange} from './assetSourceFixtures';
 
 /** Synthetic-only planning and request drafts: never grants permissions or dispatches source actions. */
 type Draft = { id: string; category: string; title: string; createdAt: string; values: Record<string,string>; assessment: string };
@@ -97,7 +98,8 @@ function Assets({save,entries}:{save:ReturnType<typeof useLocalDrafts>['save'];e
   </div>
   {historyFrom&&historyTo&&historyTo<historyFrom&&<p role="alert" className="text-rose-700 text-xs">پایان دوره قبل از شروع آن است.</p>}
   <Blocked>{tab===1?'رویدادهای ثبت‌شده در منبع و وضعیت همگام‌سازی تأیید نشده‌اند. سابقه‌ای جعل نمی‌شود.':'خوانش خام، واحد UCUM، کیفیت سنسور و زمان دریافت موجود نیست. روند و هشدار بدون داده معتبر محاسبه نمی‌شود.'}</Blocked>
-  <p className="rounded-lg bg-slate-50 p-3 text-sm">هیچ رخداد یا خوانش معتبر برای این فیلترها ثبت نشده است.</p>
+  {tab===1?(()=>{const matched=DEMO_AST_EVENTS.filter(e=>e.assetId===(historyAsset||selectedAsset)&&(!telemetryUnit||e.kind===telemetryUnit)&&inDateRange(e.eventAt,historyFrom,historyTo));return matched.length?<div className="space-y-2"><h3 className="font-semibold text-sm">رخدادهای کاملاً مصنوعی برای کنترل نمای UI</h3>{matched.map(e=><details key={e.eventAt+e.kind} className="rounded border p-3 text-xs"><summary>{e.kind} · {e.status} · {e.eventAt}</summary><p>منبع نمایشی: {e.source} · نسخه: {e.version}</p><p>زمان رخداد: {e.eventAt} · زمان دریافت: {e.ingestedAt}</p><p>{e.detail}</p></details>)}</div>:<p className="rounded-lg bg-slate-50 p-3 text-sm">برای شناسه و بازه انتخاب‌شده رخداد مصنوعی موجود نیست. رخداد واقعی هم متصل نشده است.</p>})():(()=>{const matched=DEMO_AST_READINGS.filter(e=>e.assetId===(historyAsset||selectedAsset)&&(!telemetryMetric||e.metric===telemetryMetric)&&inDateRange(e.sourceAt,historyFrom,historyTo));return matched.length?<div className="space-y-2"><h3 className="font-semibold text-sm">خوانش‌های صرفاً نمایشی (بدون تشخیص ناهنجاری)</h3><div className="overflow-x-auto"><table className="min-w-[570px] w-full text-xs text-right"><thead><tr className="border-b">{['سنجش','مقدار','واحد UCUM','زمان منبع','زمان دریافت','کیفیت'].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead><tbody>{matched.map(e=><tr key={e.metric+e.sourceAt} className="border-b"><td className="p-2">{e.metric}</td><td className="p-2">{e.value}</td><td className="p-2">{e.unit}</td><td className="p-2">{e.sourceAt}</td><td className="p-2">{e.ingestedAt}</td><td className="p-2">{e.quality}</td></tr>)}</tbody></table></div></div>:<p className="rounded-lg bg-slate-50 p-3 text-sm">برای فیلتر فعلی خوانش ساختگی تعریف نشده است؛ داده معتبر واقعی هم وجود ندارد.</p>})()}
+
  </section>:<><h2 className="font-bold">{tabs[tab]}</h2><Blocked>این بخش به داده مرجع، مجوز و قرارداد مربوط به CMMS نیاز دارد و هنوز گردش‌کار کاملش پیاده نشده است. داده خیالی به‌عنوان تاریخچه/شاهد تجهیزات نمایش داده نمی‌شود.</Blocked></>}</Panel></>;
 }
 

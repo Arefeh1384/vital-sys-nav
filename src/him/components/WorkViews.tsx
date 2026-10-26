@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Bell, ClipboardList, Search, CheckCircle2, Clock, User as UserIcon, Link2, FileCheck2, Inbox } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { MODULES_CONFIG } from '../data/mockData';
+import { MODULES_CONFIG, DEMO_USERS, SITES_DATA } from '../data/mockData';
 import {
   PRIORITY_CLASS, PRIORITY_LABEL, TASK_STATUS_LABEL, ALERT_STATUS_LABEL,
   type TaskStatus, type AlertStatus, type Priority,
@@ -14,6 +14,13 @@ import {canonicalTasks,unfinishedTask} from '../executive/taskProjection';
 import { AlertOperations } from './ControlWorkflows';
 
 const moduleTitle = (k: string) => MODULES_CONFIG.find(m => m.key === k)?.shortTitle ?? k;
+/** Readable identity for fixture tasks; never presents an unknown ID as an authenticated person. */
+export const displayTaskOwner = (owner: string, siteId: string) => {
+  if (!owner) return 'بدون مسئول';
+  const canonicalSiteId = SITES_DATA.find(s => s.id === siteId || s.code === siteId)?.id;
+  const person = DEMO_USERS.find(u => u.id === owner && canonicalSiteId && u.permittedSiteIds.includes(canonicalSiteId));
+  return person?.name ?? (owner.startsWith('usr-') ? `شناسه ناشناخته (${owner})` : owner);
+};
 
 const Badge: React.FC<{ className: string; children: React.ReactNode }> = ({ className, children }) => (
   <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-semibold whitespace-nowrap ${className}`}>{children}</span>
@@ -81,7 +88,7 @@ export const TaskListView: React.FC = () => {
  const labels={open:'باز',assigned:'تخصیص‌یافته',in_progress:'در حال انجام',blocked:'مسدود',submitted_for_review:'در انتظار بررسی',completed:'تکمیل‌شده',canceled:'لغوشده'};
  return <div data-testid="task-list"><Header icon={<ClipboardList className="w-5 h-5"/>} title="فهرست وظایف" subtitle={`وظایف عملیاتی «${scope.siteName}» · داده نمایشی`}/>
  <div className="flex flex-wrap gap-3 mb-4"><select aria-label="فیلتر وضعیت" className="border rounded-lg p-2 text-sm" value={status} onChange={e=>setStatus(e.target.value)}><option value="all">همه وضعیت‌ها</option><option value="unfinished">انجام‌نشده</option>{Object.entries(labels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><SearchBox value={q} onChange={v=>{setQ(v);setPage(1)}}/><select aria-label="تعداد در صفحه" className="border rounded-lg p-2 text-sm" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value) as 25|50|100);setPage(1)}}><option value={25}>۲۵ در صفحه</option><option value={50}>۵۰ در صفحه</option><option value={100}>۱۰۰ در صفحه</option></select><button type="button" className="border rounded-lg p-2 text-sm" onClick={()=>{setQ('');setStatus('all');setPage(1)}}>پاک کردن فیلترها</button></div><p className="mb-2 text-xs text-slate-500">{rows.length} وظیفه · جست‌وجو: {q||'همه'} · وضعیت: {status==='all'?'همه':status}</p>
- {rows.length===0?<EmptyState title="وظیفه‌ای یافت نشد"/>:<div className="bg-white border rounded-xl divide-y">{rows.slice((page-1)*pageSize,page*pageSize).map(t=><button key={t.id} className="w-full text-right flex justify-between p-4 hover:bg-slate-50 gap-3" onClick={()=>openWorkView({kind:'task',id:t.id})}><span><b>{t.title}</b><span className="block text-xs text-slate-500">{t.id} · {t.owner||t.queue||'بدون مسئول'}</span></span><span className="text-sm">{labels[t.status]}</span></button>)}</div>}{rows.length>pageSize&&<div className="mt-3 flex items-center gap-3 text-sm"><button className="border rounded p-2" disabled={page===1} onClick={()=>setPage(x=>x-1)}>قبلی</button><span>صفحه {page} از {Math.ceil(rows.length/pageSize)}</span><button className="border rounded p-2" disabled={page*pageSize>=rows.length} onClick={()=>setPage(x=>x+1)}>بعدی</button></div>}
+ {rows.length===0?<EmptyState title="وظیفه‌ای یافت نشد"/>:<div className="bg-white border rounded-xl divide-y">{rows.slice((page-1)*pageSize,page*pageSize).map(t=><button key={t.id} className="w-full text-right flex justify-between p-4 hover:bg-slate-50 gap-3" onClick={()=>openWorkView({kind:'task',id:t.id})}><span><b>{t.title}</b><span className="block text-xs text-slate-500">{t.id} · {t.owner?displayTaskOwner(t.owner,t.siteId):t.queue||'بدون مسئول'}</span></span><span className="text-sm">{labels[t.status]}</span></button>)}</div>}{rows.length>pageSize&&<div className="mt-3 flex items-center gap-3 text-sm"><button className="border rounded p-2" disabled={page===1} onClick={()=>setPage(x=>x-1)}>قبلی</button><span>صفحه {page} از {Math.ceil(rows.length/pageSize)}</span><button className="border rounded p-2" disabled={page*pageSize>=rows.length} onClick={()=>setPage(x=>x+1)}>بعدی</button></div>}
  </div>;
 };
 
@@ -133,7 +140,7 @@ export const TaskDetailView: React.FC<{ id: string }> = ({ id }) => {
           <div className="bg-white border border-slate-200 rounded-2xl p-5 grid gap-3">
             <Field label="وضعیت"><Badge className={TASK_STATUS_CLASS[t.status]}>{TASK_STATUS_LABEL[t.status]}</Badge></Field>
             <Field label="اولویت"><Badge className={PRIORITY_CLASS[t.priority]}>{PRIORITY_LABEL[t.priority]}</Badge></Field>
-            <Field label="مسئول"><span className="inline-flex items-center gap-1"><UserIcon className="w-4 h-4 text-slate-400" />{t.assignee}</span></Field>
+            <Field label="مسئول"><span className="inline-flex items-center gap-1"><UserIcon className="w-4 h-4 text-slate-400" />{displayTaskOwner(demoStore.tasks().find(o=>o.id===t.id)?.owner||t.assignee,t.siteId)}</span></Field>
             <Field label="سررسید">{t.dueDate}</Field>
             {alert && (
               <Field label="هشدار مرتبط">
@@ -256,6 +263,7 @@ export const AlertDetailView: React.FC<{ id: string }> = ({ id }) => {
               </ul>
             )}
           </div>
+          <button type="button" className="rounded-lg border border-teal-300 bg-white p-3 text-sm text-teal-800 w-full text-right" onClick={()=>openWorkView({kind:'spec-page',path:'/executive/investigations'})}>بازکردن میزکار مستقل تحقیق ناهنجاری و شواهد (EXE-05)</button>
           <div className="bg-white border rounded-xl p-4 space-y-2"><h2 className="font-bold">خط زمانی هشدار</h2><p className="text-xs">ثبت اولیه: {a.raisedAt}</p>{(a.activity||[]).map((entry,i)=><p key={i} className="text-xs border-r-2 pr-2">{entry.text} · {entry.at} · عامل: {entry.actorName || 'نامشخص (ثبت قدیمی)'}{entry.actorId && <span dir="ltr"> ({entry.actorId})</span>}</p>)}{a.resolution&&<p className="text-xs">شاهد رفع: {a.resolution.comment}</p>}</div>
           <section className="rounded-xl border bg-white p-4 text-sm space-y-1" data-testid="anomaly-provenance"><h2 className="font-bold">زمینه تشخیص ناهنجاری · EXE-004</h2><p>نسخه آشکارساز: ثبت نشده / نیازمند تأیید</p><p>خط پایه و بازه مورد انتظار: ثبت نشده</p><p>بازه مقایسه و روند تاریخی: ثبت نشده</p><p>کیفیت داده و تازگی منبع بالادستی: نامشخص</p><p className="text-amber-800">آستانه هشدار جایگزین خط پایه آماری، مقایسه تاریخی یا مدل مصوب نیست.</p></section><EvidencePackage items={alertEvidence(a)} code={a.code} /><AlertOperations alert={a}/>
         </div>
@@ -309,7 +317,15 @@ export const EvidencePackage: React.FC<{ items: EvidenceItem[]; code: string }> 
               {open === e.id && (
                 <div className="px-3 pb-3 text-xs text-slate-600 leading-6 space-y-1">
                   <p>{e.detail}</p>
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-900" data-testid="alert-evidence-provenance"><p>نسخه منبع/قرارداد: در fixture گزارش نشده</p><p>نسخه تعریف متریک و قاعده: در fixture گزارش نشده</p><p>مرز Snapshot و زمان cutoff: تأیید نشده (زمان ثبت شاهد جایگزین cutoff نیست)</p><p>فرض‌های محاسبه: ثبت نشده</p><p>محدودیت‌ها: منشأ و کامل‌بودن داده احراز نشده؛ فقط برای نمایش فرانت‌اند</p></div>
+                  <dl className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-900 grid grid-cols-1 gap-1" data-testid="alert-evidence-provenance">
+                    {([
+                      ['نسخه منبع/قرارداد',e.sourceVersion],['نسخه تعریف متریک',e.metricVersion],
+                      ['نسخه قاعده هشدار',e.ruleVersion],['مرز Snapshot / cutoff',e.snapshotCutoff],
+                      ['زمان رخداد منبع',e.sourceEventAt],['زمان ورود داده',e.ingestedAt],
+                      ['فرضیات محاسبه',e.assumptions],['محدودیت‌ها',e.limitations],
+                    ] as const).map(([label,value])=><div key={label} className="flex flex-wrap gap-1"><dt className="font-semibold">{label}:</dt><dd>{value||'در داده مرجع گزارش نشده؛ قابل استنتاج از زمان مشاهده نیست'}</dd></div>)}
+                    <p className="text-xs">اثر انگشت محلی صرفاً برای تشخیص تغییر محتوای fixture است؛ امضا، اثبات تمامیت یا پیوند به لاگ معتبر نیست.</p>
+                  </dl>
                   <p className="text-slate-400">اثر انگشت: <bdi dir="ltr" className="font-mono">{e.hash}</bdi></p>
                 </div>
               )}

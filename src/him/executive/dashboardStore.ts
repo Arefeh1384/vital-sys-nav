@@ -15,6 +15,22 @@ const OCCUPANCY_FIXTURE:Record<string,{occupied:number;staffed:number;snapshot:s
  [SITES_DATA[1]?.id||'none']:{occupied:85,staffed:110,snapshot:'SYN-OPS-IMAM-20261023-v1'},
  [SITES_DATA[2]?.id||'none']:{occupied:0,staffed:0,snapshot:'SYN-OPS-SHO-EMPTY-v1'},
 };
+/** Comparison is explicitly restricted to authorized synthetic fixtures; not approved cross-site analytics. */
+export function compareOccupancyFixtures(siteIds:string[],period:Period){
+ // Resolve short site codes to canonical UUIDs; callers must still supply their permitted site list.
+ // Unknown identifiers stay excluded, and aliases for one site must not count twice.
+ const allowed=[...new Set(siteIds.map(value=>SITES_DATA.find(s=>s.id===value||s.code===value)?.id??value))];
+ const rows=allowed.map(siteId=>{
+   const row=OCCUPANCY_FIXTURE[siteId];
+   const site=SITES_DATA.find(x=>x.id===siteId);
+   const reason=period!=='day'?'داده هم‌دوره برای ۷ یا ۳۰ روز کامل در فیکسچر موجود نیست':!row?'Snapshot معتبر برای این سایت وجود ندارد':row.staffed<=0?'مخرج صفر؛ قابل مقایسه نیست':null;
+   return {siteId,name:site?.name||siteId,occupied:row?.occupied??null,staffed:row?.staffed??null,value:row&&row.staffed>0?calculateOccupancy(row.occupied,row.staffed):null,reason,included:reason===null,snapshot:row?.snapshot||null};
+ });
+ const included=rows.filter(x=>x.included);
+ const totalOccupied=included.reduce((v,x)=>v+(x.occupied||0),0);
+ const totalStaffed=included.reduce((v,x)=>v+(x.staffed||0),0);
+ return {rows,weightedFixture:totalStaffed>0?calculateOccupancy(totalOccupied,totalStaffed):null,includedCount:included.length,excludedCount:rows.length-included.length,definition:'available_staffed_bed_occupancy@1',cutoff:'2026-10-23T23:59:59+03:30'};
+}
 const activeIssue=(state:string)=>!['closed','resolved'].includes(state);
 const activeAlert=(a:WorkAlert)=>a.status!=='resolved';
 export function calculateOccupancy(n:number,d:number){return d===0?null:Math.round(n/d*10000)/100;}

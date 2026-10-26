@@ -1,3 +1,4 @@
+import {InvestigationWorkspace} from './InvestigationWorkspace';
 import { SpecializedWorkspace } from './SpecializedWorkspaces';
 import {ConnectorWorkspace} from './ConnectorWorkspace';
 import {AuditWorkspace, NotificationPolicyWorkspace} from './ControlWorkflows';
@@ -12,6 +13,7 @@ const SCREENS: Record<string,{title:string;intro:string;tabs:string[];warning:st
  '/settings/alert-rules':{title:'پیکربندی قواعد هشدار',intro:'پیش‌نویس رابط کاربری؛ فقط داده نمایشی',tabs:['فهرست قواعد', 'نسخه و دامنه', 'شرط و شدت', 'شواهد و تازگی', 'سرکوب و تشدید'],warning:'قواعد معتبر یا فعال نشده‌اند؛ فرم صرفاً پیش‌نویس محلی است.'},
  '/settings/source-actions':{title:'تنظیمات اقدامات سامانه منبع',intro:'پیش‌نویس رابط کاربری؛ فقط داده نمایشی',tabs:['فهرست مانیفست\u200cها', 'شبیه\u200cساز قرارداد', 'گواهی و مجوزها'],warning:'هیچ مانیفست عملیاتی گواهی نشده و امکان اجرای اقدام منبع وجود ندارد.'},
  '/audit':{title:'ممیزی و بررسی تمامیت',intro:'پیش‌نویس رابط کاربری؛ فقط داده نمایشی',tabs:['جستجوی محدود به دامنه', 'تمامیت و منشأ', 'بازبینی و خروجی'],warning:'دفتر ممیزی قابل‌اتکا و اثبات تمامیت متصل نشده؛ خروجی رسمی مجاز نیست.'},
+ '/data/contracts':{title:'قراردادهای نسخه‌دار داده',intro:'ثبت و بازبینی Schema و قواعد داده',tabs:['تعریف قرارداد','تغییر نسخه و بررسی','گیت‌ها و وضعیت'],warning:'قرارداد اجرایی متصل نشده و انتشار مسدود است.'},
  '/data/connectors':{title:'مدیریت کانکتورهای منبع',intro:'ثبت پیکربندی آزمایشی کانکتور',tabs:['کاتالوگ کانکتورها'],warning:'اتصال واقعی و گواهی قرارداد موجود نیست.'},
  '/data/datasets':{title:'کاتالوگ مجموعه‌داده‌ها',intro:'پیش‌نویس رابط کاربری؛ فقط داده نمایشی',tabs:['فهرست داده\u200cها', 'تعریف متریک', 'نسخه\u200cهای مصوب'],warning:'هیچ متریک اجرایی یا مجموعه‌داده واقعی تأیید نشده است.'},
  '/data/identity':{title:'همسان‌سازی هویت و Crosswalk',intro:'پیش‌نویس رابط کاربری؛ فقط داده نمایشی',tabs:['مبدأ و شناسه', 'نگاشت بازه\u200cدار', 'تعارض\u200cها'],warning:'نگاشت‌های هویت واقعی و بازه‌های اعتبار موجود نیستند.'},
@@ -45,6 +47,7 @@ export const specPaths = Object.keys(SCREENS);
 const STATE_KEY = 'him.spec-workspaces.demo.v2';
 export function SpecificationWorkspace({path,siteName}:{path:string;siteName:string}) {
  const {scope,user}=useApp();
+ if(path==='/executive/investigations')return <InvestigationWorkspace/>;
  if(path==='/audit')return <AuditWorkspace/>;
  if(path==='/settings/notification-policy')return <NotificationPolicyWorkspace/>;
  if(path==='/data/connectors')return <ConnectorWorkspace/>;

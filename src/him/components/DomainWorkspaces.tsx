@@ -18,6 +18,11 @@ const definitions:Record<string,Definition>={
   {name:'شواهد و برش داده',help:'ثبت نسخه منبع و محدودیت، بدون تأیید آمار.',fields:[f('brief','شناسه پیش‌نویس'),f('metric','متریک و نسخه'),f('cutoff','قطع داده','datetime-local'),f('evidence','ارجاع شواهد','textarea'),f('limitations','محدودیت‌ها','textarea')]},
   {name:'بازبینی',help:'ارسال برای بررسی نمایشی؛ هر نسخه باید شواهد و گیرندگان مجاز داشته باشد.',fields:[f('brief','شناسه پیش‌نویس'),f('editor','ویراستار'),f('reviewer','بازبین'),f('comment','نتیجه یا درخواست اصلاح','textarea')]},
   {name:'انتشار',help:'ارسال و زمان‌بندی واقعی در این نمونه غیرفعال است؛ درخواست مجوز انتشار ثبت می‌شود.',fields:[f('brief','شناسه پیش‌نویس'),f('recipients','گیرندگان مجاز پیشنهادی'),f('publication_cutoff','زمان مبنا','datetime-local'),f('reviewer','بازبین تأییدکننده'),f('reason','دلیل درخواست','textarea')]}]},
+ '/data/contracts':{title:'DAT-02 · ثبت و بازبینی قرارداد نسخه‌دار منبع',warning:'این فرم فقط درخواست قرارداد مصنوعی ایجاد می‌کند؛ قرارداد اجرایی، داده واقعی یا اعتماد به اتصال منبع برقرار نمی‌کند.',tabs:[
+  {name:'تعریف قرارداد',help:'محدوده، طرح نسخه‌دار، مرجع داده و قواعد کیفیت پیشنهادی؛ هیچ schema از سامانه منبع واکشی نشده است.',fields:[f('contract_id','شناسه قرارداد'),f('source','شناسه سامانه و کانکتور'),f('dataset','دامنه مجموعه‌داده'),f('schema_version','نسخه Schema'),f('owner','مالک منبع'),f('grain','دانه‌بندی داده'),f('timezone','منطقه زمانی','select',true,['Asia/Tehran','UTC']),f('required_fields','فیلدهای اجباری (با ویرگول)'),f('quality_rules','قواعد قرنطینه / کیفیت','textarea'),f('freshness_seconds','سقف تازگی به ثانیه','number'),f('effective_from','شروع اعتبار','date'),f('effective_to','پایان اعتبار','date')]},
+  {name:'تغییر نسخه و بررسی',help:'نسخه جانشین و بازبین مستقل؛ نسخه قبل پاک نمی‌شود و انتشار اجرایی غیرفعال است.',fields:[f('contract_id','شناسه قرارداد'),f('prior_version','نسخه مبدأ'),f('next_version','نسخه پیشنهادی'),f('change','تفاوت schema و قرارداد','textarea'),f('impact','اثر بر مصرف‌کنندگان پایین‌دست','textarea'),f('reviewer','شناسه بازبین مستقل')]},
+  {name:'گیت‌ها و وضعیت',help:'قراردادهای ثبت‌شده و نتیجه بازبینی داخلی فقط محلّی‌اند. کنترل‌های منبع، سازگاری عقب‌رو و IAM نامشخص‌اند.',fields:[]}
+ ]},
  '/data/datasets':{title:'مدیریت متریک و مجموعه‌داده · DAT-05',warning:'فرمول‌های ثبت‌شده اجرا یا منتشر نمی‌شوند. نسخه مصوب و مجموعه‌داده واقعی متصل نیستند.',tabs:[
  {name:'فهرست مجموعه‌داده‌ها',help:'موجودی مرجع مجموعه‌داده‌ها دریافت نشده؛ فقط درخواست بررسی داده نگهداری می‌شود.',fields:[f('dataset','شناسه مجموعه‌داده'),f('owner','مسئول داده'),f('classification','طبقه‌بندی','select',true,['synthetic','internal','restricted']),f('freshness','حد تازگی (ثانیه)','number')]},
  {name:'تعریف متریک',help:'تعریف پیش‌نویس، کنترل نحوی فرمول، نسخه‌بندی و درخواست بازبینی مستقل؛ انتشار اجرایی مسدود است.',fields:[f('metric_key','metric_key'),f('name','نام متریک'),f('owner_id','owner_id'),f('unit','واحد UCUM'),f('grain','grain'),f('numerator','فرمول صورت'),f('denominator','فرمول مخرج'),f('aggregation','aggregation','select',true,['sum','ratio','avg','count']),f('allowed_dimensions','ابعاد مجاز (با ویرگول)'),f('required_datasets','شناسه مجموعه‌داده‌های لازم'),f('exclusions','استثناها','textarea'),f('timezone_policy','سیاست منطقه زمانی','select',true,['Asia/Tehran','UTC']),f('freshness_limit_seconds','حد تازگی (ثانیه)','number'),f('quality_policy_id','شناسه سیاست کیفیت'),f('effective_from','تاریخ مؤثر','date'),f('version','نسخه')]},
@@ -71,6 +76,21 @@ export function validateDomain(path:string,tab:number,v:Record<string,string>,it
  if(path==='/data/datasets'&&tab===1){if(!/^[\w.()+\-*/\s]+$/.test((v.numerator||'')+(v.denominator||'')))errors.push('فرمول شامل نویسه غیرمجاز است؛ فرمول هرگز به‌عنوان کد اجرا نمی‌شود.');if((v.numerator||'').length>300||(v.denominator||'').length>300)errors.push('فرمول بیش از حد طولانی است.');if(Number(v.freshness_limit_seconds)<=0)errors.push('حد تازگی باید مثبت باشد.');if(items.some(x=>x.tab===1&&x.values.metric_key===v.metric_key&&x.values.version===v.version))errors.push('این نسخه متریک قبلاً ثبت شده است.');}
  if(path==='/data/identity'&&tab===1&&from&&to){if(items.some(x=>x.tab===1&&['authority','source_id','entity_type','source_key'].every(k=>x.values[k]===v[k])&&new Date(x.values.effective_from).getTime()<new Date(to).getTime()&&new Date(from).getTime()<new Date(x.values.effective_to).getTime()))errors.push('بازه مؤثر برای این کلید منبع همپوشانی دارد.');}
  if(path==='/data/calendars'&&tab===2&&from&&to){if(items.some(x=>x.tab===2&&x.values.calendar===v.calendar&&new Date(x.values.effective_from).getTime()<new Date(to).getTime()&&new Date(from).getTime()<new Date(x.values.effective_to).getTime()))errors.push('نسخه‌های مؤثر تقویم همپوشانی دارند.');}
+ if(path==='/executive/briefs'&&tab>0){
+  const root=items.find(x=>x.tab===0&&x.id===v.brief);
+  if(!root)errors.push('این مرحله باید به شناسه یک پیش‌نویس گزارش در همین دامنه متصل باشد.');
+  if(tab===2&&root&&v.reviewer===root.values.editor)errors.push('بازبین نباید همان ویرایشگر گزارش باشد.');
+  if(tab===3){
+    if(!items.some(x=>x.tab===2&&x.values.brief===v.brief&&x.state==='awaiting_independent_review'))errors.push('درخواست انتشار فقط پس از ثبت پرونده بازبینی مستقل مجاز است؛ انتشار واقعی همچنان مسدود است.');
+    if(root&&v.reviewer===root.values.editor)errors.push('بازبین انتشار باید از ویرایشگر مستقل باشد.');
+  }
+ }
+ if(path==='/data/contracts'&&tab===0){
+  if(!/^[a-z][a-z0-9_-]{2,70}$/i.test(v.contract_id||''))errors.push('شناسه قرارداد باید شناسه ثابت و استاندارد باشد.');
+  if(Number(v.freshness_seconds)<=0||!Number.isInteger(Number(v.freshness_seconds)))errors.push('حد تازگی باید عدد صحیح مثبت باشد.');
+  if(items.some(x=>x.tab===0&&x.values.contract_id===v.contract_id&&x.values.schema_version===v.schema_version))errors.push('این نسخه قرارداد قبلاً ثبت شده است.');
+ }
+ if(path==='/data/contracts'&&tab===1&&v.prior_version===v.next_version)errors.push('نسخه جانشین باید متفاوت از نسخه قبلی باشد.');
  if(path==='/data/ingestion'&&tab===2&&Number(v.checkpoint)>100)errors.push('پیشرفت از ۱۰۰ درصد بیشتر نیست.');
  if(path==='/operations/forecasts'&&tab===0&&Number(v.horizon)<=0)errors.push('افق باید مثبت باشد.');
  if(path==='/quality/workflows'&&tab===3&&!v.review_end)errors.push('پایان پنجره بررسی الزامی است.');
@@ -102,7 +122,7 @@ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteI
  const fields=def?.tabs[tab]?.fields||[];
  const errors=useMemo(()=>validateDomain(path,tab,values,items),[path,tab,values,items]);
  const update=(k:string,v:string)=>setValues(old=>({...old,[k]:v}));
- const save=()=>{if(!fields.length||errors.length)return;const record:RecordItem={id:`SYN-${Math.random().toString(36).slice(2,9)}`,tab,values:{...values},at:iso(),state:path==='/operations/forecasts'?'awaiting_source':'draft',note:'فقط پیش‌نویس در مرورگر؛ شواهد و تأیید واقعی موجود نیست.'};setItems(old=>[record,...old]);setValues({});};
+ const save=()=>{if(!fields.length||errors.length)return;const record:RecordItem={id:`SYN-${Math.random().toString(36).slice(2,9)}`,tab,values:{...values},at:iso(),state:path==='/operations/forecasts'?'awaiting_source':path==='/executive/briefs'&&tab===3?'publication_request_unapproved':'draft',note:'فقط پیش‌نویس در مرورگر؛ شواهد و تأیید واقعی موجود نیست.'};setItems(old=>[record,...old]);setValues({});};
  const transition=(record:RecordItem,action:'validate'|'review'|'cancel'|'retry'|'successor')=>{
   let state=record.state,note=record.note;
   if(action==='validate'){state='validated_synthetic';note='اعتبارسنجی فرم فقط با قواعد محلی؛ قرارداد و مرجع داده تأیید نشده‌اند.';}
@@ -126,6 +146,7 @@ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteI
   </div>}
   {path==='/operations/forecasts'&&tab===1&&<div className="rounded-lg bg-slate-50 p-3 text-sm" data-testid="forecast-results"><strong>نتیجه: unavailable</strong><p>point: ناموجود · p10: ناموجود · p50: ناموجود · p90: ناموجود</p><p>علت: مدل/نسخه و snapshot ورودی در دسترس نیست. عدد جایگزین تولید نمی‌شود.</p></div>}
   {path==='/data/ingestion'&&tab===2&&<p className="text-xs text-slate-600">نمایش Job شامل وضعیت اجرا، accepted/duplicate/quarantined، cutoff، consistency و checkpoint از داده واردشده مصنوعی است. هیچ پردازشی آغاز نمی‌شود.</p>}
+  {path==='/settings/modules'&&<div data-testid="module-activation-gates" className="border rounded-lg p-3 space-y-2 text-sm"><h3 className="font-semibold">نتیجه گیت‌های لازم برای فعال‌سازی سایت / نسخه</h3><div className="grid sm:grid-cols-3 gap-2">{['وابستگی‌ها و نسخه قرارداد','سیاست و دسترسی سازمانی','ارزیابی، بازگشت و تأیید مستقل'].map(x=><div className="rounded border p-2" key={x}><b>{x}</b><p className="text-amber-800">تأیید نشده — BLOCKED</p></div>)}</div><p className="text-xs">این جدول نشان‌دهنده عبور واقعی از گیت نیست؛ Promote و فعال‌سازی بدون اثبات کنترل‌ها مجاز نیست.</p></div>}
   {path==='/settings/modules'&&tab===2&&<p className="text-xs text-rose-800">در این محیط Promote to active ممنوع است؛ درخواست Suspend صرفاً یک پیش‌نویس است و اجرای جاری را متوقف نمی‌کند.</p>}
   <div className="space-y-2"><h3 className="font-semibold">سوابق محلی همین سایت و کاربر</h3><input aria-label="جستجوی سوابق" className={cls} value={q} onChange={e=>setQ(e.target.value)} placeholder="جستجو بر اساس شناسه یا اطلاعات"/>
    {!visible.length?<p className="p-3 text-sm bg-slate-50">رکوردی برای این سایت ذخیره نشده است.</p>:visible.map(item=><details key={item.id} className="rounded-lg border p-3 text-sm"><summary className="cursor-pointer"><bdi dir="ltr">{item.id}</bdi> · {def.tabs[item.tab]?.name} · <bdi>{item.state}</bdi></summary><div className="mt-2 space-y-2"><p className="text-xs">{item.at} · {item.note}</p>{item.originId&&<p className="text-xs">مرجع نسخه پیشین: {item.originId}</p>}<dl className="grid sm:grid-cols-2 gap-1 text-xs">{Object.entries(item.values).map(([k,v])=><div key={k} className="break-words"><dt className="font-bold inline">{k}: </dt><dd className="inline">{v}</dd></div>)}</dl><div className="flex flex-wrap gap-2">

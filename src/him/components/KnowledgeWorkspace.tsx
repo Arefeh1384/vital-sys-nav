@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { normalizeFaSearch } from './faSearch';
 import { scopedDraftKey } from './scopedDraftKey';
+import {DEMO_USERS} from '../data/mockData';
 
 type Document = {
   id: string;
@@ -18,6 +19,8 @@ type Document = {
   createdAt: string;
   parentId?: string;
   reason?: string;
+  abstract?: string;
+  reviewerId?: string;
 };
 const field = 'block w-full rounded-lg border border-slate-300 bg-white p-2 text-sm mt-1';
 const btn = 'rounded-lg bg-teal-800 px-3 py-2 text-sm text-white disabled:opacity-40';
@@ -47,7 +50,9 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
     [effectiveTo, setTo] = useState(''),
     [retention, setRetention] = useState(''),
     [fileLabel, setFileLabel] = useState(''),
-    [reason, setReason] = useState('');
+    [reason, setReason] = useState(''),
+    [abstract, setAbstract] = useState(''),
+    [reviewerId, setReviewerId] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [q, setQ] = useState(''),
     [purpose, setPurpose] = useState('review'),
@@ -83,6 +88,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
       effectiveFrom,
       effectiveTo,
       retention: retention.trim(),
+      abstract: abstract.trim(),
       fileLabel,
       siteId: scope.siteId || '',
       state: 'draft',
@@ -91,10 +97,12 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
     if (saveItems([d, ...items])) {
       setSelected(d.id);
       setTitle('');
+      setAbstract('');
     }
   };
   const change = (action: 'review_requested' | 'publication_requested' | 'successor') => {
     if (!selectedDoc || reason.trim().length < 10) return;
+    if (action !== 'successor' && (!reviewerId.trim() || reviewerId.trim() === user?.id)) return;
     const d: Document =
       action === 'successor'
         ? {
@@ -104,13 +112,15 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
             parentId: selectedDoc.id,
             state: 'draft',
             reason: reason.trim(),
+            reviewerId: undefined,
             createdAt: new Date().toISOString(),
           }
-        : { ...selectedDoc, state: action, reason: reason.trim() };
+        : { ...selectedDoc, state: action, reviewerId: reviewerId.trim(), reason: reason.trim() };
     const next = action === 'successor' ? [d, ...items] : items.map((x) => (x.id === d.id ? d : x));
     if (saveItems(next)) {
       setSelected(d.id);
       setReason('');
+      setReviewerId('');
     }
   };
   const matched = useMemo(
@@ -120,7 +130,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
           d.siteId === scope.siteId &&
           (categoryFilter === 'all' || d.category === categoryFilter) &&
           (!asOf || (d.effectiveFrom <= asOf && d.effectiveTo >= asOf)) &&
-          normalizeFaSearch(d.title + ' ' + d.category).includes(normalizeFaSearch(q)),
+          normalizeFaSearch(d.title + ' ' + d.category + ' ' + (d.abstract||'')).includes(normalizeFaSearch(q)),
       ),
     [items, q, categoryFilter, asOf, scope.siteId],
   );
@@ -219,7 +229,8 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
                   <div key={d.id} className="border p-2 text-xs">
                     <b>{d.title}</b> · {d.id} · نسخه {d.version} · {d.state} · مالک {d.owner} · دوره{' '}
                     {d.effectiveFrom} تا {d.effectiveTo}
-                    <p>استناد معتبر/بخش متن: ناموجود؛ فایل واقعی ذخیره نشده است.</p>
+                    {d.abstract?<blockquote className="mt-1 rounded bg-slate-50 p-2">گزیده متن آزمایشی و تأییدنشده: {d.abstract.slice(0,450)}{d.abstract.length>450?'…':''}</blockquote>:<p>متن قابل بازیابی ثبت نشده است.</p>}
+                    <p>شناسه ارجاع محلی: <bdi dir="ltr">{d.id}@{d.version}</bdi> · وضعیت استناد معتبر: ناموجود (سند منتشر یا مجوز ارزیابی نشده)</p>
                   </div>
                 ))}
               </>
@@ -238,7 +249,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
     <section dir="rtl" className="space-y-4" data-testid="knowledge-documents">
       <h1 className="text-xl font-bold">KNO-01 · مخزن سند و چرخه نسخه</h1>
       <p className={info}>
-        اسناد محلی صرفاً metadata و نام فایل‌اند؛ محتوای فایل به سرور یا مخزن رسمی ارسال نمی‌شود.
+        اسناد محلی فقط metadata و گزیده متن مصنوعی دارند؛ فایل انتخاب‌شده به سرور یا مخزن رسمی ارسال نمی‌شود.
         درخواست بررسی/انتشار، تصویب یا انتشار واقعی نیست.
       </p>
       <div role="tablist" className="flex flex-wrap gap-2">
@@ -284,6 +295,9 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
               className={field}
               onChange={(e) => setFileLabel(e.target.files?.[0]?.name || '')}
             />
+          </label>
+          <label className="text-sm sm:col-span-2">گزیده متن آزمایشی برای جستجوی محلی (حداکثر ۲۰۰۰ نویسه، بدون اطلاعات شخصی)
+            <textarea className={field} rows={3} maxLength={2000} value={abstract} onChange={e=>setAbstract(e.target.value)} placeholder="فقط متن ساختگی؛ این متن سیاست مصوب نیست"/>
           </label>
           <label className="text-sm">
             شروع اعتبار *
@@ -361,6 +375,8 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
           <p className="text-sm">
             Retention پیشنهادی: {selectedDoc.retention} · حذف واقعی/Legal hold: متصل نیست
           </p>
+          {selectedDoc.abstract&&<p className="rounded bg-slate-50 p-3 text-sm">گزیده متن نمایشی: {selectedDoc.abstract}</p>}
+          {selectedDoc.reviewerId&&<p className="text-xs">بازبین پیشنهادی ثبت‌شده: {selectedDoc.reviewerId} · امضا/تأیید واقعی وجود ندارد</p>}
           <div className="text-xs">
             {items
               .filter(
@@ -383,6 +399,12 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
               onChange={(e) => setReason(e.target.value)}
             />
           </label>
+          <label className="block text-sm">شناسه بازبین مستقل پیشنهادی (برای درخواست بازبینی/انتشار)
+            <select className={field} value={reviewerId} onChange={e=>setReviewerId(e.target.value)}>
+              <option value="">انتخاب بازبین متفاوت از فهرست نمایشی مجاز</option>
+              {DEMO_USERS.filter(x=>x.id!==user?.id&&x.permittedSiteIds.includes(scope.siteId||'')).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
+          </label>
           <div className="flex gap-2 flex-wrap">
             <button
               className={btn}
@@ -393,14 +415,14 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
             </button>
             <button
               className={btn}
-              disabled={reason.trim().length < 10}
+              disabled={reason.trim().length < 10 || !reviewerId.trim() || reviewerId.trim() === user?.id}
               onClick={() => change('review_requested')}
             >
               درخواست بازبینی مستقل
             </button>
             <button
               className={btn}
-              disabled={reason.trim().length < 10 || selectedDoc.state !== 'review_requested'}
+              disabled={reason.trim().length < 10 || selectedDoc.state !== 'review_requested' || !reviewerId.trim() || reviewerId.trim() === user?.id}
               onClick={() => change('publication_requested')}
             >
               درخواست انتشار

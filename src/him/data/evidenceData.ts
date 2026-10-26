@@ -9,6 +9,14 @@ export interface EvidenceItem {
   capturedAt: string;
   detail: string;
   hash: string;
+  sourceVersion?: string | null;
+  metricVersion?: string | null;
+  ruleVersion?: string | null;
+  snapshotCutoff?: string | null;
+  sourceEventAt?: string | null;
+  ingestedAt?: string | null;
+  assumptions?: string | null;
+  limitations?: string | null;
 }
 
 export const EVIDENCE_KIND_LABEL: Record<EvidenceKind, string> = {

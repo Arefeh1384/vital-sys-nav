@@ -678,7 +678,7 @@ export const MainContent: React.FC = () => {
           </div>
         </div>
         <div className="flex flex-wrap gap-2 border-t pt-4">
-          {([['/data/connectors','ثبت و جزئیات کانکتور'],['/data/ingestion','کارهای دریافت / replay'],['/data/identity','نگاشت شناسه'],['/data/datasets','کاتالوگ داده و تعریف متریک'],['/data/calendars','تقویم‌های نسخه‌دار'],['/data/lineage/demo','منشأ و تبار داده']] as const).map(([path,title])=><button key={path} type="button" className="rounded-lg border px-3 py-2 text-sm text-teal-800 hover:bg-teal-50" onClick={()=>openWorkView({kind:'spec-page',path})}>{title}</button>)}
+          {([['/data/connectors','ثبت و جزئیات کانکتور'],['/data/contracts','تعریف و بازبینی قرارداد داده'],['/data/ingestion','کارهای دریافت / replay'],['/data/identity','نگاشت شناسه'],['/data/datasets','کاتالوگ داده و تعریف متریک'],['/data/calendars','تقویم‌های نسخه‌دار'],['/data/lineage/demo','منشأ و تبار داده']] as const).map(([path,title])=><button key={path} type="button" className="rounded-lg border px-3 py-2 text-sm text-teal-800 hover:bg-teal-50" onClick={()=>openWorkView({kind:'spec-page',path})}>{title}</button>)}
         </div>
       </div>
     </div>
