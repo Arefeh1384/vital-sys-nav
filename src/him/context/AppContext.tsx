@@ -5,7 +5,7 @@ import { TASKS_DATA, ALERTS_DATA, type WorkTask, type WorkAlert, type TaskStatus
 import { ACTIONS_DATA, applyActionCommand, type ActionProposal, type ActionCommand } from '../data/actionData';
 import { useCopilotState } from './useCopilotState';
 
-export type WorkView = { kind: 'copilot'; answerId?: string } | { kind: 'tasks'; filter?: 'unfinished' } | { kind: 'task'; id: string } | { kind: 'alerts'; filter?: 'active' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' } | {kind:'memos'} | {kind:'memo-new'} | {kind:'memo';id:string} | {kind:'memo-edit';id:string} | {kind:'stewardship'} | {kind:'stewardship-issues'} | {kind:'stewardship-issue';id:string} | {kind:'supply'} | {kind:'supply-risk';id:string} | {kind:'supply-proposals'} | {kind:'supply-proposal';id:string} | {kind:'supply-cases'} | {kind:'supply-case';id:string} | {kind:'supply-new';riskId:string;type:'replenishment'|'transfer';proposalId?:string} | {kind:'manual-list'} | {kind:'manual-new'} | {kind:'manual-detail';id:string};
+export type WorkView = { kind: 'copilot'; answerId?: string } | { kind: 'tasks'; filter?: 'unfinished' } | { kind: 'task'; id: string } | { kind: 'alerts'; filter?: 'active' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' } | {kind:'memos'} | {kind:'memo-new'} | {kind:'memo';id:string} | {kind:'memo-edit';id:string} | {kind:'stewardship'} | {kind:'stewardship-issues'} | {kind:'stewardship-issue';id:string} | {kind:'supply'} | {kind:'supply-risk';id:string} | {kind:'supply-proposals'} | {kind:'supply-proposal';id:string} | {kind:'supply-cases'} | {kind:'supply-case';id:string} | {kind:'supply-new';riskId:string;type:'replenishment'|'transfer';proposalId?:string} | {kind:'spec-page';path:string} | {kind:'manual-list'} | {kind:'manual-new'} | {kind:'manual-detail';id:string};
 
 /** Browser path that mirrors the visible work view, so refresh and direct links land on the same page. */
 export function pathForWorkView(v: WorkView | null): string {
@@ -18,6 +18,7 @@ export function pathForWorkView(v: WorkView | null): string {
   if(v.kind==='stewardship')return '/knowledge/stewardship';
   if(v.kind==='stewardship-issues')return '/knowledge/stewardship/issues';
   if(v.kind==='stewardship-issue')return `/knowledge/stewardship/issues/${encodeURIComponent(v.id)}`;
+  if(v.kind==='spec-page')return v.path;
   if(v.kind==='manual-list')return '/manual-executions';
   if(v.kind==='manual-new')return '/manual-executions/new';
   if(v.kind==='manual-detail')return `/manual-executions/${encodeURIComponent(v.id)}`;
@@ -43,10 +44,12 @@ export function pathForWorkView(v: WorkView | null): string {
 /** Inverse of pathForWorkView: the work view a browser path stands for (null = dashboard). */
 export function workViewForPath(path: string): WorkView | null {
   const p = path.replace(/\/+$/, '') || '/';
-  if (p === '/copilot') return { kind: 'copilot', answerId: typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('answer') || undefined : undefined };
+  if (p === '/copilot' || p === '/assistant') return { kind: 'copilot', answerId: typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('answer') || undefined : undefined };
   if(p==='/knowledge/stewardship')return {kind:'stewardship'};
   if(p==='/knowledge/stewardship/issues')return {kind:'stewardship-issues'};
   const qualityIssue=/^\/knowledge\/stewardship\/issues\/([^/]+)$/.exec(p);if(qualityIssue)return {kind:'stewardship-issue',id:decodeURIComponent(qualityIssue[1]!)};
+  if(['/settings/access','/settings/modules','/settings/agents','/clinical/capabilities','/clinical/review','/models/use-cases','/models/datasets','/models/evaluations','/models/annotations','/models/jobs-and-releases','/workforce','/quality/workflows','/assets/workflows','/finance/workflows','/executive/investigations','/operations/forecasts','/operations/scenarios','/work-queues','/knowledge/documents','/knowledge/search','/executive/briefs','/assistant/runs'].includes(p))return {kind:'spec-page',path:p};
+  if(['/settings/alert-rules','/settings/source-actions','/audit','/data/datasets','/data/identity','/data/ingestion','/data/calendars','/data/lineage/demo'].includes(p) || /^\/data\/lineage\/[^/]+$/.test(p)) return {kind:'spec-page',path:p.startsWith('/data/lineage/')?'/data/lineage/demo':p};
   if(p==='/manual-executions')return {kind:'manual-list'};
   if(p==='/manual-executions/new')return {kind:'manual-new'};
   const manualId=/^\/manual-executions\/([^/]+)$/.exec(p);if(manualId)return {kind:'manual-detail',id:decodeURIComponent(manualId[1]!)};
@@ -113,7 +116,7 @@ interface AppContextType {
   tasks: WorkTask[];
   alerts: WorkAlert[];
   updateTaskStatus: (id: string, status: TaskStatus) => void;
-  updateAlertStatus: (id: string, status: AlertStatus) => void;
+  updateAlertStatus: (id: string, status: AlertStatus, resolution?: {reasonCode:string;comment:string}) => void;
   notifications: AppNotification[];
   readNotificationIds: string[];
   markNotificationsRead: (ids: string[]) => void;
@@ -243,9 +246,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status, history: [...t.history, { at: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }), text: `وضعیت توسط ${user?.name ?? 'کاربر'} تغییر کرد.` }] } : t));
     showNotification('وضعیت وظیفه به‌روزرسانی شد.');
   };
-  const updateAlertStatus = (id: string, status: AlertStatus) => {
-    setAlerts(prev => prev.map(a => a.id === id ? { ...a, status } : a));
-    showNotification(status === 'resolved' ? 'هشدار برطرف‌شده ثبت شد.' : 'دریافت هشدار تأیید شد.');
+  const updateAlertStatus = (id: string, status: AlertStatus, resolution?: {reasonCode:string;comment:string}) => {
+    const validCodes=['condition_cleared','duplicate','false_positive','accepted_risk','source_corrected'];
+    if(status==='resolved'&&(!resolution||!validCodes.includes(resolution.reasonCode)||!resolution.comment.trim())){
+      showNotification('برای رفع هشدار، کد دلیل و شاهد یا توضیح الزامی است.');return;
+    }
+    if(status==='resolved'&&resolution?.reasonCode==='accepted_risk'){
+      showNotification('پذیرش ریسک فقط با تأیید سرپرست مجاز است؛ این محیط مجوز معتبر ندارد.');return;
+    }
+    setAlerts(prev=>prev.map(a=>a.id!==id?a:{...a,status,
+      resolution:status==='resolved'?{reasonCode:resolution!.reasonCode,comment:resolution!.comment.trim(),at:new Date().toISOString()}:a.resolution,
+      activity:[...(a.activity||[]),{at:new Date().toISOString(),text:status==='resolved'?`رفع: ${resolution!.reasonCode} · ${resolution!.comment.trim()}`:status==='acknowledged'?'دریافت هشدار تأیید شد':`تغییر وضعیت: ${status}`}]}));
+    showNotification(status==='resolved'?'هشدار با دلیل و شاهد ثبت شد.':'دریافت هشدار تأیید شد.');
   };
   const [viewState, setViewState] = useState<ViewState>('normal');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {

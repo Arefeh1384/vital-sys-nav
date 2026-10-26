@@ -172,6 +172,14 @@ export function answerQuestion(question: string, siteId: string, userPermittedSi
   if (/اشغال|تخت|occupancy/.test(q)) {
     const metric = OCCUPANCY_METRICS.find(m => m.siteId === siteId);
     if (!metric) return abstain('missing_evidence', 'مالک متریک را مطلع کنید.');
+    // Explicit last-complete-day requests must not be answered from a 'today' fixture.
+    const lastCompleteDay = /last\s+(?:complete|completed|full)\s+day|previous\s+(?:complete|completed|full)\s+day|آخرین\s+روز\s+کامل|روز\s+کامل\s+قبل|روز\s+گذشته/.test(q);
+    if (lastCompleteDay && !/آخرین روز کامل|last complete day/i.test(ctx?.range ?? '')) {
+      return clarify('ambiguous_request');
+    }
+    if (lastCompleteDay) {
+      return abstain('missing_evidence', 'برای آخرین روز کامل، رکورد تأییدشده با بازه تقویمی و زمان محلی در داده‌های نمایشی موجود نیست. مقدار امروز جایگزین آن نمی‌شود.');
+    }
     const stale = /هفته.*قبل|کهنه/.test(q);
     const dataAsOf = stale ? '2026-10-12T05:00:00.000Z' : metric.dataAsOf;
     const result = metricResult(metric.numerator, metric.denominator);

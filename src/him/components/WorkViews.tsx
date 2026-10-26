@@ -70,16 +70,17 @@ const SearchBox: React.FC<{ value: string; onChange: (v: string) => void }> = ({
 export const TaskListView: React.FC = () => {
  const {tasks,scope,openWorkView,workView}=useApp();
  const routeFilter = workView?.kind === 'tasks' ? workView.filter : undefined;
- const [status,setStatus]=useState(()=>routeFilter==='unfinished'?'unfinished':'all');const [q,setQ]=useState('');
- useEffect(()=>{setStatus(routeFilter==='unfinished'?'unfinished':'all');},[routeFilter]);
+ const [status,setStatus]=useState(()=>sessionStorage.getItem('him.tasks.status')|| (routeFilter==='unfinished'?'unfinished':'all'));const [q,setQ]=useState(()=>sessionStorage.getItem('him.tasks.search')||'');const [pageSize,setPageSize]=useState<25|50|100>(()=>{const n=Number(sessionStorage.getItem('him.tasks.pageSize'));return n===50||n===100?n:25});const [page,setPage]=useState(1);
+ useEffect(()=>{sessionStorage.setItem('him.tasks.status',status);sessionStorage.setItem('him.tasks.search',q);sessionStorage.setItem('him.tasks.pageSize',String(pageSize));},[status,q,pageSize]);
+ useEffect(()=>{if(routeFilter==='unfinished')setStatus('unfinished');},[routeFilter]);
  // One list and one detail page for legacy and Copilot-created tasks.
  const overrides=demoStore.tasks();
  const rows=[...tasks.map(t=>overrides.find(o=>o.id===t.id)||legacyAsPhase6(t)),...overrides.filter(t=>!tasks.some(l=>l.id===t.id))]
   .filter(t=>t.siteId===scope.siteId&&(status==='all'||(status==='unfinished'?unfinishedTask(t.status):t.status===status))&&(!q||t.title.includes(q)||t.id.toLowerCase().includes(q.toLowerCase())));
  const labels={open:'باز',assigned:'تخصیص‌یافته',in_progress:'در حال انجام',blocked:'مسدود',submitted_for_review:'در انتظار بررسی',completed:'تکمیل‌شده',canceled:'لغوشده'};
  return <div data-testid="task-list"><Header icon={<ClipboardList className="w-5 h-5"/>} title="فهرست وظایف" subtitle={`وظایف عملیاتی «${scope.siteName}» · داده نمایشی`}/>
- <div className="flex flex-wrap gap-3 mb-4"><select aria-label="فیلتر وضعیت" className="border rounded-lg p-2 text-sm" value={status} onChange={e=>setStatus(e.target.value)}><option value="all">همه وضعیت‌ها</option><option value="unfinished">انجام‌نشده</option>{Object.entries(labels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><SearchBox value={q} onChange={setQ}/></div>
- {rows.length===0?<EmptyState title="وظیفه‌ای یافت نشد" onReset={()=>{setStatus('all');setQ('')}} resetLabel="پاک کردن فیلترها"/>:<div className="bg-white border rounded-xl divide-y">{rows.map(t=><button key={t.id} className="w-full text-right flex justify-between p-4 hover:bg-slate-50 gap-3" onClick={()=>openWorkView({kind:'task',id:t.id})}><span><b>{t.title}</b><span className="block text-xs text-slate-500">{t.id} · {t.owner||t.queue||'بدون مسئول'}</span></span><span className="text-sm">{labels[t.status]}</span></button>)}</div>}
+ <div className="flex flex-wrap gap-3 mb-4"><select aria-label="فیلتر وضعیت" className="border rounded-lg p-2 text-sm" value={status} onChange={e=>setStatus(e.target.value)}><option value="all">همه وضعیت‌ها</option><option value="unfinished">انجام‌نشده</option>{Object.entries(labels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><SearchBox value={q} onChange={v=>{setQ(v);setPage(1)}}/><select aria-label="تعداد در صفحه" className="border rounded-lg p-2 text-sm" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value) as 25|50|100);setPage(1)}}><option value={25}>۲۵ در صفحه</option><option value={50}>۵۰ در صفحه</option><option value={100}>۱۰۰ در صفحه</option></select><button type="button" className="border rounded-lg p-2 text-sm" onClick={()=>{setQ('');setStatus('all');setPage(1)}}>پاک کردن فیلترها</button></div><p className="mb-2 text-xs text-slate-500">{rows.length} وظیفه · جست‌وجو: {q||'همه'} · وضعیت: {status==='all'?'همه':status}</p>
+ {rows.length===0?<EmptyState title="وظیفه‌ای یافت نشد"/>:<div className="bg-white border rounded-xl divide-y">{rows.slice((page-1)*pageSize,page*pageSize).map(t=><button key={t.id} className="w-full text-right flex justify-between p-4 hover:bg-slate-50 gap-3" onClick={()=>openWorkView({kind:'task',id:t.id})}><span><b>{t.title}</b><span className="block text-xs text-slate-500">{t.id} · {t.owner||t.queue||'بدون مسئول'}</span></span><span className="text-sm">{labels[t.status]}</span></button>)}</div>}{rows.length>pageSize&&<div className="mt-3 flex items-center gap-3 text-sm"><button className="border rounded p-2" disabled={page===1} onClick={()=>setPage(x=>x-1)}>قبلی</button><span>صفحه {page} از {Math.ceil(rows.length/pageSize)}</span><button className="border rounded p-2" disabled={page*pageSize>=rows.length} onClick={()=>setPage(x=>x+1)}>بعدی</button></div>}
  </div>;
 };
 
@@ -209,6 +210,8 @@ export const AlertListView: React.FC = () => {
 
 export const AlertDetailView: React.FC<{ id: string }> = ({ id }) => {
   const { alerts, tasks, scope, openWorkView, updateAlertStatus } = useApp();
+  const [resolutionCode,setResolutionCode]=useState('');
+  const [resolutionComment,setResolutionComment]=useState('');
   const a = alerts.find(x => x.id === id);
   const back = () => openWorkView({ kind: 'alerts' });
   if (!a || a.siteId !== scope.siteId) return <NotFound onBack={back} text="این هشدار در دامنه کاری فعلی یافت نشد." />;
@@ -245,6 +248,7 @@ export const AlertDetailView: React.FC<{ id: string }> = ({ id }) => {
               </ul>
             )}
           </div>
+          <div className="bg-white border rounded-xl p-4 space-y-2"><h2 className="font-bold">خط زمانی هشدار</h2><p className="text-xs">ثبت اولیه: {a.raisedAt}</p>{(a.activity||[]).map((entry,i)=><p key={i} className="text-xs border-r-2 pr-2">{entry.text} · {entry.at}</p>)}{a.resolution&&<p className="text-xs">شاهد رفع: {a.resolution.comment}</p>}</div>
           <EvidencePackage items={alertEvidence(a)} code={a.code} />
         </div>
         <div className="space-y-4">
@@ -260,7 +264,10 @@ export const AlertDetailView: React.FC<{ id: string }> = ({ id }) => {
               className="w-full px-3 py-2 rounded-lg text-xs font-semibold border border-amber-200 bg-amber-50 text-amber-800 disabled:opacity-40">
               تأیید دریافت هشدار
             </button>
-            <button type="button" disabled={a.status === 'resolved'} onClick={() => updateAlertStatus(a.id, 'resolved')}
+            <label className="block text-xs">کد دلیل رفع<select aria-label="کد دلیل رفع هشدار" className="w-full border rounded p-2 mt-1" value={resolutionCode} onChange={e=>setResolutionCode(e.target.value)}><option value="">انتخاب دلیل</option>{[['condition_cleared','شرط هشدار برطرف شده'],['duplicate','تکراری'],['false_positive','هشدار اشتباه'],['source_corrected','منبع اصلاح شده'],['accepted_risk','پذیرش ریسک (نیازمند سرپرست)']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
+            <label className="block text-xs">شاهد یا توضیح رفع<textarea aria-label="شاهد یا توضیح رفع" className="w-full border rounded p-2 mt-1" value={resolutionComment} onChange={e=>setResolutionComment(e.target.value)}/></label>
+            {resolutionCode==='accepted_risk'&&<p role="alert" className="text-xs text-amber-700">پذیرش ریسک در این محیط بدون سرپرست احراز‌شده مسدود است.</p>}
+            <button type="button" disabled={a.status === 'resolved'||!resolutionCode||!resolutionComment.trim()||resolutionCode==='accepted_risk'} onClick={() => updateAlertStatus(a.id, 'resolved',{reasonCode:resolutionCode,comment:resolutionComment})}
               className="w-full px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-600 text-white disabled:opacity-40 inline-flex items-center justify-center gap-1">
               <CheckCircle2 className="w-4 h-4" /> علامت‌گذاری به‌عنوان برطرف‌شده
             </button>

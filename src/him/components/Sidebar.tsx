@@ -133,6 +133,7 @@ export const Sidebar: React.FC = () => {
             )}
 
             <nav className="space-y-1">
+              <button type="button" onClick={()=>openWorkView({kind:'spec-page',path:'/workforce'})} data-testid="sidebar-item-WFM" className="w-full rounded-lg px-3 py-2.5 text-right text-xs font-semibold text-slate-700 hover:bg-teal-50">{!sidebarCollapsed?'نیروی انسانی (WFM)':'WFM'}</button>
               {MODULES_CONFIG.map((mod) => {
                 const isSelected = !workView && activeModule === mod.key;
 

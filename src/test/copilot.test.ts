@@ -129,6 +129,11 @@ describe('Copilot grounded answers', () => {
     id: `${taleghani!.id}-policy-b`,
   });
 });
+  it('does not answer last complete day with a today occupancy figure', () => {
+    const a = ask('What is bed occupancy for Taleghani hospital for the last complete day?');
+    expect(a.status).not.toBe('answered');
+    expect(a.blocks.some(b => /بازه: امروز/.test(b.text))).toBe(false);
+  });
   it('labels week-old stale ICU report with historical source date and does not label it as today', () => {
     const a = ask('گزارش هفته‌ی قبل تخت‌های ICU');
     expect(a.reasonCodes).toContain('source_stale');

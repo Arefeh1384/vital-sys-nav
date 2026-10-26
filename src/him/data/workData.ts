@@ -31,6 +31,8 @@ export interface WorkAlert {
   status: AlertStatus;
   raisedAt: string;
   source: string;
+  resolution?: {reasonCode: string; comment: string; at: string};
+  activity?: {at: string; text: string}[];
   metric?: { label: string; value: string; threshold: string };
 }
 

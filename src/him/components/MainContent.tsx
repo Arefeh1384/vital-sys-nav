@@ -1,3 +1,4 @@
+import {SpecificationWorkspace} from './SpecificationWorkspaces';
 import {ManualViews} from '../manual/ManualViews';
 import {ExecutiveDashboard} from '../executive/ExecutiveDashboard';
 import {StewardshipViews} from '../stewardship/StewardshipViews';
@@ -83,6 +84,7 @@ export const MainContent: React.FC = () => {
               siteId={scope.siteId || ''}
             />
           )}
+          {workView.kind === 'spec-page' && <SpecificationWorkspace key={workView.path} path={workView.path} siteName={scope.siteName} />}
           {workView.kind === 'tasks' && <TaskListView />}
           {workView.kind === 'task' && <Phase6View mode="task" id={workView.id}/>}
           {workView.kind === 'alerts' && <AlertListView />}
@@ -125,11 +127,11 @@ export const MainContent: React.FC = () => {
       case 'SUP':
         return <SupplyViews view={{kind:'supply'}} open={openWorkView} siteName={scope.siteName} siteId={scope.siteId || ""} notify={showNotification}/>;
       case 'QLT':
-        return renderQltContent();
+        return <>{renderQltContent()}<SpecificationWorkspace path='/quality/workflows' siteName={scope.siteName}/></>;
       case 'AST':
-        return renderAstContent();
+        return <>{renderAstContent()}<SpecificationWorkspace path='/assets/workflows' siteName={scope.siteName}/></>;
       case 'FIN':
-        return renderFinContent();
+        return <>{renderFinContent()}<SpecificationWorkspace path='/finance/workflows' siteName={scope.siteName}/></>;
       case 'DAT':
         return renderDatContent();
       case 'EXE':
@@ -329,14 +331,14 @@ export const MainContent: React.FC = () => {
               ارزیابی پذیرش، ترخیص و زمان انتظار در {scope.siteName}
             </p>
           </div>
-          <span className="text-xs text-slate-500 font-mono">بروزرسانی داده‌های ADT: ۲ دقیقه قبل</span>
+          <span className="text-xs text-amber-800">زمان ثبت Snapshot: نامشخص · تازگی ADT: تأیید نشده · زمان نمایش با زمان سنجش یکسان نیست</span>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
             <span className="text-xs text-slate-500 block">تخت‌های فعال عملیاتی</span>
             <div className="text-2xl font-black text-slate-900 tabular-nums">
-              {currentSite?.activeBeds || 0}
+              {currentSite?.activeBeds ?? 0}
             </div>
             <span className="text-[11px] text-teal-700 block">تخت‌های دارای پشتیبانی پرسنلی</span>
           </div>
@@ -344,7 +346,7 @@ export const MainContent: React.FC = () => {
           <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
             <span className="text-xs text-slate-500 block">ضریب اشغال جاری (Occupancy)</span>
             <div className="text-2xl font-black text-teal-700 tabular-nums">
-              {currentSite?.activeBeds ? '۸۱.۲٪' : '—'}
+              {currentSite?.activeBeds ? '۸۱.۲٪ (برآورد نمایشی، بدون سرشماری معتبر)' : '—'}
             </div>
             <span className="text-[11px] text-emerald-700 block">نرخ اشغال استاندارد</span>
           </div>
@@ -352,7 +354,7 @@ export const MainContent: React.FC = () => {
           <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
             <span className="text-xs text-slate-500 block">میانه زمان انتظار اورژانس</span>
             <div className="text-2xl font-black text-slate-900 tabular-nums">
-              ۲۲ دقیقه
+              {currentSite?.activeBeds ? '۲۲ دقیقه (نمونه، اعتبارسنجی‌نشده)' : '—'}
             </div>
             <span className="text-[11px] text-slate-500 block">از تریاژ تا اولین ویزیت</span>
           </div>
@@ -360,7 +362,7 @@ export const MainContent: React.FC = () => {
           <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
             <span className="text-xs text-slate-500 block">در انتظار تایید ترخیص</span>
             <div className="text-2xl font-black text-amber-700 tabular-nums">
-              ۱۴ بیمار
+              {currentSite?.activeBeds ? '۱۴ بیمار (نمونه، اعتبارسنجی‌نشده)' : '—'}
             </div>
             <span className="text-[11px] text-amber-700 block">نیاز به بازبینی بالینی (T4)</span>
           </div>
@@ -374,13 +376,15 @@ export const MainContent: React.FC = () => {
           <span className="text-[11px] text-slate-400 font-mono">سرشماری برخط</span>
         </h3>
 
+<p className="text-xs text-amber-800">ظرفیت فیزیکی، مجاز، مسدود و قابل‌استفاده: داده معتبر موجود نیست. اعداد بخش‌ها صرفاً نمونه غیرقابل تجمیع‌اند و به سایت دیگری تعمیم داده نمی‌شوند.</p>
+        {!currentSite?.activeBeds && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm">برای بیمارستان انتخاب‌شده، اطلاعات بخش‌ها موجود نیست؛ اعداد بیمارستان‌های دیگر نمایش داده نمی‌شوند.</p>}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
+          {(currentSite?.activeBeds ? [
             { ward: 'بخش مراقبت‌های ویژه (ICU جنرال)', total: 24, occupied: 22, rate: '۹۱.۶٪', status: 'تراکم بالا' },
             { ward: 'بخش جراحی مردان', total: 48, occupied: 38, rate: '۷۹.۱٪', status: 'عادی' },
             { ward: 'بخش داخلی و ریه', total: 52, occupied: 43, rate: '۸۲.۶٪', status: 'عادی' },
             { ward: 'اورژانس تحت نظر', total: 30, occupied: 28, rate: '۹۳.۳٪', status: 'تراکم بالا' },
-          ].map((w, i) => (
+          ] : []).map((w, i) => (
             <div key={i} className="p-4 bg-slate-50 rounded-xl border border-slate-200/70 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-800">{w.ward}</span>
@@ -496,7 +500,7 @@ export const MainContent: React.FC = () => {
             <div className="text-2xl font-black text-slate-900 tabular-nums">
               ۹۲.۴٪
             </div>
-            <span className="text-[11px] text-emerald-700 block">سنجه‌های دارای شواهد معتبر</span>
+            <span className="text-[11px] text-amber-700 block">مقدار نمایشی؛ بدون داده قابل ممیزی</span><details className="text-xs"><summary className="cursor-pointer">تعریف و منشأ شاخص</summary><p>صورت، مخرج، جامعه، موارد استثنا و زمان آخرین به‌روزرسانی در داده نمایشی موجود نیست؛ این درصد تأییدشده تلقی نمی‌شود.</p></details>
           </div>
 
           <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
@@ -504,7 +508,7 @@ export const MainContent: React.FC = () => {
             <div className="text-2xl font-black text-slate-900 tabular-nums">
               ۸۶.۰٪
             </div>
-            <span className="text-[11px] text-slate-400 block">نظرسنجی ترخیص ماهانه</span>
+            <span className="text-[11px] text-slate-400 block">نظرسنجی ترخیص ماهانه · داده نمایشی</span><details className="text-xs"><summary className="cursor-pointer">تعریف و کیفیت داده</summary><p>تعداد پاسخ‌های معتبر، تعداد کل، پاسخ‌های نامطمئن یا مستثنا، جامعه نمونه و تازگی داده ارائه نشده‌اند؛ این مقدار قابل تأیید نیست.</p></details>
           </div>
         </div>
       </div>

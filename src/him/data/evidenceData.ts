@@ -24,7 +24,7 @@ const hashOf = (s: string) => {
 /** Sample evidence package for an alert; same alert always yields the same items. */
 export function alertEvidence(a: WorkAlert): EvidenceItem[] {
   const items: Omit<EvidenceItem, 'hash'>[] = [];
-  if (a.metric) items.push({ id: `${a.id}-m`, kind: 'metric', title: `اندازه‌گیری ${a.metric.label}`, source: a.source, capturedAt: a.raisedAt, detail: `مقدار ${a.metric.value} در برابر آستانه ${a.metric.threshold}` });
+  if (a.metric) items.push({ id: `${a.id}-m`, kind: 'metric', title: `اندازه‌گیری ${a.metric.label}`, source: a.source, capturedAt: a.raisedAt, detail: `مقدار ${a.metric.value} در برابر آستانه ${a.metric.threshold}${a.module==='FIN'?' · نوع نرخ (تعداد پرونده ردشده یا مبلغ کسورات): نامشخص در داده نمایشی؛ صورت، مخرج، جامعه پرونده‌های رسیدگی‌شده و موارد مستثنا ارائه نشده‌اند. این شاهد برای نتیجه‌گیری درباره نرخ قابل اتکا نیست.':''}` });
   items.push({ id: `${a.id}-r`, kind: 'record', title: 'رکورد خام دریافتی از منبع', source: a.source, capturedAt: a.raisedAt, detail: a.description });
   items.push({ id: `${a.id}-l`, kind: 'log', title: 'گزارش موتور قواعد هشدار', source: 'HIM-OS Rules Engine', capturedAt: a.raisedAt, detail: `قاعده هشدار ${a.code} فعال شد و رخداد ثبت گردید.` });
   return items.map(i => ({ ...i, hash: hashOf(i.id + i.detail) }));
