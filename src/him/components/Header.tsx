@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { DEMO_USERS } from '../data/mockData';
+import {useShellLanguage} from './useShellLanguage';
 
 export const Header: React.FC = () => {
   const { 
@@ -26,16 +27,23 @@ export const Header: React.FC = () => {
     loginAsDemoUser,
     showNotification,
     openWorkView,
+    setActiveModule,
     notifications,
     readNotificationIds
   } = useApp();
+  const [lang,setLang] = useShellLanguage();
+  const [calendar,setCalendar] = useState<'persian'|'gregory'>(()=>{try{return localStorage.getItem('him.ui.calendar')==='gregory'?'gregory':'persian';}catch{return 'persian';}});
+  const [timeZone,setTimeZone] = useState<'Asia/Tehran'|'UTC'>(()=>{try{return localStorage.getItem('him.ui.timeZone')==='UTC'?'UTC':'Asia/Tehran';}catch{return 'Asia/Tehran';}});
+  const updateCalendar=(v:'persian'|'gregory')=>{setCalendar(v);try{localStorage.setItem('him.ui.calendar',v);}catch{/* optional */}};
+  const updateTimeZone=(v:'Asia/Tehran'|'UTC')=>{setTimeZone(v);try{localStorage.setItem('him.ui.timeZone',v);}catch{/* optional */}};
+  const displayDate=new Intl.DateTimeFormat(lang==='en'?'en-US':'fa-IR',{calendar,weekday:'long',year:'numeric',month:'long',day:'numeric',timeZone}).format(new Date());
   const unreadCount = notifications.filter(n => !readNotificationIds.includes(n.id)).length;
 
+  const [commandOpen,setCommandOpen]=useState(false);
+  const [commandQuery,setCommandQuery]=useState('');
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isStateMenuOpen, setIsStateMenuOpen] = useState(false);
 
-  // Persian date representation (e.g., سه‌شنبه ۲۲ مهر ۱۴۰۵)
-  const currentPersianDate = 'سه‌شنبه، ۲۲ مهر ۱۴۰۵';
 
   return (
     <header className="h-16 bg-white border-b border-slate-200/80 px-4 md:px-6 flex items-center justify-between gap-4 sticky top-0 z-30 select-none">
@@ -59,7 +67,7 @@ export const Header: React.FC = () => {
               HIM-OS
             </span>
             <span className="text-[11px] text-slate-500 leading-tight hidden sm:inline">
-              سامانه هوشمندی سلامت
+              {lang==='en'?'Healthcare intelligence':'سامانه هوشمندی سلامت'}
             </span>
           </div>
         </div>
@@ -71,7 +79,7 @@ export const Header: React.FC = () => {
           type="button"
           onClick={() => setIsScopeModalOpen(true)}
           className="group flex items-center gap-1.5 sm:gap-2.5 px-2.5 py-1.5 sm:px-3.5 bg-slate-50 hover:bg-slate-100/90 border border-slate-200/80 rounded-xl transition-all shadow-2xs hover:border-teal-400 min-w-0 max-w-full"
-          title="تغییر محدوده سازمانی یا سایت بیمارستانی"
+          title={lang==='en'?'Change hospital/site scope':'تغییر محدوده سازمانی یا سایت بیمارستانی'}
         >
           <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center shrink-0">
             <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -95,12 +103,14 @@ export const Header: React.FC = () => {
         </button>
       </div>
 
+      <button type="button" data-testid="global-command-search" onClick={()=>setCommandOpen(true)} aria-label="جستجوی سراسری و فرمان" className="hidden xl:inline-flex rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700 hover:bg-teal-50">جستجوی سراسری / فرمان</button>
+      {commandOpen&&<div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/50 p-3 pt-16" role="dialog" aria-modal="true" aria-label="جستجوی سراسری و فرمان" onClick={()=>setCommandOpen(false)}><div className="w-full max-w-lg rounded-xl border bg-white p-4 space-y-3 shadow-lg" dir="rtl" onClick={e=>e.stopPropagation()}><div className="flex justify-between"><h2 className="font-bold">جستجوی مسیرهای برنامه</h2><button type="button" onClick={()=>setCommandOpen(false)}>بستن</button></div><input autoFocus className="w-full rounded-lg border p-2 text-sm" placeholder="جستجوی نام بخش یا فرمان…" value={commandQuery} onChange={e=>setCommandQuery(e.target.value)}/><p className="text-xs text-amber-900">فقط جستجوی فرمان‌ها و مسیرهای همین نمونه؛ این کادر متن پرونده بیمار، اسناد محرمانه یا داده فراتر از دامنه مجاز را جست‌وجو نمی‌کند.</p><div className="max-h-64 overflow-auto space-y-1">{([{name:'داشبورد اجرایی',kind:'executive-dashboard'},{name:'فهرست وظایف',kind:'tasks'},{name:'فهرست هشدارها',kind:'alerts'},{name:'مرکز اعلان‌ها',kind:'notifications'},{name:'پیشنهادهای اقدام',kind:'proposals'},{name:'یادداشت‌های تصمیم',kind:'memos'},{name:'کوپایلت',kind:'copilot'}] as const).filter(x=>x.name.includes(commandQuery.trim())).map(x=><button type="button" key={x.kind} onClick={()=>{if(x.kind==='executive-dashboard')setActiveModule('EXE');else openWorkView({kind:x.kind});setCommandOpen(false);setCommandQuery('')}} className="block w-full rounded border p-2 text-right text-sm hover:bg-slate-50">{x.name}</button>)}</div></div></div>}
       {/* Zone 3: Date, State Tester & User Profile */}
       <div className="flex items-center gap-2 md:gap-3 shrink-0">
         {/* Persian Calendar */}
         <div className="hidden lg:flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 font-mono">
           <Calendar className="w-3.5 h-3.5 text-slate-400" />
-          <span className="font-sans">{currentPersianDate}</span>
+          <span className="font-sans">{displayDate}</span>
         </div>
 
         {/* View State Switcher for User to test normal, loading, empty, error */}
@@ -124,10 +134,10 @@ export const Header: React.FC = () => {
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">
-              {viewState === 'normal' && 'نمای عادی'}
-              {viewState === 'loading' && 'لودینگ'}
-              {viewState === 'empty' && 'داده خالی'}
-              {viewState === 'error' && 'حالت خطا'}
+              {viewState === 'normal' && (lang==='en'?'Normal':'نمای عادی')}
+              {viewState === 'loading' && (lang==='en'?'Loading':'لودینگ')}
+              {viewState === 'empty' && (lang==='en'?'Empty':'داده خالی')}
+              {viewState === 'error' && (lang==='en'?'Error':'حالت خطا')}
             </span>
             <ChevronDown className="w-3 h-3 text-slate-400" />
           </button>
@@ -184,6 +194,18 @@ export const Header: React.FC = () => {
           )}
         </div>
 
+        <label className="flex items-center gap-1 text-xs font-medium text-slate-600">
+          <span className="hidden sm:inline">{lang==='en'?'Language':'زبان'}</span>
+          <select aria-label="Language / زبان" value={lang} onChange={e=>setLang(e.target.value as 'fa'|'en')} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs">
+            <option value="fa">فارسی · RTL</option><option value="en">English · LTR</option>
+          </select>
+        </label>
+        <label className="hidden md:flex items-center gap-1 text-xs text-slate-600">{lang==='en'?'Calendar':'تقویم'}
+          <select aria-label="Calendar system / نوع تقویم" value={calendar} onChange={e=>updateCalendar(e.target.value as 'persian'|'gregory')} className="rounded-lg border p-1.5 bg-white"><option value="persian">Jalali</option><option value="gregory">Gregorian</option></select>
+        </label>
+        <label className="hidden xl:flex items-center gap-1 text-xs text-slate-600">{lang==='en'?'Timezone':'منطقه زمانی'}
+          <select aria-label="Display timezone / منطقه زمانی" value={timeZone} onChange={e=>updateTimeZone(e.target.value as 'Asia/Tehran'|'UTC')} className="rounded-lg border p-1.5 bg-white"><option value="Asia/Tehran">Asia/Tehran</option><option value="UTC">UTC</option></select>
+        </label>
         {/* Notifications Icon */}
         <button
           type="button"
@@ -227,6 +249,12 @@ export const Header: React.FC = () => {
                 <div className="text-[10px] text-slate-400 font-mono">شناسه: {user?.personnelId} · {user?.email}</div>
               </div>
 
+              <div className="px-2 pt-2 space-y-2 border-t" aria-label="تنظیمات نمایش">
+                <label className="block">{lang==='en'?'Language':'زبان'}<select aria-label="Profile language" className="mt-1 w-full rounded-lg border p-2" value={lang} onChange={e=>setLang(e.target.value as 'fa'|'en')}><option value="fa">فارسی (RTL)</option><option value="en">English (LTR)</option></select></label>
+                <label className="block">{lang==='en'?'Calendar':'تقویم'}<select aria-label="Profile calendar" className="mt-1 w-full rounded-lg border p-2" value={calendar} onChange={e=>updateCalendar(e.target.value as 'persian'|'gregory')}><option value="persian">Jalali</option><option value="gregory">Gregorian</option></select></label>
+                <label className="block">{lang==='en'?'Timezone':'منطقه زمانی'}<select aria-label="Profile timezone" className="mt-1 w-full rounded-lg border p-2" value={timeZone} onChange={e=>updateTimeZone(e.target.value as 'Asia/Tehran'|'UTC')}><option value="Asia/Tehran">Asia/Tehran</option><option value="UTC">UTC</option></select></label>
+                <p className="text-amber-800 text-[10px]">این تنظیمات فقط نحوه نمایش تاریخ را تغییر می‌دهد؛ مبنای ذخیره داده ثابت است.</p>
+              </div>
               <div className="px-2 pt-1">
                 <span className="text-[10px] font-bold text-slate-400">تغییر سریع کاربر برای تست نقش‌ها:</span>
                 <div className="mt-1 space-y-1">

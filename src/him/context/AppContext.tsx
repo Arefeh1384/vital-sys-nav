@@ -5,6 +5,10 @@ import { TASKS_DATA, ALERTS_DATA, type WorkTask, type WorkAlert, type TaskStatus
 import { ACTIONS_DATA, applyActionCommand, type ActionProposal, type ActionCommand } from '../data/actionData';
 import { useCopilotState } from './useCopilotState';
 
+export const MODULE_ROUTES: Record<ModuleKey, string> = { EXE: '/', PLT: '/platform', OPS: '/operations', SUP: '/supply', QLT: '/quality', AST: '/assets', FIN: '/finance', DAT: '/data' };
+export function moduleForPath(path: string): ModuleKey | null { return (Object.keys(MODULE_ROUTES) as ModuleKey[]).find(key => MODULE_ROUTES[key] === (path.replace(/\/+$/, '') || '/')) ?? null; }
+export function modulePath(module: ModuleKey): string { return MODULE_ROUTES[module]; }
+
 export type WorkView = { kind: 'copilot'; answerId?: string } | { kind: 'tasks'; filter?: 'unfinished' } | { kind: 'task'; id: string } | { kind: 'alerts'; filter?: 'active' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' } | {kind:'memos'} | {kind:'memo-new'} | {kind:'memo';id:string} | {kind:'memo-edit';id:string} | {kind:'stewardship'} | {kind:'stewardship-issues'} | {kind:'stewardship-issue';id:string} | {kind:'supply'} | {kind:'supply-risk';id:string} | {kind:'supply-proposals'} | {kind:'supply-proposal';id:string} | {kind:'supply-cases'} | {kind:'supply-case';id:string} | {kind:'supply-new';riskId:string;type:'replenishment'|'transfer';proposalId?:string} | {kind:'spec-page';path:string} | {kind:'manual-list'} | {kind:'manual-new'} | {kind:'manual-detail';id:string};
 
 /** Browser path that mirrors the visible work view, so refresh and direct links land on the same page. */
@@ -49,7 +53,7 @@ export function workViewForPath(path: string): WorkView | null {
   if(p==='/knowledge/stewardship/issues')return {kind:'stewardship-issues'};
   const qualityIssue=/^\/knowledge\/stewardship\/issues\/([^/]+)$/.exec(p);if(qualityIssue)return {kind:'stewardship-issue',id:decodeURIComponent(qualityIssue[1]!)};
   if(['/settings/access','/settings/modules','/settings/agents','/clinical/capabilities','/clinical/review','/models/use-cases','/models/datasets','/models/evaluations','/models/annotations','/models/jobs-and-releases','/workforce','/quality/workflows','/assets/workflows','/finance/workflows','/executive/investigations','/operations/forecasts','/operations/scenarios','/work-queues','/knowledge/documents','/knowledge/search','/executive/briefs','/assistant/runs'].includes(p))return {kind:'spec-page',path:p};
-  if(['/settings/alert-rules','/settings/source-actions','/audit','/data/datasets','/data/identity','/data/ingestion','/data/calendars','/data/lineage/demo'].includes(p) || /^\/data\/lineage\/[^/]+$/.test(p)) return {kind:'spec-page',path:p.startsWith('/data/lineage/')?'/data/lineage/demo':p};
+  if(['/settings/notification-policy','/settings/governance','/settings/alert-rules','/settings/source-actions','/audit','/data/connectors','/data/datasets','/data/identity','/data/ingestion','/data/calendars','/data/lineage/demo'].includes(p) || /^\/data\/lineage\/[^/]+$/.test(p)) return {kind:'spec-page',path:p.startsWith('/data/lineage/')?'/data/lineage/demo':p};
   if(p==='/manual-executions')return {kind:'manual-list'};
   if(p==='/manual-executions/new')return {kind:'manual-new'};
   const manualId=/^\/manual-executions\/([^/]+)$/.exec(p);if(manualId)return {kind:'manual-detail',id:decodeURIComponent(manualId[1]!)};
@@ -173,21 +177,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?
   });
 
   useEffect(() => { saveStored2(SESSION_KEY, { userId: user?.id ?? null, siteId: scope.siteId }); }, [user, scope.siteId]);
-  const [activeModule, setActiveModuleRaw] = useState<ModuleKey>('EXE');
+  const [activeModule, setActiveModuleRaw] = useState<ModuleKey>(() => typeof window === 'undefined' ? 'EXE' : moduleForPath(window.location.pathname) ?? 'EXE');
   const [workView, setWorkView] = useState<WorkView | null>(() => (typeof window === 'undefined' ? initialWorkView : workViewForPath(window.location.pathname) ?? initialWorkView));
   const copilot = useCopilotState(user, scope.siteId);
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const path = pathForWorkView(workView);
+    const path = workView ? pathForWorkView(workView) : modulePath(activeModule);
     const current = (window.location.pathname.replace(/\/+$/, '') || '/') + window.location.search;
     if (current !== path) window.history.pushState(null, '', path);
-  }, [workView]);
+  }, [workView, activeModule]);
   // Back/forward changes the path; follow it without remounting the provider.
   useEffect(() => {
-    const onPop = () => { if (!window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) { window.history.pushState(null, '', pathForWorkView(workView)); return; } setWorkView(workViewForPath(window.location.pathname)); };
+    const onPop = () => { if (!window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) { window.history.pushState(null, '', workView ? pathForWorkView(workView) : modulePath(activeModule)); return; } const target = moduleForPath(window.location.pathname); if (target) setActiveModuleRaw(target); setWorkView(target ? null : workViewForPath(window.location.pathname)); setViewState('normal'); };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, [workView]);
+  }, [workView, activeModule]);
   // Sample actions are kept in this browser only so a refresh does not undo a recorded approval;
   // no command is ever dispatched to a real hospital system.
   const [actions, setActions] = useState<ActionProposal[]>(() =>
@@ -240,7 +244,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?
     }));
     return [...fromAlerts, ...fromTasks];
   }, [alerts, tasks, scope.siteId]);
-  const setActiveModule = (m: ModuleKey) => { if (typeof window !== 'undefined' && !window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) return; setActiveModuleRaw(m); setWorkView(null); };
+  const setActiveModule = (m: ModuleKey) => { if (typeof window !== 'undefined' && !window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) return; setActiveModuleRaw(m); setWorkView(null); setViewState('normal'); };
   const openWorkView = (v: WorkView | null) => { if (typeof window !== 'undefined' && !window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) return; setWorkView(v); setViewState('normal'); };
   const updateTaskStatus = (id: string, status: TaskStatus) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status, history: [...t.history, { at: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }), text: `وضعیت توسط ${user?.name ?? 'کاربر'} تغییر کرد.` }] } : t));
@@ -256,7 +260,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?
     }
     setAlerts(prev=>prev.map(a=>a.id!==id?a:{...a,status,
       resolution:status==='resolved'?{reasonCode:resolution!.reasonCode,comment:resolution!.comment.trim(),at:new Date().toISOString()}:a.resolution,
-      activity:[...(a.activity||[]),{at:new Date().toISOString(),text:status==='resolved'?`رفع: ${resolution!.reasonCode} · ${resolution!.comment.trim()}`:status==='acknowledged'?'دریافت هشدار تأیید شد':`تغییر وضعیت: ${status}`}]}));
+      activity:[...(a.activity||[]),{at:new Date().toISOString(),actorId:user?.id??'unauthenticated-demo',actorName:user?.name??'کاربر ناشناس (نمایشی)',text:status==='resolved'?`رفع: ${resolution!.reasonCode} · ${resolution!.comment.trim()}`:status==='acknowledged'?'دریافت هشدار تأیید شد':`تغییر وضعیت: ${status}`}]}));
     showNotification(status==='resolved'?'هشدار با دلیل و شاهد ثبت شد.':'دریافت هشدار تأیید شد.');
   };
   const [viewState, setViewState] = useState<ViewState>('normal');

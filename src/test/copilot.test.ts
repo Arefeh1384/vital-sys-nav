@@ -50,6 +50,12 @@ describe('Copilot grounded answers', () => {
     for (const o of a.clarification!.options) expect(ask(o).status).not.toBe('clarification_required');
     expect(ask('نرخ رضایت از غذا چقدر است؟').reasonCodes).toContain('unsupported_task');
   });
+  it('uses selected site for an unqualified hospital policy question', () => {
+    const result = ask('سیاست اضافه‌کار بیمارستان چیست؟');
+    expect(result.reasonCodes).toContain('conflicting_evidence');
+    expect(result.reasonCodes).not.toContain('scope_not_authorized');
+    expect(result.evidence).toHaveLength(2);
+  });
   it('discloses conflicting policies and links both without a merged policy', () => {
     const a = ask('سیاست اضافه‌کار چیست؟');
     expect(a.status).toBe('partial');
@@ -143,7 +149,7 @@ describe('Copilot grounded answers', () => {
 });
 
 describe('Copilot turns, states and routing', () => {
-  it('limits a question to 1–16000 characters', () => {
+  it('limits a question to 1–4000 characters', () => {
     expect(questionError('  ')).toBeTruthy();
     expect(questionError('x'.repeat(MAX_QUESTION_LENGTH + 1))).toBeTruthy();
     expect(questionError('x'.repeat(MAX_QUESTION_LENGTH))).toBeNull();

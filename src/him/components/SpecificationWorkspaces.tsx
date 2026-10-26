@@ -1,10 +1,18 @@
+import { SpecializedWorkspace } from './SpecializedWorkspaces';
+import {ConnectorWorkspace} from './ConnectorWorkspace';
+import {AuditWorkspace, NotificationPolicyWorkspace} from './ControlWorkflows';
+import { DomainWorkspace, domainPaths } from './DomainWorkspaces';
+import {KnowledgeWorkspace} from './KnowledgeWorkspace';
+import {scopedDraftKey} from './scopedDraftKey';
 import React, { useMemo, useState } from 'react';
+import {useApp} from '../context/AppContext';
 
 /** Frontend-only specification workspaces. No authentication or source-system operation. */
 const SCREENS: Record<string,{title:string;intro:string;tabs:string[];warning:string}> = {
  '/settings/alert-rules':{title:'پیکربندی قواعد هشدار',intro:'پیش‌نویس رابط کاربری؛ فقط داده نمایشی',tabs:['فهرست قواعد', 'نسخه و دامنه', 'شرط و شدت', 'شواهد و تازگی', 'سرکوب و تشدید'],warning:'قواعد معتبر یا فعال نشده‌اند؛ فرم صرفاً پیش‌نویس محلی است.'},
  '/settings/source-actions':{title:'تنظیمات اقدامات سامانه منبع',intro:'پیش‌نویس رابط کاربری؛ فقط داده نمایشی',tabs:['فهرست مانیفست\u200cها', 'شبیه\u200cساز قرارداد', 'گواهی و مجوزها'],warning:'هیچ مانیفست عملیاتی گواهی نشده و امکان اجرای اقدام منبع وجود ندارد.'},
  '/audit':{title:'ممیزی و بررسی تمامیت',intro:'پیش‌نویس رابط کاربری؛ فقط داده نمایشی',tabs:['جستجوی محدود به دامنه', 'تمامیت و منشأ', 'بازبینی و خروجی'],warning:'دفتر ممیزی قابل‌اتکا و اثبات تمامیت متصل نشده؛ خروجی رسمی مجاز نیست.'},
+ '/data/connectors':{title:'مدیریت کانکتورهای منبع',intro:'ثبت پیکربندی آزمایشی کانکتور',tabs:['کاتالوگ کانکتورها'],warning:'اتصال واقعی و گواهی قرارداد موجود نیست.'},
  '/data/datasets':{title:'کاتالوگ مجموعه‌داده‌ها',intro:'پیش‌نویس رابط کاربری؛ فقط داده نمایشی',tabs:['فهرست داده\u200cها', 'تعریف متریک', 'نسخه\u200cهای مصوب'],warning:'هیچ متریک اجرایی یا مجموعه‌داده واقعی تأیید نشده است.'},
  '/data/identity':{title:'همسان‌سازی هویت و Crosswalk',intro:'پیش‌نویس رابط کاربری؛ فقط داده نمایشی',tabs:['مبدأ و شناسه', 'نگاشت بازه\u200cدار', 'تعارض\u200cها'],warning:'نگاشت‌های هویت واقعی و بازه‌های اعتبار موجود نیستند.'},
  '/data/ingestion':{title:'پایش دریافت داده',intro:'پیش‌نویس رابط کاربری؛ فقط داده نمایشی',tabs:['کارهای دریافت', 'ردیف\u200cهای قرنطینه', 'پیشرفت و چک\u200cپوینت'],warning:'هیچ Job واقعی یا اتصال منبع داده وجود ندارد.'},
@@ -34,14 +42,25 @@ const SCREENS: Record<string,{title:string;intro:string;tabs:string[];warning:st
  '/finance/workflows':{title:'مالی و درآمد (FIN)',intro:'مطالبات و کسورات، سناریوهای پیش‌بینی و قراردادها',tabs:['نمای مالی','کسورات ادعا','پیش‌بینی هزینه','بررسی محرمانه','نسخه قراردادها'],warning:'هیچ تراکنش مالی یا دسترسی به داده محرمانه واقعی وجود ندارد.'},
 };
 export const specPaths = Object.keys(SCREENS);
-const STATE_KEY = 'him.spec-workspaces.demo.v1';
+const STATE_KEY = 'him.spec-workspaces.demo.v2';
 export function SpecificationWorkspace({path,siteName}:{path:string;siteName:string}) {
+ const {scope,user}=useApp();
+ if(path==='/audit')return <AuditWorkspace/>;
+ if(path==='/settings/notification-policy')return <NotificationPolicyWorkspace/>;
+ if(path==='/data/connectors')return <ConnectorWorkspace/>;
+ if(path==='/knowledge/documents'||path==='/knowledge/search')return <KnowledgeWorkspace key={`${path}:${scope.siteId}:${user?.id}`} path={path} siteName={siteName}/>;
+ if(['/assets/workflows','/workforce','/settings/access'].includes(path))return <SpecializedWorkspace path={path} siteName={siteName}/>;
+ if(domainPaths.includes(path)||path==='/settings/governance'||path==='/executive/briefs')return <DomainWorkspace path={path} siteName={siteName}/>;
+ return <GenericSpecificationWorkspace key={`${path}:${scope.siteId}:${user?.id||'guest'}`} path={path} siteName={siteName}/>;
+}
+function GenericSpecificationWorkspace({path,siteName}:{path:string;siteName:string}) {
  const page = SCREENS[path];
+ const {scope,user}=useApp();
  const [tab,setTab]=useState(0);
  const [query,setQuery]=useState('');
  const [entry,setEntry]=useState('');
  const [records,setRecords]=useState<Record<string,Array<{title:string;detail:string;at:string}>>>(()=>{
-  try {return JSON.parse(localStorage.getItem(STATE_KEY)||'{}');}catch{return {};}
+  try {return JSON.parse(localStorage.getItem(scopedDraftKey(STATE_KEY,path,scope.siteId||'none',user?.id||'guest'))||'{}');}catch{return {};}
  });
  const items=useMemo(()=> (records[path]||[]).filter(x=>(x.title+' '+x.detail).includes(query)),[records,path,query]);
  if(!page)return null;
@@ -50,7 +69,7 @@ export function SpecificationWorkspace({path,siteName}:{path:string;siteName:str
  const add=()=>{
   if(!entry.trim()||isClinical)return;
   const updated={...records,[path]:[...(records[path]||[]),{title:entry.trim(),detail:`${current} · ${siteName} · پیش‌نویس غیرمعتبر برای استفاده عملیاتی`,at:new Date().toISOString()}]};
-  setRecords(updated);localStorage.setItem(STATE_KEY,JSON.stringify(updated));setEntry('');
+  setRecords(updated);localStorage.setItem(scopedDraftKey(STATE_KEY,path,scope.siteId||'none',user?.id||'guest'),JSON.stringify(updated));setEntry('');
  };
  return <section dir="rtl" className="space-y-5" data-testid="spec-workspace">
   <header className="bg-white rounded-xl border border-slate-200 p-5 space-y-2"><h1 className="text-xl font-bold">{page.title}</h1><p className="text-sm text-slate-600">{page.intro}</p><p className="text-xs text-slate-500">سایت جاری: {siteName}</p></header>

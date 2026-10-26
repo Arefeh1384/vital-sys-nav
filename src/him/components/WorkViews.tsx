@@ -11,6 +11,7 @@ import { EmptyState } from './states/EmptyState';
 import {demoStore} from '../phase6/store';
 import {legacyAsPhase6} from '../phase6/Phase6';
 import {canonicalTasks,unfinishedTask} from '../executive/taskProjection';
+import { AlertOperations } from './ControlWorkflows';
 
 const moduleTitle = (k: string) => MODULES_CONFIG.find(m => m.key === k)?.shortTitle ?? k;
 
@@ -158,13 +159,20 @@ export const TaskDetailView: React.FC<{ id: string }> = ({ id }) => {
 };
 
 export const AlertListView: React.FC = () => {
+ const {scope}=useApp();
+ return <SiteAlertList key={scope.siteId||'none'}/>;
+};
+const SiteAlertList:React.FC = () => {
   const { alerts, scope, openWorkView, workView } = useApp();
-  const [status, setStatus] = useState<AlertStatus | 'all'>('all');
+  const storeKey = `him.alert.filters:${scope.siteId||'none'}`;
+  const initial=()=>{try{return JSON.parse(sessionStorage.getItem(storeKey)||'{}') as Record<string,string>;}catch{return {} as Record<string,string>;}};
+  const [status, setStatus] = useState<AlertStatus | 'all'>(()=>(['new','acknowledged','resolved'].includes(initial().status)?initial().status:'all') as AlertStatus|'all');
   const routeFilter = workView?.kind === 'alerts' ? workView.filter : undefined;
-  const [activeOnly,setActiveOnly]=useState(()=>routeFilter==='active');
+  const [activeOnly,setActiveOnly]=useState(()=>routeFilter==='active'||initial().activeOnly==='true');
   useEffect(()=>{setActiveOnly(routeFilter==='active');},[routeFilter]);
-  const [severity, setSeverity] = useState<Priority | 'all'>('all');
-  const [q, setQ] = useState('');
+  const [severity, setSeverity] = useState<Priority | 'all'>(()=>(['critical','high','medium','low'].includes(initial().severity)?initial().severity:'all') as Priority|'all');
+  const [q, setQ] = useState(()=>initial().q||'');
+  useEffect(()=>{try{sessionStorage.setItem(storeKey,JSON.stringify({status,severity,q,activeOnly:String(activeOnly)}));}catch{}},[storeKey,status,severity,q,activeOnly]);
   const rows = useMemo(() => alerts.filter(a => a.siteId === scope.siteId
     && (!activeOnly || a.status !== 'resolved')
     && (status === 'all' || a.status === status)
@@ -215,7 +223,7 @@ export const AlertDetailView: React.FC<{ id: string }> = ({ id }) => {
   const a = alerts.find(x => x.id === id);
   const back = () => openWorkView({ kind: 'alerts' });
   if (!a || a.siteId !== scope.siteId) return <NotFound onBack={back} text="این هشدار در دامنه کاری فعلی یافت نشد." />;
-  const linked = canonicalTasks(tasks).filter(t => tasks.some(original => original.id===t.id && original.alertId === a.id));
+  const linked = [...canonicalTasks(tasks).filter(t => tasks.some(original => original.id===t.id && original.alertId === a.id)),...demoStore.tasks().filter(t => t.siteId===scope.siteId && t.evidenceIds.includes(a.id) && !tasks.some(original=>original.id===t.id))];
 
   return (
     <div data-testid="alert-detail">
@@ -248,8 +256,8 @@ export const AlertDetailView: React.FC<{ id: string }> = ({ id }) => {
               </ul>
             )}
           </div>
-          <div className="bg-white border rounded-xl p-4 space-y-2"><h2 className="font-bold">خط زمانی هشدار</h2><p className="text-xs">ثبت اولیه: {a.raisedAt}</p>{(a.activity||[]).map((entry,i)=><p key={i} className="text-xs border-r-2 pr-2">{entry.text} · {entry.at}</p>)}{a.resolution&&<p className="text-xs">شاهد رفع: {a.resolution.comment}</p>}</div>
-          <EvidencePackage items={alertEvidence(a)} code={a.code} />
+          <div className="bg-white border rounded-xl p-4 space-y-2"><h2 className="font-bold">خط زمانی هشدار</h2><p className="text-xs">ثبت اولیه: {a.raisedAt}</p>{(a.activity||[]).map((entry,i)=><p key={i} className="text-xs border-r-2 pr-2">{entry.text} · {entry.at} · عامل: {entry.actorName || 'نامشخص (ثبت قدیمی)'}{entry.actorId && <span dir="ltr"> ({entry.actorId})</span>}</p>)}{a.resolution&&<p className="text-xs">شاهد رفع: {a.resolution.comment}</p>}</div>
+          <section className="rounded-xl border bg-white p-4 text-sm space-y-1" data-testid="anomaly-provenance"><h2 className="font-bold">زمینه تشخیص ناهنجاری · EXE-004</h2><p>نسخه آشکارساز: ثبت نشده / نیازمند تأیید</p><p>خط پایه و بازه مورد انتظار: ثبت نشده</p><p>بازه مقایسه و روند تاریخی: ثبت نشده</p><p>کیفیت داده و تازگی منبع بالادستی: نامشخص</p><p className="text-amber-800">آستانه هشدار جایگزین خط پایه آماری، مقایسه تاریخی یا مدل مصوب نیست.</p></section><EvidencePackage items={alertEvidence(a)} code={a.code} /><AlertOperations alert={a}/>
         </div>
         <div className="space-y-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-5 grid gap-3">
@@ -301,6 +309,7 @@ export const EvidencePackage: React.FC<{ items: EvidenceItem[]; code: string }> 
               {open === e.id && (
                 <div className="px-3 pb-3 text-xs text-slate-600 leading-6 space-y-1">
                   <p>{e.detail}</p>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-900" data-testid="alert-evidence-provenance"><p>نسخه منبع/قرارداد: در fixture گزارش نشده</p><p>نسخه تعریف متریک و قاعده: در fixture گزارش نشده</p><p>مرز Snapshot و زمان cutoff: تأیید نشده (زمان ثبت شاهد جایگزین cutoff نیست)</p><p>فرض‌های محاسبه: ثبت نشده</p><p>محدودیت‌ها: منشأ و کامل‌بودن داده احراز نشده؛ فقط برای نمایش فرانت‌اند</p></div>
                   <p className="text-slate-400">اثر انگشت: <bdi dir="ltr" className="font-mono">{e.hash}</bdi></p>
                 </div>
               )}
@@ -319,7 +328,7 @@ export const NotificationCenterView: React.FC = () => {
   const unread = notifications.filter(n => !readNotificationIds.includes(n.id)).length;
   return (
     <div data-testid="notification-center">
-      <Header icon={<Inbox className="w-5 h-5" />} title="مرکز اعلان‌ها" subtitle={`${unread.toLocaleString('fa-IR')} اعلان خوانده‌نشده`} />
+      <Header icon={<Inbox className="w-5 h-5" />} title="مرکز اعلان‌ها" subtitle={`${unread.toLocaleString('fa-IR')} اعلان خوانده‌نشده`} /><button type="button" className="mb-3 rounded border border-teal-300 px-3 py-2 text-sm text-teal-800" onClick={()=>openWorkView({kind:'spec-page',path:'/settings/notification-policy'})}>تنظیم پنجره تشدید و سیاست اعلان (پیش‌نویس)</button>
       <div className="flex flex-wrap gap-2 mb-4">
         <button type="button" onClick={() => setOnlyUnread(false)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${!onlyUnread ? 'bg-teal-600 text-white border-teal-600' : 'border-slate-200 text-slate-600'}`}>همه</button>
         <button type="button" onClick={() => setOnlyUnread(true)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${onlyUnread ? 'bg-teal-600 text-white border-teal-600' : 'border-slate-200 text-slate-600'}`}>خوانده‌نشده</button>

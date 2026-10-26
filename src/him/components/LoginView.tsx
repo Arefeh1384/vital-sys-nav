@@ -25,6 +25,7 @@ export const LoginView: React.FC = () => {
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showRecovery,setShowRecovery] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -178,11 +179,10 @@ export const LoginView: React.FC = () => {
                     />
                     <span>ذخیره نشست امن در این دستگاه</span>
                   </label>
-                  <span className="text-teal-700 font-semibold cursor-pointer hover:underline">
-                    فراموشی رمز عبور؟
-                  </span>
+                  <button type="button" aria-expanded={showRecovery} onClick={()=>setShowRecovery(v=>!v)} className="text-teal-700 font-semibold hover:underline">فراموشی رمز عبور؟</button>
                 </div>
 
+                {showRecovery&&<div role="region" aria-label="راهنمای بازیابی رمز" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950 leading-6">بازیابی حساب دانشگاهی فقط از طریق سامانه رسمی هویت/مسئول فناوری اطلاعات سازمان انجام می‌شود. در این نمونه هیچ ایمیل بازیابی ارسال و هیچ رمز عبوری تغییر نمی‌کند. برای حساب آزمایشی می‌توانید از ورود سریع نمایشی استفاده کنید.</div>}
                 {/* Submit button */}
                 <button
                   type="submit"

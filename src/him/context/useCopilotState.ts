@@ -63,14 +63,16 @@ export function useCopilotState(user: User | null, siteId: string | null) {
   }, [user?.id, siteId, user?.permittedSiteIds.join(',')]);
   useEffect(() => () => { activeRef.current?.timers.forEach(clearTimeout); }, []);
   const changeContext = (patch: Partial<CopilotContext>) => { setContext(c => ({ ...c, ...patch })); setContextChanged(true); };
-  const submit = (question: string, key?: string) => {
+  const submit = (question: string, key?: string, contextOverride?: Partial<CopilotContext>) => {
+    const effectiveContext = { ...context, ...contextOverride };
+    if (contextOverride) changeContext(contextOverride);
     const validation = questionError(question); setError(validation);
     if (validation || !siteId || !user || !user.permittedSiteIds.includes(siteId)) return false;
     const at = new Date().toISOString();
     const idempotencyKey = key ?? `${user.id}-${siteId}-${at}-${turnsRef.current.length}`;
     if (turnsRef.current.some(t => t.idempotencyKey === idempotencyKey) || activeRef.current) return false;
     const id = `turn-${idempotencyKey}`;
-    const turn: CopilotTurn = { id, siteId, userId: user.id, question: question.trim(), at, language: context.language, state: 'queued', jobState: 'queued', idempotencyKey, context: { purpose: context.purpose, range: context.range, attachmentIds: [...context.attachmentIds] } };
+    const turn: CopilotTurn = { id, siteId, userId: user.id, question: question.trim(), at, language: effectiveContext.language, state: 'queued', jobState: 'queued', idempotencyKey, context: { purpose: effectiveContext.purpose, range: effectiveContext.range, attachmentIds: [...effectiveContext.attachmentIds] } };
     commit(prev => appendTurn(prev, turn)); setSelectedId(id); setDraft(''); setContextChanged(false); setScopeMessage('');
     const active = { id, siteId, userId: user.id, timers: [] as ReturnType<typeof setTimeout>[] }; activeRef.current = active;
     const update = (state: CopilotTurn['state']) => { if (activeRef.current !== active) return; commit(prev => prev.map(t => t.id === id ? { ...t, state, jobState: jobStateForRun(state) } : t)); };
@@ -81,7 +83,7 @@ export function useCopilotState(user: User | null, siteId: string | null) {
       if (identity.siteId !== siteId || identity.userId !== user.id) { cancel(); return; }
       if (simulateFailure) update('failed');
       else {
-        const answer = answerQuestion(question, siteId, user.permittedSiteIds, at, { range: context.range, language: context.language });
+        const answer = answerQuestion(question, siteId, user.permittedSiteIds, at, { range: effectiveContext.range, language: effectiveContext.language });
         const state = runStateForAnswer(answer.status);
         const artifact = { ...answer, runId: id };
         commit(prev => prev.map(t => t.id === id ? { ...t, state, jobState: jobStateForRun(state), answer: artifact, originalAnswer: artifact } : t));

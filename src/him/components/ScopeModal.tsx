@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { SITES_DATA, CURRENT_ORGANIZATION } from '../data/mockData';
+import { normalizeFaSearch } from './faSearch';
 
 export const ScopeModal: React.FC = () => {
   const { 
@@ -27,9 +28,9 @@ export const ScopeModal: React.FC = () => {
   if (!isScopeModalOpen) return null;
 
   const filteredSites = SITES_DATA.filter(site => 
-    site.name.includes(searchQuery) || 
-    site.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    site.typeLabel.includes(searchQuery)
+    normalizeFaSearch(site.name).includes(normalizeFaSearch(searchQuery)) ||
+    normalizeFaSearch(site.code).includes(normalizeFaSearch(searchQuery)) ||
+    normalizeFaSearch(site.typeLabel).includes(normalizeFaSearch(searchQuery))
   );
 
   const handleSelectSite = (siteId: string) => {

@@ -1,3 +1,4 @@
+import {useShellLanguage} from './useShellLanguage';
 import {SpecificationWorkspace} from './SpecificationWorkspaces';
 import {ManualViews} from '../manual/ManualViews';
 import {ExecutiveDashboard} from '../executive/ExecutiveDashboard';
@@ -45,6 +46,7 @@ import { CopilotView } from './CopilotView';
 import { ActionProposalListView, ActionProposalDetailView, ActionJournalView, ApprovalQueueView } from './ActionViews';
 
 export const MainContent: React.FC = () => {
+  const [language] = useShellLanguage();
   const { 
     scope, 
     activeModule, 
@@ -64,7 +66,7 @@ export const MainContent: React.FC = () => {
   // If in scope-switching transition, render subtle loading
   if (isScopeSwitching) {
     return (
-      <main className="flex-1 p-4 md:p-8 overflow-y-auto min-w-0" data-testid="scope-switching-state">
+      <main className="flex-1 w-full min-w-0 max-w-full p-2 sm:p-4 md:p-8 overflow-y-auto overflow-x-hidden" data-testid="scope-switching-state">
         <LoadingState message={`در حال تغییر مرز امنیتی و بارگذاری داده‌های «${scope.siteName}»...`} />
       </main>
     );
@@ -72,7 +74,7 @@ export const MainContent: React.FC = () => {
 
   if (workView) {
     return (
-      <main className="flex-1 p-4 md:p-8 overflow-y-auto min-w-0" dir="rtl">
+      <main className="flex-1 w-full min-w-0 max-w-full p-2 sm:p-4 md:p-8 overflow-y-auto overflow-x-hidden" dir={language==='en'?'ltr':'rtl'}>
         {viewState === 'loading' && <LoadingState />}
         {viewState === 'empty' && <EmptyState />}
         {viewState === 'error' && <ErrorState />}
@@ -95,7 +97,6 @@ export const MainContent: React.FC = () => {
           {workView.kind === 'proposal' && <ActionProposalDetailView id={workView.id} />}
           {workView.kind === 'journal' && <ActionJournalView />}
           {workView.kind === 'copilot' && <CopilotView />}
-          {workView.kind === 'executive-dashboard' && <ExecutiveDashboard />}
           {(['stewardship','stewardship-issues','stewardship-issue'] as const).includes(workView.kind as 'stewardship') && <StewardshipViews view={workView as Extract<typeof workView,{kind:'stewardship'|'stewardship-issues'|'stewardship-issue'}>} />}
           {(['supply', 'supply-risk', 'supply-proposals', 'supply-proposal', 'supply-cases', 'supply-case', 'supply-new'] as const).includes(workView.kind as 'supply') && (
             <SupplyViews
@@ -127,7 +128,7 @@ export const MainContent: React.FC = () => {
       case 'SUP':
         return <SupplyViews view={{kind:'supply'}} open={openWorkView} siteName={scope.siteName} siteId={scope.siteId || ""} notify={showNotification}/>;
       case 'QLT':
-        return <>{renderQltContent()}<SpecificationWorkspace path='/quality/workflows' siteName={scope.siteName}/></>;
+        return <>{renderQltContent()}<SpecificationWorkspace key={`${scope.siteId}:quality`} path='/quality/workflows' siteName={scope.siteName}/></>;
       case 'AST':
         return <>{renderAstContent()}<SpecificationWorkspace path='/assets/workflows' siteName={scope.siteName}/></>;
       case 'FIN':
@@ -162,26 +163,30 @@ export const MainContent: React.FC = () => {
 
           <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100 shrink-0">
             <ShieldCheck className="w-4 h-4" />
-            <span>پایلوت امنیتی فعال (RLS Enforcement)</span>
+            <span>نمای آزمایشی کنترل‌های امنیتی (بدون RLS تأییدشده)</span>
           </div>
         </div>
 
+        <div className="flex flex-wrap gap-2" aria-label="میزکارهای پلتفرم">
+          {([['/settings/access','مدیریت دسترسی'],['/settings/modules','فعال‌سازی ماژول'],['/settings/governance','حاکمیت و تصمیم‌ها'],['/settings/notification-policy','سیاست اعلان و تشدید'],['/audit','ممیزی']] as const).map(([path,title])=><button key={path} type="button" className="rounded-lg border border-teal-200 px-3 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-50" onClick={()=>openWorkView({kind:'spec-page',path})}>{title}</button>)}
+        </div>
+        <p className="text-xs text-amber-700">وضعیت‌های امنیتی و نشست‌ها در این صفحه داده نمایشی هستند و اثبات کنترل RLS یا مهر ممیزی واقعی نیستند.</p>
         {/* PLT Metric Counters */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="p-3.5 sm:p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
             <span className="text-[11px] sm:text-xs text-slate-500 block">نشست‌های فعال سازمانی</span>
             <div className="text-xl sm:text-2xl font-black text-slate-900 tabular-nums">
-              ۱۴ نشست
+              نامشخص
             </div>
             <span className="text-[10px] sm:text-[11px] text-teal-700 font-medium block">
-              احراز هویت OIDC / SSO
+              OIDC / SSO واقعی متصل نیست
             </span>
           </div>
 
           <div className="p-3.5 sm:p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
             <span className="text-[11px] sm:text-xs text-slate-500 block">سطح ایزولاسیون داده‌ها</span>
             <div className="text-xl sm:text-2xl font-black text-slate-900">
-              سطح ۳ (Site-RLS)
+              نمایش دامنه در رابط
             </div>
             <span className="text-[10px] sm:text-[11px] text-emerald-700 font-medium block">
               محدود به «{scope.siteCode}»
@@ -191,10 +196,10 @@ export const MainContent: React.FC = () => {
           <div className="p-3.5 sm:p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
             <span className="text-[11px] sm:text-xs text-slate-500 block">مهروموم لاگ ممیزی</span>
             <div className="text-xl sm:text-2xl font-black text-slate-900 tabular-nums font-mono">
-              Batch #1048
+              سند معتبر موجود نیست
             </div>
             <span className="text-[10px] sm:text-[11px] text-emerald-700 font-medium block">
-              امضاشده و غیرقابل‌تغییر
+              وضعیت امضا: نامشخص
             </span>
           </div>
 
@@ -202,10 +207,10 @@ export const MainContent: React.FC = () => {
             <span className="text-[11px] sm:text-xs text-slate-500 block">وضعیت کلید قطع اضطراری</span>
             <div className="text-base sm:text-lg font-bold text-slate-900 pt-1 flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-              <span>سالم و آماده</span>
+              <span>وضعیت واقعی: نامشخص</span>
             </div>
             <span className="text-[10px] sm:text-[11px] text-slate-400 block">
-              Kill-Switch غیرفعال است
+              کلید قطع واقعی متصل نیست
             </span>
           </div>
         </div>
@@ -643,7 +648,7 @@ export const MainContent: React.FC = () => {
           <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
             <span className="text-xs text-slate-500 block">کانکتورهای منبع در {scope.siteCode}</span>
             <div className="text-2xl font-black text-slate-900 tabular-nums">
-              ۴ کانکتور
+              ۴ نوع منبع نمونه
             </div>
             <span className="text-[11px] text-emerald-700 block">HIS، PACS، LIS و داروخانه</span>
           </div>
@@ -659,9 +664,9 @@ export const MainContent: React.FC = () => {
           <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
             <span className="text-xs text-slate-500 block">شاخص‌های حاکمیتی مصوب</span>
             <div className="text-2xl font-black text-teal-700 tabular-nums">
-              ۱۴ شاخص
+              وضعیت نامشخص
             </div>
-            <span className="text-[11px] text-teal-700 block">نسخه ۱ مصوب دانشگاه</span>
+            <span className="text-[11px] text-teal-700 block">نسخه مصوب معتبر در نمونه موجود نیست</span>
           </div>
 
           <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
@@ -669,8 +674,11 @@ export const MainContent: React.FC = () => {
             <div className="text-base font-bold text-slate-900 pt-1">
               ثبت کامل منبع تا گزارش
             </div>
-            <span className="text-[11px] text-slate-400 block">قابلیت ردیابی محاسبات</span>
+            <span className="text-[11px] text-slate-400 block">نمایش مسیرهای دمو؛ زنجیره واقعی تأیید نشده</span>
           </div>
+        </div>
+        <div className="flex flex-wrap gap-2 border-t pt-4">
+          {([['/data/connectors','ثبت و جزئیات کانکتور'],['/data/ingestion','کارهای دریافت / replay'],['/data/identity','نگاشت شناسه'],['/data/datasets','کاتالوگ داده و تعریف متریک'],['/data/calendars','تقویم‌های نسخه‌دار'],['/data/lineage/demo','منشأ و تبار داده']] as const).map(([path,title])=><button key={path} type="button" className="rounded-lg border px-3 py-2 text-sm text-teal-800 hover:bg-teal-50" onClick={()=>openWorkView({kind:'spec-page',path})}>{title}</button>)}
         </div>
       </div>
     </div>

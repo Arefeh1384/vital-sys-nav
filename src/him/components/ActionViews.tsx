@@ -3,6 +3,7 @@ import { ArrowRight, ArrowLeft, ClipboardCheck, History, Search, ShieldCheck, Al
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useApp } from '../context/AppContext';
+import { CompensationRequest } from './ControlWorkflows';
 import { ACTION_STATUS_LABEL, MIN_REASON_LENGTH, TIER_LABEL, approvalError, cancelError, dispatchError, canOperateActions, requiredApprovals, type ActionTier, formatEventTime, minutesUntil, manualVerificationError, scopedActions, type ActionStatus, type ActionProposal } from '../data/actionData';
 
 const statusClass: Record<ActionStatus, string> = {
@@ -196,6 +197,7 @@ export function ActionProposalDetailView({ id }: { id: string }) {
   if (!action) return <div><div role="alert" data-testid="action-not-found" className="mb-4"><h1 className="text-xl font-bold">۴۰۴</h1><p className="mt-1 text-muted-foreground">پیشنهاد اقدام یافت نشد.</p></div><Button variant="outline" onClick={() => openWorkView({ kind: 'proposals' })}>بازگشت به پیشنهادها</Button></div>;
   return <div data-testid="action-detail"><Button variant="ghost" size="sm" className="mb-4 text-action-brand" onClick={() => openWorkView({ kind: 'proposals' })}><ArrowRight />بازگشت به پیشنهادها</Button><Heading title={action.title} /><p className="font-mono text-xs text-muted-foreground mb-2"><bdi dir="ltr">{action.code}</bdi></p><p className="text-xs text-muted-foreground mb-5" data-testid="action-header-meta">ویرایش {action.revision.toLocaleString('fa-IR')} · مهلت تأیید: <Countdown iso={action.expiresAtIso} /> <span>({action.expiresAt})</span></p>
     <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-8"><div className="min-w-0 space-y-8">
+      {action.status === 'finalized' && <CompensationRequest actionId={action.id} code={action.code} executed={!!action.manualCompletion || action.reconciliation?.outcome==='confirmed'} />}
       <section><h2 className="font-bold text-sm mb-3">شرح پیشنهاد</h2><p className="text-sm leading-7 text-muted-foreground">{action.description}</p></section>
       <section><h2 className="font-bold text-sm mb-3 flex gap-2 items-center"><GitCompareArrows className="size-5 text-action-brand" />تفاوت‌ها (Diff)</h2><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="text-xs text-muted-foreground bg-muted"><tr><th className="p-3">فیلد</th><th className="p-3">قبل از اقدام</th><th className="p-3">پس از اقدام</th></tr></thead><tbody>{action.diff.map(d => <tr key={d.field} className="border-b border-border"><td className="p-3 font-medium">{d.field}</td><td className="p-3 text-muted-foreground">{d.before}</td><td className="p-3 text-action-success">{d.after}</td></tr>)}</tbody></table></div></section>
       <section><h2 className="font-bold text-sm mb-3">تأثیر مورد انتظار و ریسک</h2><p className="text-sm leading-7">{action.impact}</p><p className="mt-2 text-sm leading-7 text-muted-foreground">{action.risk}</p></section>

@@ -25,8 +25,10 @@ import {canonicalTasks,unfinishedTask} from '../executive/taskProjection';
 import { MODULES_CONFIG } from '../data/mockData';
 import { ModuleKey } from '../types';
 import { Button } from '@/components/ui/button';
+import {useShellLanguage,moduleEnglish} from './useShellLanguage';
 
 export const Sidebar: React.FC = () => {
+  const [lang]=useShellLanguage();
   const { 
     activeModule, 
     setActiveModule, 
@@ -91,7 +93,7 @@ export const Sidebar: React.FC = () => {
               H
             </span>
             <span className="text-xs font-bold text-slate-800">
-              منوی ماژول‌های سامانه
+              {lang==='en'?'Module navigation':'منوی ماژول‌های سامانه'}
             </span>
           </div>
           <button
@@ -116,7 +118,7 @@ export const Sidebar: React.FC = () => {
                   {scope.siteName}
                 </span>
                 <span className="text-[10px] text-slate-400 block truncate font-mono">
-                  محدوده: {scope.siteCode}
+                  {lang==='en'?'Scope':'محدوده'}: {scope.siteCode}
                 </span>
               </div>
             </div>
@@ -128,12 +130,12 @@ export const Sidebar: React.FC = () => {
           <div>
             {!sidebarCollapsed && (
               <div className="px-3 pb-2 text-[11px] font-bold text-slate-400 tracking-wider">
-                ماژول‌های هوشمندی و عملیات
+                {lang==='en'?'Intelligence & operations':'ماژول‌های هوشمندی و عملیات'}
               </div>
             )}
 
             <nav className="space-y-1">
-              <button type="button" onClick={()=>openWorkView({kind:'spec-page',path:'/workforce'})} data-testid="sidebar-item-WFM" className="w-full rounded-lg px-3 py-2.5 text-right text-xs font-semibold text-slate-700 hover:bg-teal-50">{!sidebarCollapsed?'نیروی انسانی (WFM)':'WFM'}</button>
+              <button type="button" onClick={()=>openWorkView({kind:'spec-page',path:'/workforce'})} data-testid="sidebar-item-WFM" className="w-full rounded-lg px-3 py-2.5 text-right text-xs font-semibold text-slate-700 hover:bg-teal-50">{!sidebarCollapsed?(lang==='en'?'Workforce (WFM)':'نیروی انسانی (WFM)'):'WFM'}</button>
               {MODULES_CONFIG.map((mod) => {
                 const isSelected = !workView && activeModule === mod.key;
 
@@ -156,7 +158,7 @@ export const Sidebar: React.FC = () => {
                     {!sidebarCollapsed && (
                       <div className="flex-1 text-right overflow-hidden min-w-0">
                         <div className="flex items-center justify-between gap-1">
-                          <span className="truncate">{mod.shortTitle}</span>
+                          <span className="truncate">{lang==='en'?(moduleEnglish[mod.key]||mod.key):mod.shortTitle}</span>
                           <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-500 font-normal shrink-0">
                             {mod.key}
                           </span>
@@ -173,6 +175,8 @@ export const Sidebar: React.FC = () => {
               })}
             </nav>
             <nav className="space-y-1 mt-1">
+              {([{path:'/knowledge/documents',fa:'مخزن مستندات',en:'Knowledge documents'},{path:'/knowledge/search',fa:'جستجوی دانش',en:'Knowledge search'}] as const).map(x=><button type="button" key={x.path} data-testid={x.path==='/knowledge/documents'?'sidebar-knowledge-documents':'sidebar-knowledge-search'} onClick={()=>openWorkView({kind:'spec-page',path:x.path})} className="w-full rounded-lg px-3 py-2 text-right text-xs text-teal-800 hover:bg-teal-50">{sidebarCollapsed?'KNO':lang==='en'?x.en:x.fa}</button>)}
+              <button type="button" data-testid="sidebar-brief-builder" onClick={()=>openWorkView({kind:'spec-page',path:'/executive/briefs'})} className="w-full rounded-lg px-3 py-2 text-right text-xs font-semibold text-teal-800 hover:bg-teal-50">{!sidebarCollapsed?(lang==='en'?'Executive briefs':'گزارش‌های مدیریتی'):'EXE'}</button>
               {([
                 { kind: 'proposals', label: 'پیشنهادهای اقدام', Icon: ClipboardCheck },
                 { kind: 'approvals', label: 'صف تأییدهای من', Icon: ShieldCheck },
@@ -187,7 +191,7 @@ export const Sidebar: React.FC = () => {
                   title={label} aria-label={label} aria-pressed={selected}
                   onClick={() => { openWorkView({ kind }); if (window.innerWidth < 768) setSidebarCollapsed(true); }}
                   className={`w-full justify-start gap-3 h-auto px-3 py-2.5 text-xs font-semibold ${selected ? 'bg-action-brand/10 text-action-brand' : 'text-muted-foreground'}`}>
-                  <Icon className="size-5 shrink-0" />{!sidebarCollapsed && <span>{label}</span>}
+                  <Icon className="size-5 shrink-0" />{!sidebarCollapsed && <span>{lang==='en'?({proposals:'Action proposals',approvals:'My approvals',journal:'Action journal',copilot:'Copilot',memos:'Decision memos',supply:'Supply risks',stewardship:'Data quality'} as Record<string,string>)[kind]||label:label}</span>}
                 </Button>;
               })}
             </nav>
@@ -195,7 +199,7 @@ export const Sidebar: React.FC = () => {
 
           <div>
             {!sidebarCollapsed && (
-              <div className="px-3 pb-2 text-[11px] font-bold text-slate-400 tracking-wider">کارتابل</div>
+              <div className="px-3 pb-2 text-[11px] font-bold text-slate-400 tracking-wider">{lang==='en'?'Work queues':'کارتابل'}</div>
             )}
             <nav className="space-y-1">
               {([
@@ -211,7 +215,7 @@ export const Sidebar: React.FC = () => {
                     <Icon className={`w-5 h-5 shrink-0 ${sel ? 'text-teal-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
                     {!sidebarCollapsed && (
                       <div className="flex-1 flex items-center justify-between gap-1 min-w-0">
-                        <span className="truncate">{label}</span>
+                        <span className="truncate">{lang==='en'?(kind==='tasks'?'Tasks':'Alerts'):label}</span>
                         {count > 0 && <span className="text-[10px] px-1.5 rounded-full bg-rose-100 text-rose-700 shrink-0 tabular-nums">{count.toLocaleString('fa-IR')}</span>}
                       </div>
                     )}

@@ -29,7 +29,7 @@ export interface CopilotTurn {
   state: RunState; jobState: 'queued' | 'running' | 'succeeded' | 'failed' | 'canceling';
   idempotencyKey: string; answer?: AnswerArtifact; originalAnswer?: AnswerArtifact;
   context?: { purpose: string; range: string; attachmentIds: string[] };
-  feedback?: { helpful: boolean | null; errorType: string; text: string };
+  feedback?: { helpful: boolean | null; errorType: string; text: string; claimIndex?: number | null };
 }
 export const REASON_LABEL: Record<ReasonCode, string> = {
   missing_evidence: 'شواهد ناموجود', conflicting_evidence: 'تعارض بین منابع', ambiguous_request: 'درخواست مبهم',
@@ -43,7 +43,7 @@ export const RUN_LABEL: Record<RunState, string> = {
 };
 export const KIND_LABEL: Record<EvidenceKind, string> = { retrieved: 'واقعیت بازیابی‌شده', computed: 'نتیجه‌ی محاسبه‌شده', hypothesis: 'فرضیه', recommendation: 'پیگیری پیشنهادی' };
 export const SUGGESTIONS = ['اشغال تخت بیمارستان فعلی چقدر است؟', 'وضعیت سفارش هپارین چیست؟', 'سیاست مرخصی استعلاجی چیست؟', 'سیاست اضافه‌کار چیست؟', 'وضعیت چطوره؟', 'گزارش هفته‌ی قبل تخت‌های ICU'];
-export const MAX_QUESTION_LENGTH = 16000;
+export const MAX_QUESTION_LENGTH = 4000;
 export const RUN_DEADLINE_MS = 90000;
 export const DATA_AS_OF = '2026-10-19T05:00:00.000Z';
 export function normalizeQuestion(s: string) {
@@ -52,7 +52,7 @@ export function normalizeQuestion(s: string) {
 }
 export function questionError(q: string): string | null {
   if (!q.trim()) return 'سؤال باید دست‌کم یک نویسه داشته باشد.';
-  return q.length > MAX_QUESTION_LENGTH ? 'سؤال نباید بیشتر از ۱۶٬۰۰۰ نویسه باشد.' : null;
+  return Array.from(q.trim()).length > MAX_QUESTION_LENGTH ? 'سؤال نباید بیشتر از ۴٬۰۰۰ نویسه باشد.' : null;
 }
 export function metricResult(numerator: number, denominator: number): { status: 'computed'; value: number } | { status: 'not_computable' } {
   return denominator === 0 ? { status: 'not_computable' } : { status: 'computed', value: numerator / denominator * 100 };
@@ -75,8 +75,15 @@ export function approvedDocuments(siteId: string) {
   ];
 }
 function hash(s: string) { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return (h >>> 0).toString(16); }
+/** A fixture cannot be 'fresh' just because its persisted flag says so. */
+export function evidenceFreshness(dataAsOf:string, evaluatedAt:string | number = Date.now()): 'fresh' | 'stale' | 'unknown' {
+  const observed=Date.parse(dataAsOf);
+  const now=typeof evaluatedAt==='number'?evaluatedAt:Date.parse(evaluatedAt);
+  if (!Number.isFinite(observed) || !Number.isFinite(now) || observed > now) return 'unknown';
+  return now-observed <= 24*60*60*1000 ? 'fresh' : 'stale';
+}
 export function evidenceForDisplay(e: EvidenceItem): EvidenceItem {
-  return e.revoked ? { id: e.id, kind: e.kind, title: 'شواهد دیگر در دسترس نیست', version: '', locator: '', dataAsOf: '', freshness: e.freshness, excerpt: '', revoked: true } : e;
+  return e.revoked ? { id: e.id, kind: e.kind, title: 'شواهد دیگر در دسترس نیست', version: '', locator: '', dataAsOf: '', freshness: e.freshness, excerpt: '', revoked: true } : { ...e, freshness: evidenceFreshness(e.dataAsOf)==='fresh' ? 'fresh':'stale' };
 }
 export function validateAnswer(answer: AnswerArtifact): AnswerArtifact {
   const invalid = answer.blocks.some(b => b.evidenceIds.length === 0 || b.evidenceIds.some(id => !answer.evidence.some(e => e.id === id)));
@@ -132,7 +139,7 @@ export function answerQuestion(question: string, siteId: string, userPermittedSi
     if (hospMatch && hospMatch[1]) {
       const target = normalizeQuestion(hospMatch[1]);
       const isCurrent = currentAliases.some(alias => alias.includes(target) || target.includes(alias));
-      if (!isCurrent && target !== 'فعلی' && target !== 'ها' && target !== 'های') {
+      if (!isCurrent && !['فعلی','ها','های','چیست','ما','شما','خود','این','موردنظر','موردنظرمان'].includes(target)) {
         return true;
       }
     }
@@ -149,7 +156,7 @@ export function answerQuestion(question: string, siteId: string, userPermittedSi
   const task = TASKS_DATA.find(t => t.siteId === siteId && t.module === 'OPS');
   const alert = ALERTS_DATA.find(a => a.siteId === siteId && a.module === 'OPS');
   if (!task || !alert) return abstain('missing_evidence', 'مالک داده را مطلع کنید.');
-  const evidence = (eid: string, kind: EvidenceKind, title: string, excerpt: string, link: SourceLink): EvidenceItem => ({ id: eid, kind, title, excerpt, version: 'v1', locator: 'بسته شواهد / رکورد نمونه', dataAsOf: DATA_AS_OF, freshness: 'fresh', link });
+  const evidence = (eid: string, kind: EvidenceKind, title: string, excerpt: string, link: SourceLink): EvidenceItem => ({ id: eid, kind, title, excerpt, version: 'v1', locator: 'بسته شواهد / رکورد نمونه', dataAsOf: DATA_AS_OF, freshness: evidenceFreshness(DATA_AS_OF, now)==='fresh'?'fresh':'stale', link });
   if (/اضافه کار|ماموریت|مأموریت/.test(q)) {
     const docs = approvedDocuments(siteId).slice(1);
     const [a, b] = docs;
@@ -170,6 +177,9 @@ export function answerQuestion(question: string, siteId: string, userPermittedSi
       limitations: ['داده‌ی مصرف ماهانه‌ی دارو در دسترس نیست'], relatedActionIds: [action.id], relatedTaskIds: [action.taskId], relatedAlertIds: [action.alertId] });
   }
   if (/اشغال|تخت|occupancy/.test(q)) {
+    if (/(?:۳۰|30)\s*روز|30\s*day|30.days/i.test(q) || /(?:۳۰|30)\s*روز|30\s*day/i.test(ctx?.range ?? '')) {
+      return abstain('missing_evidence', 'برای اشغال تخت در ۳۰ روز، سری زمانی و برش ۳۰ روزهٔ تأییدشده در داده نمونه موجود نیست؛ مقدار امروز جایگزین آن نمی‌شود.');
+    }
     const metric = OCCUPANCY_METRICS.find(m => m.siteId === siteId);
     if (!metric) return abstain('missing_evidence', 'مالک متریک را مطلع کنید.');
     // Explicit last-complete-day requests must not be answered from a 'today' fixture.

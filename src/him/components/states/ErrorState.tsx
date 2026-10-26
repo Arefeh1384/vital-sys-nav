@@ -19,7 +19,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
   requestId = 'req-sbmu-8201bfad-4200',
   onRetry,
 }) => {
-  const { setViewState } = useApp();
+  const { setViewState, setActiveModule } = useApp();
   const [retrying, setRetrying] = useState(false);
 
   const handleRetry = () => {
@@ -81,7 +81,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
         <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
           <button
             type="button"
-            onClick={() => setViewState('normal')}
+            onClick={() => setActiveModule('EXE')}
             className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 sm:bg-transparent rounded-xl sm:rounded-none flex items-center justify-center gap-1.5 transition-colors"
           >
             <ArrowRight className="w-3.5 h-3.5" />
