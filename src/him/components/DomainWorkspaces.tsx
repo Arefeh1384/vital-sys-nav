@@ -4,6 +4,7 @@ import {SyntheticDataFlow} from './SyntheticDataFlow';
 import {SyntheticRetentionPlan} from './SyntheticRetentionPlan';
 import {compareOccupancyFixtures} from '../executive/dashboardStore';
 import {DEMO_USERS} from '../data/mockData';
+import {checkDemoPublicationRecipients,parseDemoRecipients} from './briefPublicationGate';
 
 /** Domain-specific, site-scoped synthetic workflow. No upstream writes or clinical decisions. */
 type Kind='text'|'date'|'datetime-local'|'number'|'textarea'|'select';
@@ -179,10 +180,8 @@ function DomainWorkspaceContent({path,siteId,siteName,userId,initialTab}:{path:s
  };
  const publish=(record:RecordItem)=>{
   if(record.createdBy!==userId || record.state!=='publication_request_unapproved' || path!=='/executive/briefs')return;
-  const approved=items.find(x=>x.tab===2&&x.values.brief===record.values.brief&&x.state==='review_approved_synthetic');
-  const checks=briefChecks(record.values.brief);
-  if(!checks.recipientAllowed||!checks.freshnessAllowed)return;
-  if(!approved || !approved.reviewedBy || approved.reviewedBy===userId)return;
+  const reasons=publicationGate(record);
+  if(reasons.length)return;
   setItems(old=>old.map(x=>x.id===record.id?{...x,state:'published_synthetic',publishedAt:iso(),note:'نسخه نمایشی گزارش منتشر شد؛ هیچ گیرنده واقعی یا سرویس ارسال فراخوانی نشد.'}:x));
  };
  const promote=(record:RecordItem)=>{
@@ -199,13 +198,27 @@ function DomainWorkspaceContent({path,siteId,siteName,userId,initialTab}:{path:s
  };
  const briefChecks=(ref:string)=>{
    const preview=briefPreview(ref),root=preview?.root;
-   const recipients=(root?.values.recipients||'').split(/[,،]/).map(x=>x.trim()).filter(Boolean);
+   const recipients=parseDemoRecipients(root?.values.recipients||'');
    const recipientAllowed=recipients.length>0&&recipients.every(id=>DEMO_USERS.some(u=>u.id===id&&u.permittedSiteIds.includes(siteId)));
    const cutoff=preview?.cutoff?Date.parse(preview.cutoff):NaN;
    const ageDays=Number.isFinite(cutoff)?(Date.now()-cutoff)/86400000:Infinity;
    const fresh=Boolean(preview?.compatible)&&ageDays>=0&&ageDays<=1;
    const policy=root?.values.stale_policy||'block';
    return {recipientAllowed,recipients,fresh,ageDays,policy,freshnessAllowed:!!preview?.compatible&&(fresh||policy==='warn'),rendition:root?.values.rendition||'html_preview'};
+ };
+ const publicationGate=(request:RecordItem):string[]=>{
+  if(path!=='/executive/briefs'||request.tab!==3)return ['درخواست انتشار نامعتبر است.'];
+  const root=items.find(x=>x.tab===0&&x.id===request.values.brief);
+  const approved=items.find(x=>x.tab===2&&x.values.brief===request.values.brief&&x.state==='review_approved_synthetic');
+  if(!root)return ['گزارش اصلی وجود ندارد.'];
+  const permitted=DEMO_USERS.filter(u=>u.permittedSiteIds.includes(siteId)).map(u=>u.id);
+  const issues=checkDemoPublicationRecipients(root.values.recipients||'',request.values.recipients||'',permitted);
+  const checks=briefChecks(request.values.brief);
+  if(!checks.freshnessAllowed)issues.push('BLOCKED: شواهد ناسازگار یا منبع کهنه با سیاست منع انتشار.');
+  if(!approved||!approved.reviewedBy||approved.reviewedBy===request.createdBy||approved.reviewedBy!==request.values.reviewer||approved.reviewedBy!==root.values.reviewer)
+    issues.push('بازبینی مستقل معتبر و منطبق با نسخه گزارش/گیرندگان لازم است.');
+  if(request.createdBy!==root.createdBy)issues.push('ویرایشگر درخواست انتشار با مالک گزارش مطابقت ندارد.');
+  return issues;
  };
  const visible=items.filter(x=>(JSON.stringify(x.values)+' '+x.id).toLowerCase().includes(q.toLowerCase()));
  return <section dir="rtl" data-testid="domain-workspace" className="space-y-4">
@@ -220,7 +233,7 @@ function DomainWorkspaceContent({path,siteId,siteName,userId,initialTab}:{path:s
   </div>}
   {path==='/operations/scenarios'&&tab===3&&<div role="status" data-testid="scenario-results" className="rounded-lg bg-slate-50 p-3 text-sm"><strong>خروجی سناریو: unavailable</strong><p>خط پایه تأییدشده، مدل اعتبارسنجی‌شده و داده منبع در دسترس نیست. هیچ عدد، اثر بر تخت یا تصمیم بالینی ایجاد نشده است.</p></div>}
   {path==='/operations/forecasts'&&tab===1&&<div className="rounded-lg bg-slate-50 p-3 text-sm" data-testid="forecast-results"><strong>نتیجه: unavailable</strong><p>point: ناموجود · p10: ناموجود · p50: ناموجود · p90: ناموجود</p><p>علت: مدل/نسخه و snapshot ورودی در دسترس نیست. عدد جایگزین تولید نمی‌شود.</p></div>}
-  {path==='/executive/briefs'&&<section data-testid="brief-preview" className="rounded-lg border p-3 text-sm space-y-2"><h3 className="font-bold">پیش‌نمایش نسخه‌دار گزارش مدیریتی · صرفاً آزمایشی</h3>{items.filter(x=>x.tab===0).map(root=>{const preview=briefPreview(root.id);return <div key={root.id} className="rounded border p-3"><p>گزارش: {root.values.title} · {root.values.template} · شناسه {root.id}</p><p>دوره: {root.values.boundary} · دامنه: {root.values.scope} · گیرندگان پیشنهادی: {root.values.recipients}</p>{(()=>{const checks=briefChecks(root.id);return <div data-testid="brief-compliance" className="my-2 rounded bg-slate-50 p-2 space-y-1"><p>قالب ارائه: {checks.rendition==='plain_text'?'متن ساده':'HTML (نمایش مرورگری)'}</p><p>کنترل تازگی منبع: {checks.fresh?'PASS (فیکسچر حداکثر ۲۴ساعت)':'STALE / UNKNOWN'} · سیاست: {checks.policy} · {checks.freshnessAllowed?'مجاز در شبیه‌سازی با هشدار':'BLOCKED'}</p><p>کنترل گیرندگان در فهرست کاربران مجاز همین سایت (فقط فیکسچر): {checks.recipientAllowed?'PASS (demo allowlist)':'BLOCKED — شناسه‌های usr-… را با ویرگول وارد کنید'}</p><p className="text-amber-800">این بررسی مجوز سازمانی یا ارسال واقعی را تأیید نمی‌کند.</p></div>})()}{preview?.compatible?root.values.rendition==='plain_text'?<pre className="whitespace-pre-wrap rounded bg-slate-50 p-3" data-testid="brief-plain-text-rendition">{`DEMO BRIEF / ${root.values.title}\nSynthetic occupancy: ${preview.value}%\nMetric: available_staffed_bed_occupancy@1\nSnapshot: ${preview.source}\nCutoff: ${preview.cutoff}\nNOT AUTHORISED FOR EXTERNAL DISTRIBUTION`}</pre>:<><p className="font-semibold">اشغال تخت مصنوعی: {preview.value}%</p><p>ارجاع: {preview.source} · نسخه: available_staffed_bed_occupancy@1 · cutoff: {preview.cutoff}</p><p>محدودیت: فیکسچر کهنه/محلی؛ گزارش بیرونی معتبر نیست.</p></>:<p role="alert">داده هم‌دوره و شواهد هماهنگ وجود ندارند؛ تولید شاخص عددی ممنوع است. برای پیش‌نمایش عددی باید متریک available_staffed_bed_occupancy@1 و مرجع snapshot همین سایت ثبت شود.</p>}</div>})}</section>}
+  {path==='/executive/briefs'&&<section data-testid="brief-preview" className="rounded-lg border p-3 text-sm space-y-2"><h3 className="font-bold">پیش‌نمایش نسخه‌دار گزارش مدیریتی · صرفاً آزمایشی</h3>{items.filter(x=>x.tab===0).map(root=>{const preview=briefPreview(root.id);return <div key={root.id} className="rounded border p-3"><p>گزارش: {root.values.title} · {root.values.template} · شناسه {root.id}</p><p>دوره: {root.values.boundary} · دامنه: {root.values.scope} · گیرندگان پیشنهادی: {root.values.recipients}</p>{(()=>{const checks=briefChecks(root.id);return <div data-testid="brief-compliance" className="my-2 rounded bg-slate-50 p-2 space-y-1"><p>قالب ارائه: {checks.rendition==='plain_text'?'متن ساده':'HTML (نمایش مرورگری)'}</p><p>کنترل تازگی منبع: {checks.fresh?'PASS (فیکسچر حداکثر ۲۴ساعت)':'STALE / UNKNOWN'} · سیاست: {checks.policy} · {checks.freshnessAllowed?'مجاز در شبیه‌سازی با هشدار':'BLOCKED'}</p><p>کنترل گیرندگان در فهرست کاربران مجاز همین سایت (فقط فیکسچر): {checks.recipientAllowed?'PASS (demo allowlist)':'BLOCKED — شناسه‌های usr-… را با ویرگول وارد کنید'}</p><p className="text-amber-800">این PASS فقط گیرندگان پیش‌نویس را بررسی می‌کند؛ گیرندگان فرم انتشار مستقل از این پنل دوباره کنترل می‌شوند. این بررسی مجوز سازمانی یا ارسال واقعی را تأیید نمی‌کند.</p></div>})()}{preview?.compatible?root.values.rendition==='plain_text'?<pre className="whitespace-pre-wrap rounded bg-slate-50 p-3" data-testid="brief-plain-text-rendition">{`DEMO BRIEF / ${root.values.title}\nSynthetic occupancy: ${preview.value}%\nMetric: available_staffed_bed_occupancy@1\nSnapshot: ${preview.source}\nCutoff: ${preview.cutoff}\nNOT AUTHORISED FOR EXTERNAL DISTRIBUTION`}</pre>:<><p className="font-semibold">اشغال تخت مصنوعی: {preview.value}%</p><p>ارجاع: {preview.source} · نسخه: available_staffed_bed_occupancy@1 · cutoff: {preview.cutoff}</p><p>محدودیت: فیکسچر کهنه/محلی؛ گزارش بیرونی معتبر نیست.</p></>:<p role="alert">داده هم‌دوره و شواهد هماهنگ وجود ندارند؛ تولید شاخص عددی ممنوع است. برای پیش‌نمایش عددی باید متریک available_staffed_bed_occupancy@1 و مرجع snapshot همین سایت ثبت شود.</p>}</div>})}</section>}
   {path==='/settings/governance'&&tab===2&&<SyntheticRetentionPlan/>}
   {path==='/data/ingestion'&&<SyntheticDataFlow/>}
   {path==='/data/ingestion'&&tab===2&&<p className="text-xs text-slate-600">نمایش Job شامل وضعیت اجرا، accepted/duplicate/quarantined، cutoff، consistency و checkpoint از داده واردشده مصنوعی است. هیچ پردازشی آغاز نمی‌شود.</p>}
@@ -236,7 +249,7 @@ function DomainWorkspaceContent({path,siteId,siteName,userId,initialTab}:{path:s
     {path==='/settings/governance'&&item.state==='awaiting_independent_review'&&item.createdBy!==userId&&item.values.reviewer===userId&&<label className="block w-full">دلیل رد در محیط نمایشی (حداقل ۱۰ نویسه)<textarea aria-label="دلیل رد تصمیم حاکمیتی" className={cls} value={reviewReason} onChange={e=>setReviewReason(e.target.value)}/><button className="border rounded p-2 mt-2" disabled={reviewReason.trim().length<10} onClick={()=>rejectGovernance(item)}>رد تصمیم پیشنهادی با ثبت دلیل</button></label>}
     {item.rejectedBy&&<p>رد توسط: {item.rejectedBy} · {item.rejectedAt} · دلیل: {item.rejectionReason}</p>}
     {item.reviewedBy&&<p>تأیید نمایشی توسط: {item.reviewedBy} · {item.reviewedAt}</p>}
-    {path==='/executive/briefs'&&item.tab===3&&<button className="border rounded p-2" disabled={item.state!=='publication_request_unapproved'||item.createdBy!==userId} onClick={()=>publish(item)}>تولید نسخه منتشرشده نمایشی</button>}
+    {path==='/executive/briefs'&&item.tab===3&&<div data-testid="brief-publication-gate" className="w-full space-y-2"><button className="border rounded p-2 disabled:opacity-50" disabled={item.state!=='publication_request_unapproved'||item.createdBy!==userId||publicationGate(item).length>0} onClick={()=>publish(item)}>تولید نسخه منتشرشده نمایشی</button>{item.state==='publication_request_unapproved'&&publicationGate(item).length>0&&<p role="alert" className="text-red-700 text-xs" data-testid="brief-publication-blocked">{publicationGate(item).join(' · ')}</p>}{item.state==='publication_request_unapproved'&&publicationGate(item).length===0&&<p role="status" className="text-emerald-700 text-xs">گیت‌های محلی شبیه‌سازی پاس شدند؛ ارسال واقعی انجام نمی‌شود.</p>}</div>}
     {path==='/settings/modules'&&item.tab===2&&item.values.target==='active'&&<button className="border rounded p-2" disabled={item.state!=='review_approved_synthetic'||item.createdBy!==userId} onClick={()=>promote(item)}>فعال‌سازی محلی (فیکسچر)</button>}
     {path==='/data/identity'&&<button className="border rounded p-2" onClick={()=>transition(item,'successor')}>درخواست جانشین / Unmerge</button>}
    {item.state==='published_synthetic'&&path==='/executive/briefs'&&<p>خروجی تأییدشده فقط برای این مرورگر: {item.id} · {item.publishedAt} · ارسال واقعی انجام نشد.</p>}

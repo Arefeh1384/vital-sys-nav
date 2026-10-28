@@ -36,7 +36,7 @@ export function alertEvidence(a: WorkAlert): EvidenceItem[] {
   items.push({ id: `${a.id}-r`, kind: 'record', title: 'رکورد خام دریافتی از منبع', source: a.source, capturedAt: a.raisedAt, detail: a.description });
   items.push({ id: `${a.id}-l`, kind: 'log', title: 'گزارش موتور قواعد هشدار', source: 'HIM-OS Rules Engine', capturedAt: a.raisedAt, detail: `قاعده هشدار ${a.code} فعال شد و رخداد ثبت گردید.` });
   // Only this named alert has a dedicated synthetic provenance fixture. Never infer metadata from capturedAt.
-  const sample = a.id==='ALR-1050'?{
+  const sample = a.code==='ALR-1050'?{
     sourceVersion:'fixture-contract-bed-v1 [SYNTHETIC]',metricVersion:'bed-capacity-count@demo-1',
     ruleVersion:'capacity-threshold@demo-2',snapshotCutoff:'2026-10-23T23:59:59+03:30',
     sourceEventAt:'2026-10-23T23:58:00+03:30',ingestedAt:'2026-10-23T23:58:09+03:30',

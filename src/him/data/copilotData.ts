@@ -11,7 +11,7 @@ export interface SourceLink { kind: 'proposal' | 'task' | 'alert' | 'metric' | '
 export interface EvidenceItem {
   id: string; kind: EvidenceKind; title: string; version: string; locator: string; dataAsOf: string;
   freshness: 'fresh' | 'stale'; excerpt: string; numerator?: number; denominator?: number; metricVersion?: string; value?: string;
-  link?: SourceLink; revoked?: boolean;
+  link?: SourceLink; revoked?: boolean; sourceEventAt?: string | null; ingestedAt?: string | null; provenanceNote?: string;
 }
 export interface AnswerBlock { text: string; evidenceIds: string[] }
 export interface AnswerArtifact {
@@ -60,7 +60,7 @@ export function metricResult(numerator: number, denominator: number): { status: 
 // The central office has no active beds: its occupancy has a zero denominator and must read "not computable", never 0%.
 export const OCCUPANCY_METRICS = SITES_DATA.map(s => s.activeBeds === 0
   ? { siteId: s.id, numerator: 0, denominator: 0, version: 'occ-v2', dataAsOf: DATA_AS_OF }
-  : { siteId: s.id, numerator: 80, denominator: 100, version: 'occ-v2', dataAsOf: DATA_AS_OF });
+  : { siteId: s.id, numerator: 80, denominator: 100, version: 'occ-v2', dataAsOf: DATA_AS_OF, sourceEventAt: '2026-10-19T04:52:00.000Z', ingestedAt: '2026-10-19T04:56:00.000Z' });
 export function approvedDocuments(siteId: string) {
   const taskA = TASKS_DATA.find(t => t.siteId === siteId && t.title.includes('اضافه‌کار') && t.title.includes('الف'))
     ?? TASKS_DATA.find(t => t.siteId === siteId && t.module === 'PLT');
@@ -193,11 +193,12 @@ export function answerQuestion(question: string, siteId: string, userPermittedSi
     const stale = /هفته.*قبل|کهنه/.test(q);
     const dataAsOf = stale ? '2026-10-12T05:00:00.000Z' : metric.dataAsOf;
     const result = metricResult(metric.numerator, metric.denominator);
-    const e: EvidenceItem = { ...evidence(`${siteId}-occ`, 'computed', 'متریک تأییدشده‌ی اشغال کل تخت‌ها (نمونه)', 'متریک کل تخت‌ها است؛ با هشدار اشغال ICU متفاوت است.', { kind: 'metric', id: `${siteId}-occ` }), numerator: metric.numerator, denominator: metric.denominator, metricVersion: metric.version, dataAsOf, freshness: stale ? 'stale' : 'fresh', locator: 'بسته متریک نمونه / کل تخت‌ها' };
+    const e: EvidenceItem = { ...evidence(`${siteId}-occ`, 'computed', 'متریک تأییدشده‌ی اشغال کل تخت‌ها (نمونه)', 'متریک کل تخت‌ها است؛ با هشدار اشغال ICU متفاوت است.', { kind: 'metric', id: `${siteId}-occ` }), numerator: metric.numerator, denominator: metric.denominator, metricVersion: metric.version, dataAsOf, sourceEventAt: !stale && 'sourceEventAt' in metric ? metric.sourceEventAt : undefined, ingestedAt: !stale && 'ingestedAt' in metric ? metric.ingestedAt : undefined, provenanceNote: !stale && 'sourceEventAt' in metric ? 'زمان‌ها صرفاً برای فیکسچر مستقل Copilot ساخته شده‌اند؛ با شواهد Dashboard EXE یکسان نیستند و از HIS دریافت نشده‌اند.' : undefined, freshness: stale ? 'stale' : 'fresh', locator: 'بسته متریک نمونه / کل تخت‌ها' };
     const packageRecord = taskEvidence(task, alert).find(x => x.kind === 'document');
     const policy = evidence(`${siteId}-cap`, 'retrieved', 'سند نمونه‌ی سیاست ظرفیت', `${packageRecord?.detail ?? task.description}؛ سیاست نمونه: متریک کل تخت‌ها جدا از ICU گزارش می‌شود.`, { kind: 'document', id: `${siteId}-capacity` });
     const source = alertEvidence(alert).find(x => x.kind === 'record');
     const rec = evidence(`${alert.id}-copilot`, 'retrieved', 'رکورد مرتبط مراقبت ویژه', source?.detail ?? alert.description, { kind: 'alert', id: alert.id });
+    if(source?.sourceEventAt&&source?.ingestedAt){rec.sourceEventAt=source.sourceEventAt;rec.ingestedAt=source.ingestedAt;rec.provenanceNote='زمان‌ها صرفاً فیکسچر هشدار آزمایشی هستند؛ از سامانه بیمارستان دریافت نشده‌اند.';}
     const notComputable = result.status === 'not_computable';
     const rangeText = stale ? ' (تاریخ منبع: ۲۰۲۶-۱۰-۱۲)' : (ctx?.range ? ` (بازه: ${ctx.range})` : '');
     return validateAnswer({ ...base, status: stale || notComputable ? 'partial' : 'answered', reasonCodes: stale ? ['source_stale'] : notComputable ? ['missing_evidence'] : [], dataAsOf, evidence: [e, policy, rec],
