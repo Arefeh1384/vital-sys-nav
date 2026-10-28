@@ -12,6 +12,34 @@ import {demoStore} from '../phase6/store';
 import {legacyAsPhase6} from '../phase6/Phase6';
 import {canonicalTasks,unfinishedTask} from '../executive/taskProjection';
 import { AlertOperations } from './ControlWorkflows';
+import {useShellLanguage} from './useShellLanguage';
+
+export const englishTaskStatus:Record<string,string>={open:'Open',assigned:'Assigned',in_progress:'In progress',blocked:'Blocked',submitted_for_review:'Awaiting review',completed:'Completed',canceled:'Canceled',done:'Done'};
+
+/** Translate only known, seeded demo content; never silently translate authored or unknown task text. */
+const demoTaskEnglish:Record<string,{title:string;description:string}>={
+ 'بازتوزیع بیماران ICU به بخش‌های مجاور':{title:'Redistribute ICU patients to adjacent wards',description:'Coordinate with head nurses to transfer stable patients and free ICU capacity.'},
+ 'ثبت سفارش فوری هپارین':{title:'Place urgent heparin order',description:'Submit an urgent purchase request to the pharmacy and therapeutics office.'},
+ 'تحلیل ریشه‌ای (RCA) خطای دارویی':{title:'Root cause analysis (RCA) of medication error',description:'Convene the safety committee and complete the RCA form.'},
+ 'برنامه‌ریزی کالیبراسیون ونتیلاتورها':{title:'Schedule ventilator calibration',description:'Coordinate with the service provider to calibrate three ventilators.'},
+ 'بازبینی اسناد کسورات بیمه':{title:'Review insurance deduction documents',description:'Review the reasons for deductions and correct service recording workflows.'},
+ 'تأیید فصلی دسترسی کاربران':{title:'Quarterly user access certification',description:'Review user roles and permissions for the current quarter.'},
+ 'سیاست اضافه‌کار — نسخه الف (نمونه)':{title:'Overtime policy — version A (demo)',description:'Version A: overtime needs approval before it is recorded (active demo document).'},
+ 'سیاست اضافه‌کار — نسخه ب (نمونه)':{title:'Overtime policy — version B (demo)',description:'Version B: overtime can be recorded before approval (active demo document).'},
+};
+const demoHistoryEnglish:Record<string,string>={
+ 'وظیفه از روی هشدار ایجاد شد.':'Task created from an alert.',
+ 'وضعیت به «در حال انجام» تغییر کرد.':'Status changed to In progress.',
+ 'وظیفه ایجاد شد.':'Task created.',
+ 'وظیفه انجام شد.':'Task completed.',
+ 'وظیفه دوره‌ای ایجاد شد.':'Recurring task created.',
+ 'سند سیاست اضافه‌کار نسخه الف بارگذاری شد.':'Overtime policy document version A uploaded.',
+ 'سند سیاست اضافه‌کار نسخه ب بارگذاری شد.':'Overtime policy document version B uploaded.',
+};
+export function demoTaskDisplay(title:string,description:string,en:boolean){
+ const translated=en?demoTaskEnglish[title]:undefined;
+ return {title:translated?.title||title,description:translated?.description||description};
+}
 
 const moduleTitle = (k: string) => MODULES_CONFIG.find(m => m.key === k)?.shortTitle ?? k;
 /** Readable identity for fixture tasks; never presents an unknown ID as an authenticated person. */
@@ -37,11 +65,11 @@ const ALERT_STATUS_CLASS: Record<AlertStatus, string> = {
   resolved: 'bg-emerald-100 text-emerald-800 border-emerald-200',
 };
 
-const Header: React.FC<{ icon: React.ReactNode; title: string; subtitle: string; onBack?: () => void }> = ({ icon, title, subtitle, onBack }) => (
+const Header: React.FC<{ icon: React.ReactNode; title: string; subtitle: string; onBack?: () => void }> = ({ icon, title, subtitle, onBack }) => { const [language]=useShellLanguage();return (
   <div className="mb-6">
     {onBack && (
       <button type="button" onClick={onBack} className="mb-3 inline-flex items-center gap-1 text-xs text-teal-700 hover:text-teal-900 font-semibold">
-        <ArrowRight className="w-4 h-4" /> بازگشت به فهرست
+        <ArrowRight className="w-4 h-4" /> {language==='en'?'Back to list':'بازگشت به فهرست'}
       </button>
     )}
     <div className="flex items-center gap-3">
@@ -52,7 +80,7 @@ const Header: React.FC<{ icon: React.ReactNode; title: string; subtitle: string;
       </div>
     </div>
   </div>
-);
+);};
 
 function Filters<T extends string>({ value, onChange, options }: { value: T | 'all'; onChange: (v: T | 'all') => void; options: Record<T, string> }) {
   return (
@@ -67,16 +95,17 @@ function Filters<T extends string>({ value, onChange, options }: { value: T | 'a
   );
 }
 
-const SearchBox: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => (
+const SearchBox: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {const [language]=useShellLanguage();return (
   <div className="relative w-full md:w-64">
     <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
-    <input value={value} onChange={e => onChange(e.target.value)} placeholder="جستجو در عنوان یا کد..." aria-label="جستجو در عنوان یا کد" dir="rtl"
+    <input value={value} onChange={e => onChange(e.target.value)} placeholder={language==='en'?'Search title or code...':'جستجو در عنوان یا کد...'} aria-label={language==='en'?'Search title or code':'جستجو در عنوان یا کد'} dir={language==='en'?'ltr':'rtl'}
       className="w-full text-right pr-9 pl-3 py-2 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/30" />
   </div>
-);
+);};
 
 export const TaskListView: React.FC = () => {
  const {tasks,scope,openWorkView,workView}=useApp();
+ const [language]=useShellLanguage(); const en=language==='en';
  const routeFilter = workView?.kind === 'tasks' ? workView.filter : undefined;
  const [status,setStatus]=useState(()=>sessionStorage.getItem('him.tasks.status')|| (routeFilter==='unfinished'?'unfinished':'all'));const [q,setQ]=useState(()=>sessionStorage.getItem('him.tasks.search')||'');const [pageSize,setPageSize]=useState<25|50|100>(()=>{const n=Number(sessionStorage.getItem('him.tasks.pageSize'));return n===50||n===100?n:25});const [page,setPage]=useState(1);
  useEffect(()=>{sessionStorage.setItem('him.tasks.status',status);sessionStorage.setItem('him.tasks.search',q);sessionStorage.setItem('him.tasks.pageSize',String(pageSize));},[status,q,pageSize]);
@@ -84,11 +113,11 @@ export const TaskListView: React.FC = () => {
  // One list and one detail page for legacy and Copilot-created tasks.
  const overrides=demoStore.tasks();
  const rows=[...tasks.map(t=>overrides.find(o=>o.id===t.id)||legacyAsPhase6(t)),...overrides.filter(t=>!tasks.some(l=>l.id===t.id))]
-  .filter(t=>t.siteId===scope.siteId&&(status==='all'||(status==='unfinished'?unfinishedTask(t.status):t.status===status))&&(!q||t.title.includes(q)||t.id.toLowerCase().includes(q.toLowerCase())));
- const labels={open:'باز',assigned:'تخصیص‌یافته',in_progress:'در حال انجام',blocked:'مسدود',submitted_for_review:'در انتظار بررسی',completed:'تکمیل‌شده',canceled:'لغوشده'};
- return <div data-testid="task-list"><Header icon={<ClipboardList className="w-5 h-5"/>} title="فهرست وظایف" subtitle={`وظایف عملیاتی «${scope.siteName}» · داده نمایشی`}/>
- <div className="flex flex-wrap gap-3 mb-4"><select aria-label="فیلتر وضعیت" className="border rounded-lg p-2 text-sm" value={status} onChange={e=>setStatus(e.target.value)}><option value="all">همه وضعیت‌ها</option><option value="unfinished">انجام‌نشده</option>{Object.entries(labels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><SearchBox value={q} onChange={v=>{setQ(v);setPage(1)}}/><select aria-label="تعداد در صفحه" className="border rounded-lg p-2 text-sm" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value) as 25|50|100);setPage(1)}}><option value={25}>۲۵ در صفحه</option><option value={50}>۵۰ در صفحه</option><option value={100}>۱۰۰ در صفحه</option></select><button type="button" className="border rounded-lg p-2 text-sm" onClick={()=>{setQ('');setStatus('all');setPage(1)}}>پاک کردن فیلترها</button></div><p className="mb-2 text-xs text-slate-500">{rows.length} وظیفه · جست‌وجو: {q||'همه'} · وضعیت: {status==='all'?'همه':status}</p>
- {rows.length===0?<EmptyState title="وظیفه‌ای یافت نشد"/>:<div className="bg-white border rounded-xl divide-y">{rows.slice((page-1)*pageSize,page*pageSize).map(t=><button key={t.id} className="w-full text-right flex justify-between p-4 hover:bg-slate-50 gap-3" onClick={()=>openWorkView({kind:'task',id:t.id})}><span><b>{t.title}</b><span className="block text-xs text-slate-500">{t.id} · {t.owner?displayTaskOwner(t.owner,t.siteId):t.queue||'بدون مسئول'}</span></span><span className="text-sm">{labels[t.status]}</span></button>)}</div>}{rows.length>pageSize&&<div className="mt-3 flex items-center gap-3 text-sm"><button className="border rounded p-2" disabled={page===1} onClick={()=>setPage(x=>x-1)}>قبلی</button><span>صفحه {page} از {Math.ceil(rows.length/pageSize)}</span><button className="border rounded p-2" disabled={page*pageSize>=rows.length} onClick={()=>setPage(x=>x+1)}>بعدی</button></div>}
+  .filter(t=>t.siteId===scope.siteId&&(status==='all'||(status==='unfinished'?unfinishedTask(t.status):t.status===status))&&(!q||demoTaskDisplay(t.title,t.description,en).title.toLowerCase().includes(q.toLowerCase())||t.title.includes(q)||t.id.toLowerCase().includes(q.toLowerCase())));
+ const labels=en?englishTaskStatus:{open:'باز',assigned:'تخصیص‌یافته',in_progress:'در حال انجام',blocked:'مسدود',submitted_for_review:'در انتظار بررسی',completed:'تکمیل‌شده',canceled:'لغوشده'};
+ return <div data-testid="task-list"><Header icon={<ClipboardList className="w-5 h-5"/>} title={en?'Task list':'فهرست وظایف'} subtitle={en?`Demo tasks · ${scope.siteName}`:`وظایف عملیاتی «${scope.siteName}» · داده نمایشی`}/>
+ <div className="flex flex-wrap gap-3 mb-4"><select aria-label={en?'Status filter':'فیلتر وضعیت'} className="border rounded-lg p-2 text-sm" value={status} onChange={e=>setStatus(e.target.value)}><option value="all">{en?'All statuses':'همه وضعیت‌ها'}</option><option value="unfinished">{en?'Unfinished':'انجام‌نشده'}</option>{Object.entries(labels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><SearchBox value={q} onChange={v=>{setQ(v);setPage(1)}}/><select aria-label={en?'Page size':'تعداد در صفحه'} className="border rounded-lg p-2 text-sm" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value) as 25|50|100);setPage(1)}}><option value={25}>{en?'25 per page':'۲۵ در صفحه'}</option><option value={50}>{en?'50 per page':'۵۰ در صفحه'}</option><option value={100}>{en?'100 per page':'۱۰۰ در صفحه'}</option></select><button type="button" className="border rounded-lg p-2 text-sm" onClick={()=>{setQ('');setStatus('all');setPage(1)}}>{en?'Clear filters':'پاک کردن فیلترها'}</button></div><p className="mb-2 text-xs text-slate-500">{rows.length} {en?'tasks':'وظیفه'} · {en?'Search':'جست‌وجو'}: {q||(en?'all':'همه')} · {en?'Status':'وضعیت'}: {status==='all'?(en?'all':'همه'):(labels[status]||status)}</p>
+ {rows.length===0?<EmptyState title={en?'No tasks found':'وظیفه‌ای یافت نشد'}/>:<div className="bg-white border rounded-xl divide-y">{rows.slice((page-1)*pageSize,page*pageSize).map(t=><button key={t.id} className="w-full text-right flex justify-between p-4 hover:bg-slate-50 gap-3" onClick={()=>openWorkView({kind:'task',id:t.id})}><span><b>{demoTaskDisplay(t.title,t.description,en).title}</b><span className="block text-xs text-slate-500">{t.id} · {t.owner?displayTaskOwner(t.owner,t.siteId):t.queue||(en?'Unassigned':'بدون مسئول')}</span></span><span className="text-sm">{labels[t.status]}</span></button>)}</div>}{rows.length>pageSize&&<div className="mt-3 flex items-center gap-3 text-sm"><button className="border rounded p-2" disabled={page===1} onClick={()=>setPage(x=>x-1)}>{en?'Previous':'قبلی'}</button><span>{en?'Page':'صفحه'} {page} {en?'of':'از'} {Math.ceil(rows.length/pageSize)}</span><button className="border rounded p-2" disabled={page*pageSize>=rows.length} onClick={()=>setPage(x=>x+1)}>{en?'Next':'بعدی'}</button></div>}
  </div>;
 };
 
@@ -108,28 +137,29 @@ const NotFound: React.FC<{ onBack: () => void; text: string }> = ({ onBack, text
 
 export const TaskDetailView: React.FC<{ id: string }> = ({ id }) => {
   const { tasks, alerts, scope, openWorkView, updateTaskStatus } = useApp();
+  const [language]=useShellLanguage();const en=language==='en';
   const t = tasks.find(x => x.id === id);
   const back = () => openWorkView({ kind: 'tasks' });
-  if (!t || t.siteId !== scope.siteId) return <NotFound onBack={back} text="این وظیفه در دامنه کاری فعلی یافت نشد." />;
+  if (!t || t.siteId !== scope.siteId) return <NotFound onBack={back} text={en?'Task is not available in the current scope.':'این وظیفه در دامنه کاری فعلی یافت نشد.'} />;
   const alert = t.alertId ? alerts.find(a => a.id === t.alertId) : undefined;
 
   return (
     <div data-testid="task-detail">
-      <Header icon={<ClipboardList className="w-5 h-5" />} title={t.title} subtitle={`وظیفه ${t.code} · ${moduleTitle(t.module)}`} onBack={back} />
+      <Header icon={<ClipboardList className="w-5 h-5" />} title={demoTaskDisplay(t.title,t.description,en).title} subtitle={en?`Task ${t.code} · ${t.module}`:`وظیفه ${t.code} · ${moduleTitle(t.module)}`} onBack={back} />
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 space-y-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-5">
-            <h2 className="text-sm font-bold text-slate-800 mb-2">شرح وظیفه</h2>
-            <p className="text-sm text-slate-600 leading-7">{t.description}</p>
+            <h2 className="text-sm font-bold text-slate-800 mb-2">{en?'Task description':'شرح وظیفه'}</h2>
+            <p className="text-sm text-slate-600 leading-7">{demoTaskDisplay(t.title,t.description,en).description}</p>
           </div>
           <div className="bg-white border border-slate-200 rounded-2xl p-5">
-            <h2 className="text-sm font-bold text-slate-800 mb-3">تاریخچه</h2>
+            <h2 className="text-sm font-bold text-slate-800 mb-3">{en?'Activity history':'تاریخچه'}</h2>
             <ol className="space-y-3">
               {t.history.map((h, i) => (
                 <li key={i} className="flex gap-3 text-xs">
                   <Clock className="w-4 h-4 text-slate-400 shrink-0" />
                   <span className="text-slate-400 tabular-nums shrink-0">{h.at}</span>
-                  <span className="text-slate-700">{h.text}</span>
+                  <span className="text-slate-700" dir="auto">{en?(demoHistoryEnglish[h.text]||h.text):h.text}</span>
                 </li>
               ))}
             </ol>
@@ -138,12 +168,12 @@ export const TaskDetailView: React.FC<{ id: string }> = ({ id }) => {
         </div>
         <div className="space-y-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-5 grid gap-3">
-            <Field label="وضعیت"><Badge className={TASK_STATUS_CLASS[t.status]}>{TASK_STATUS_LABEL[t.status]}</Badge></Field>
-            <Field label="اولویت"><Badge className={PRIORITY_CLASS[t.priority]}>{PRIORITY_LABEL[t.priority]}</Badge></Field>
-            <Field label="مسئول"><span className="inline-flex items-center gap-1"><UserIcon className="w-4 h-4 text-slate-400" />{displayTaskOwner(demoStore.tasks().find(o=>o.id===t.id)?.owner||t.assignee,t.siteId)}</span></Field>
-            <Field label="سررسید">{t.dueDate}</Field>
+            <Field label={en?'Status':'وضعیت'}><Badge className={TASK_STATUS_CLASS[t.status]}>{en?(englishTaskStatus[t.status]||t.status):TASK_STATUS_LABEL[t.status]}</Badge></Field>
+            <Field label={en?'Priority':'اولویت'}><Badge className={PRIORITY_CLASS[t.priority]}>{en?({critical:'Critical',high:'High',medium:'Medium',low:'Low'}[t.priority]||t.priority):PRIORITY_LABEL[t.priority]}</Badge></Field>
+            <Field label={en?'Owner':'مسئول'}><span className="inline-flex items-center gap-1"><UserIcon className="w-4 h-4 text-slate-400" />{displayTaskOwner(demoStore.tasks().find(o=>o.id===t.id)?.owner||t.assignee,t.siteId)}</span></Field>
+            <Field label={en?'Due date':'سررسید'}>{t.dueDate}</Field>
             {alert && (
-              <Field label="هشدار مرتبط">
+              <Field label={en?'Related alert':'هشدار مرتبط'}>
                 <button type="button" onClick={() => openWorkView({ kind: 'alert', id: alert.id })} className="inline-flex items-center gap-1 text-teal-700 hover:underline text-start">
                   <Link2 className="w-4 h-4 shrink-0" />{alert.title}
                 </button>
@@ -151,11 +181,11 @@ export const TaskDetailView: React.FC<{ id: string }> = ({ id }) => {
             )}
           </div>
           <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-2">
-            <h2 className="text-sm font-bold text-slate-800 mb-1">تغییر وضعیت</h2>
+            <h2 className="text-sm font-bold text-slate-800 mb-1">{en?'Change status':'تغییر وضعیت'}</h2>
             {(Object.keys(TASK_STATUS_LABEL) as TaskStatus[]).map(s => (
               <button key={s} type="button" disabled={t.status === s} onClick={() => updateTaskStatus(t.id, s)}
                 className="w-full px-3 py-2 rounded-lg text-xs font-semibold border border-slate-200 hover:bg-slate-50 disabled:bg-teal-600 disabled:text-white disabled:border-teal-600">
-                {TASK_STATUS_LABEL[s]}
+                {en?(englishTaskStatus[s]||s):TASK_STATUS_LABEL[s]}
               </button>
             ))}
           </div>
@@ -265,7 +295,7 @@ export const AlertDetailView: React.FC<{ id: string }> = ({ id }) => {
           </div>
           <button type="button" className="rounded-lg border border-teal-300 bg-white p-3 text-sm text-teal-800 w-full text-right" onClick={()=>openWorkView({kind:'spec-page',path:'/executive/investigations'})}>بازکردن میزکار مستقل تحقیق ناهنجاری و شواهد (EXE-05)</button>
           <div className="bg-white border rounded-xl p-4 space-y-2"><h2 className="font-bold">خط زمانی هشدار</h2><p className="text-xs">ثبت اولیه: {a.raisedAt}</p>{(a.activity||[]).map((entry,i)=><p key={i} className="text-xs border-r-2 pr-2">{entry.text} · {entry.at} · عامل: {entry.actorName || 'نامشخص (ثبت قدیمی)'}{entry.actorId && <span dir="ltr"> ({entry.actorId})</span>}</p>)}{a.resolution&&<p className="text-xs">شاهد رفع: {a.resolution.comment}</p>}</div>
-          <section className="rounded-xl border bg-white p-4 text-sm space-y-1" data-testid="anomaly-provenance"><h2 className="font-bold">زمینه تشخیص ناهنجاری · EXE-004</h2><p>نسخه آشکارساز: ثبت نشده / نیازمند تأیید</p><p>خط پایه و بازه مورد انتظار: ثبت نشده</p><p>بازه مقایسه و روند تاریخی: ثبت نشده</p><p>کیفیت داده و تازگی منبع بالادستی: نامشخص</p><p className="text-amber-800">آستانه هشدار جایگزین خط پایه آماری، مقایسه تاریخی یا مدل مصوب نیست.</p></section><EvidencePackage items={alertEvidence(a)} code={a.code} /><AlertOperations alert={a}/>
+          <section className="rounded-xl border bg-white p-4 text-sm space-y-1" data-testid="anomaly-provenance"><h2 className="font-bold">زمینه تشخیص ناهنجاری · EXE-004</h2>{a.id==='ALR-1050'?<><p>نسخه قاعده نمایشی: capacity-threshold@demo-2 (آستانه ثابت، نه مدل آماری)</p><p>خط پایه آماری: ناموجود · بازه مورد انتظار نمونه: ۰ تا ۹۰٪ صرفاً آستانه تمرینی</p><p>بازه مقایسه: ۲۰۲۶-۱۰-۲۳ (فیکسچر تک‌نقطه‌ای) · تاریخچه معتبر: موجود نیست</p><p>برش داده: 2026-10-23T23:59:59+03:30 · کیفیت منبع: synthetic/not-verified</p></>:<><p>نسخه آشکارساز: ثبت نشده / نیازمند تأیید</p><p>خط پایه و بازه مورد انتظار: ثبت نشده</p><p>بازه مقایسه و روند تاریخی: ثبت نشده</p><p>کیفیت داده و تازگی منبع بالادستی: نامشخص</p></>}<p className="text-amber-800">آستانه هشدار جایگزین خط پایه آماری، مقایسه تاریخی یا مدل مصوب نیست.</p></section><EvidencePackage items={alertEvidence(a)} code={a.code} /><AlertOperations alert={a}/>
         </div>
         <div className="space-y-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-5 grid gap-3">

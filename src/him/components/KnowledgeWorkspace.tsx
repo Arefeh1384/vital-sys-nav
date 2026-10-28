@@ -9,18 +9,21 @@ type Document = {
   title: string;
   owner: string;
   category: string;
+  language?: 'fa'|'en';
+  authority?:string; accessClass?:'synthetic_internal'|'synthetic_restricted';
   version: number;
   effectiveFrom: string;
   effectiveTo: string;
   retention: string;
   fileLabel: string;
   siteId: string;
-  state: 'draft' | 'review_requested' | 'publication_requested';
+  state: 'draft' | 'review_requested' | 'review_approved_synthetic' | 'publication_requested' | 'published_synthetic' | 'withdrawn_synthetic';
   createdAt: string;
   parentId?: string;
   reason?: string;
   abstract?: string;
   reviewerId?: string;
+  createdBy?: string; reviewedAt?:string; publishedAt?:string; withdrawnAt?:string;
 };
 const field = 'block w-full rounded-lg border border-slate-300 bg-white p-2 text-sm mt-1';
 const btn = 'rounded-lg bg-teal-800 px-3 py-2 text-sm text-white disabled:opacity-40';
@@ -35,17 +38,17 @@ const get = (key: string) => {
 };
 export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName: string }) {
   const { scope, user } = useApp();
-  const key = scopedDraftKey(
-    'him.knowledge.local.v1',
-    'documents',
-    scope.siteId || 'none',
-    user?.id || 'guest',
-  );
-  const [items, setItems] = useState<Document[]>(() => get(key));
+  // Site-scoped only for isolated DEMO accounts in one browser; not an authorization system.
+  const key = `him.knowledge.demo.shared.v2:${scope.siteId||'none'}`;
+  const legacyKey = scopedDraftKey('him.knowledge.local.v1','documents',scope.siteId||'none',user?.id||'guest');
+  const [items, setItems] = useState<Document[]>(() => {const shared=get(key);return shared.length?shared:get(legacyKey);});
   const [tab, setTab] = useState(0);
   const [title, setTitle] = useState(''),
     [owner, setOwner] = useState(''),
     [category, setCategory] = useState('policy'),
+    [language,setLanguage]=useState<'fa'|'en'>('fa'),
+    [authority,setAuthority]=useState(''),
+    [accessClass,setAccessClass]=useState<'synthetic_internal'|'synthetic_restricted'>('synthetic_internal'),
     [effectiveFrom, setFrom] = useState(''),
     [effectiveTo, setTo] = useState(''),
     [retention, setRetention] = useState(''),
@@ -73,6 +76,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
     if (
       !title.trim() ||
       !owner.trim() ||
+      !authority.trim() ||
       !effectiveFrom ||
       !effectiveTo ||
       effectiveTo < effectiveFrom ||
@@ -83,7 +87,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
       id: `DOC-SYN-${Date.now()}`,
       title: title.trim(),
       owner: owner.trim(),
-      category,
+      category,language,authority:authority.trim(),accessClass,
       version: 1,
       effectiveFrom,
       effectiveTo,
@@ -93,6 +97,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
       siteId: scope.siteId || '',
       state: 'draft',
       createdAt: new Date().toISOString(),
+      createdBy:user?.id||'guest',
     };
     if (saveItems([d, ...items])) {
       setSelected(d.id);
@@ -101,8 +106,10 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
     }
   };
   const change = (action: 'review_requested' | 'publication_requested' | 'successor') => {
-    if (!selectedDoc || reason.trim().length < 10) return;
-    if (action !== 'successor' && (!reviewerId.trim() || reviewerId.trim() === user?.id)) return;
+    if (!selectedDoc || selectedDoc.createdBy!==user?.id || reason.trim().length < 10) return;
+    if (action !== 'successor' && !DEMO_USERS.some(x=>x.id===reviewerId && x.id!==user?.id && x.permittedSiteIds.includes(scope.siteId||''))) return;
+    if (action==='publication_requested' && selectedDoc.state!=='review_approved_synthetic')return;
+    if (action==='review_requested' && selectedDoc.state!=='draft')return;
     const d: Document =
       action === 'successor'
         ? {
@@ -113,6 +120,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
             state: 'draft',
             reason: reason.trim(),
             reviewerId: undefined,
+            createdBy:user?.id||'guest',reviewedAt:undefined,publishedAt:undefined,withdrawnAt:undefined,
             createdAt: new Date().toISOString(),
           }
         : { ...selectedDoc, state: action, reviewerId: reviewerId.trim(), reason: reason.trim() };
@@ -123,6 +131,20 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
       setReviewerId('');
     }
   };
+  const approveReview=()=>{
+    if(!selectedDoc || selectedDoc.state!=='review_requested' || selectedDoc.reviewerId!==user?.id || selectedDoc.createdBy===user?.id)return;
+    saveItems(items.map(d=>d.id===selectedDoc.id?{...d,state:'review_approved_synthetic',reviewedAt:new Date().toISOString()}:d));
+  };
+  const finalize=(action:'published_synthetic'|'withdrawn_synthetic')=>{
+    if(!selectedDoc || !user || !reason.trim() || reason.trim().length<10)return;
+    if(action==='published_synthetic'&&(selectedDoc.state!=='publication_requested'||!selectedDoc.authority))return;
+    if(action==='withdrawn_synthetic'&&selectedDoc.state!=='published_synthetic')return;
+    if(selectedDoc.createdBy!==user.id)return;
+    const now=new Date().toISOString();
+    saveItems(items.map(d=>d.id===selectedDoc.id?{...d,state:action,publishedAt:action==='published_synthetic'?now:d.publishedAt,withdrawnAt:action==='withdrawn_synthetic'?now:d.withdrawnAt,reason:reason.trim()}:d));
+    setReason('');
+  };
+  const eligible=items.filter(d=>d.state==='published_synthetic' && d.siteId===scope.siteId && d.accessClass!=='synthetic_restricted' && (!asOf||(d.effectiveFrom<=asOf&&d.effectiveTo>=asOf)) && !items.some(v=>v.parentId===d.id&&v.state==='published_synthetic'));
   const matched = useMemo(
     () =>
       items.filter(
@@ -139,8 +161,8 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
       <section className="space-y-4" dir="rtl" data-testid="knowledge-retrieval">
         <h1 className="text-xl font-bold">KNO-02 · جستجوی دانش و شواهد</h1>
         <p className={info}>
-          فقط کاتالوگ پیش‌نویس‌های همین سایت/کاربر جست‌وجو می‌شود؛ موتور بازیابی ACL، منبع رسمی و
-          نسخه منتشرشده متصل نیست. هیچ متنی را به عنوان سیاست مصوب یا پاسخ قطعی ارائه نکنید.
+          نسخه‌هایی که در همین مرورگر با بازبین مستقل آزمایشی تأیید و منتشر شده‌اند می‌توانند
+          پاسخ مستند صرفاً نمایشی بسازند؛ ACL سازمانی، امضا و مخزن رسمی متصل نیستند. هیچ پاسخ محلی سیاست مصوب واقعی نیست.
         </p>
         <div className="grid sm:grid-cols-2 gap-3">
           <label className="text-sm">
@@ -219,18 +241,21 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
             ) : (
               <>
                 <p role="status" className="text-amber-900">
-                  پاسخ قابل استناد موجود نیست (abstained): نمایه و ACL رسمی متصل نیستند.
+                  {matched.some(d=>eligible.some(e=>e.id===d.id)&&Boolean(d.abstract))
+                    ? 'نتیجه مثبت فقط در محیط مصنوعی: گزیده دارای ارجاع صفحه و نسخه؛ اعتبار عملیاتی تأیید نشده است.'
+                    : 'شواهد کافی نیست (abstained): متن منتشرشده نمایشی و واجد شرایط یافت نشد.'}
                 </p>
                 <p className="text-xs">
-                  {matched.length} پیش‌نویس محلی با عنوان منطبق یافت شد؛ این‌ها منبع منتشرشده محسوب
-                  نمی‌شوند.
+                  {matched.length} سند منطبق در سایت آزمایشی. فقط وضعیت published_synthetic
+                  می‌تواند برای پاسخ مثبت نمونه استفاده شود.
                 </p>
                 {matched.map((d) => (
                   <div key={d.id} className="border p-2 text-xs">
                     <b>{d.title}</b> · {d.id} · نسخه {d.version} · {d.state} · مالک {d.owner} · دوره{' '}
                     {d.effectiveFrom} تا {d.effectiveTo}
-                    {d.abstract?<blockquote className="mt-1 rounded bg-slate-50 p-2">گزیده متن آزمایشی و تأییدنشده: {d.abstract.slice(0,450)}{d.abstract.length>450?'…':''}</blockquote>:<p>متن قابل بازیابی ثبت نشده است.</p>}
-                    <p>شناسه ارجاع محلی: <bdi dir="ltr">{d.id}@{d.version}</bdi> · وضعیت استناد معتبر: ناموجود (سند منتشر یا مجوز ارزیابی نشده)</p>
+                    {eligible.some(e=>e.id===d.id)&&d.abstract?<blockquote className="mt-1 rounded bg-slate-50 p-2">{d.abstract.slice(0,450)}{d.abstract.length>450?'…':''}</blockquote>:<p>متن برای پاسخ مثبت مجاز نیست یا منتشر نشده است.</p>}
+                    <p>ارجاع محلی: <bdi dir="ltr">{d.id}@{d.version}#page-1</bdi> · {eligible.some(e=>e.id===d.id)&&d.abstract?'پاسخ نمونه مجاز با ارجاع به صفحه ۱':'غیرمجاز برای پاسخ مثبت؛ وضعیت یا متن کافی نیست'}</p>
+                    {eligible.some(e=>e.id===d.id)&&d.abstract&&<details><summary className="cursor-pointer underline text-teal-700">بازکردن منبع · صفحه ۱ (نمایشی)</summary><p>نسخه {d.version} · از {d.effectiveFrom} تا {d.effectiveTo} · تأیید محلی {d.reviewedAt}</p><p className="mt-1 whitespace-pre-wrap">{d.abstract}</p></details>}
                   </div>
                 ))}
               </>
@@ -288,6 +313,9 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
               <option value="guidance">راهنما</option>
             </select>
           </label>
+          <label className="text-sm">زبان سند<select className={field} value={language} onChange={e=>setLanguage(e.target.value as 'fa'|'en')}><option value="fa">فارسی</option><option value="en">English</option></select></label>
+          <label className="text-sm">مرجع اختیار انتشار *<input className={field} value={authority} onChange={e=>setAuthority(e.target.value)} placeholder="شناسه مرجع نمونه؛ نه مجوز واقعی"/></label>
+          <label className="text-sm">سطح دسترسی نمونه<select className={field} value={accessClass} onChange={e=>setAccessClass(e.target.value as 'synthetic_internal'|'synthetic_restricted')}><option value="synthetic_internal">قابل جستجو در فیکسچر همان سایت</option><option value="synthetic_restricted">محدود، غیرقابل پاسخ</option></select></label>
           <label className="text-sm">
             فایل نمونه (فقط نام/فراداده)
             <input
@@ -332,6 +360,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
               disabled={
                 !title.trim() ||
                 !owner.trim() ||
+                !authority.trim() ||
                 !effectiveFrom ||
                 !effectiveTo ||
                 effectiveTo < effectiveFrom ||
@@ -373,10 +402,11 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
             {selectedDoc.fileLabel || 'ثبت نشده'}
           </p>
           <p className="text-sm">
-            Retention پیشنهادی: {selectedDoc.retention} · حذف واقعی/Legal hold: متصل نیست
+            Retention پیشنهادی: {selectedDoc.retention} · زبان: {selectedDoc.language||'نامشخص'} · مرجع اختیار: {selectedDoc.authority||'ثبت نشده'} · دسترسی: {selectedDoc.accessClass||'نامشخص'} · حذف واقعی/Legal hold: متصل نیست
           </p>
           {selectedDoc.abstract&&<p className="rounded bg-slate-50 p-3 text-sm">گزیده متن نمایشی: {selectedDoc.abstract}</p>}
-          {selectedDoc.reviewerId&&<p className="text-xs">بازبین پیشنهادی ثبت‌شده: {selectedDoc.reviewerId} · امضا/تأیید واقعی وجود ندارد</p>}
+          {selectedDoc.reviewerId&&<p className="text-xs">بازبین نمونه: {selectedDoc.reviewerId} · بازبینی: {selectedDoc.reviewedAt||'انجام‌نشده'}</p>}
+          {selectedDoc.publishedAt&&<p className="text-xs">انتشار صرفاً نمایشی: {selectedDoc.publishedAt}</p>}
           <div className="text-xs">
             {items
               .filter(
@@ -408,25 +438,28 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
           <div className="flex gap-2 flex-wrap">
             <button
               className={btn}
-              disabled={reason.trim().length < 10}
+              disabled={reason.trim().length < 10 || selectedDoc.createdBy!==user?.id}
               onClick={() => change('successor')}
             >
               ساخت نسخه جانشین
             </button>
             <button
               className={btn}
-              disabled={reason.trim().length < 10 || !reviewerId.trim() || reviewerId.trim() === user?.id}
+              disabled={reason.trim().length < 10 || selectedDoc.createdBy!==user?.id || !reviewerId.trim() || reviewerId.trim() === user?.id}
               onClick={() => change('review_requested')}
             >
               درخواست بازبینی مستقل
             </button>
             <button
               className={btn}
-              disabled={reason.trim().length < 10 || selectedDoc.state !== 'review_requested' || !reviewerId.trim() || reviewerId.trim() === user?.id}
+              disabled={reason.trim().length < 10 || selectedDoc.createdBy!==user?.id || selectedDoc.state !== 'review_approved_synthetic' || !reviewerId.trim() || reviewerId.trim() === user?.id}
               onClick={() => change('publication_requested')}
             >
               درخواست انتشار
             </button>
+            <button className={btn} disabled={selectedDoc.state!=='review_requested'||selectedDoc.reviewerId!==user?.id||selectedDoc.createdBy===user?.id} onClick={approveReview}>تأیید بازبینی مستقل (نمونه)</button>
+            <button className={btn} disabled={selectedDoc.state!=='publication_requested'||selectedDoc.createdBy!==user?.id||reason.trim().length<10} onClick={()=>finalize('published_synthetic')}>تکمیل انتشار نمایشی</button>
+            <button className={btn} disabled={selectedDoc.state!=='published_synthetic'||selectedDoc.createdBy!==user?.id||reason.trim().length<10} onClick={()=>finalize('withdrawn_synthetic')}>پس‌گرفتن نسخه (نمایشی)</button>
           </div>
           <p className={info}>
             حالت «درخواست انتشار» گواه مجوز یا انتشار نیست؛ بدون بازبین مستقل و سند معتبر، جستجوی

@@ -32,7 +32,7 @@ function storage(){return typeof window==='undefined'?null:window.localStorage}
 export function listManualExecutions():ManualRecord[]{try{return JSON.parse(storage()?.getItem(KEY)||'[]') as ManualRecord[]}catch{return []}}
 export function getManualExecution(id:string){return listManualExecutions().find(r=>r.id===id)}
 function persist(r:ManualRecord){storage()?.setItem(KEY,JSON.stringify([...listManualExecutions().filter(x=>x.id!==r.id),r]));return r}
-const deny=(msg:string):never=>{throw new Error(msg)};
+function deny(msg: string): never { throw new Error(msg); }
 function requireActor(a:Actor|undefined,r:ManualRecord,cap:string){if(!a||!a.capabilities.includes(cap)||!a.siteIds.includes(r.siteId))deny('مجوز نمایشی برای این عملیات یا سایت وجود ندارد.');}
 function change(r:ManualRecord,actor:string,to:ManualState,reason:string,evidenceId?:string,extra:Partial<ManualRecord>={}):ManualRecord{const updated={...r,...extra,state:to,version:r.version+1,updatedAt:now(),history:[...r.history,{id:crypto.randomUUID(),at:now(),actor,from:r.state,to,reason,evidenceId}]};return persist(updated)}
 export function eligibleRecommendation(p:SupplyProposal){return p.status==='validated'&&p.revision>0&&Number.isFinite(p.quantity)&&p.quantity>0&&!!p.destination.trim()&&!!p.item.trim()&&p.type==='replenishment'&&p.constraints.every(c=>c.state!=='failed'&&c.state!=='unknown')&&supplyRisks.some(r=>r.id===p.riskId&&r.caseId===p.caseId&&r.site===p.site);} // cross-site source review fixture not configured: fail closed

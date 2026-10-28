@@ -1,10 +1,12 @@
-import React from 'react';
-import {DEMO_PURCHASE_LINES,inspectSupplier} from './supplierPerformance';
+import React,{useState} from 'react';
+import {DEMO_PURCHASE_LINES,inspectSupplier,inspectSupplierVariability} from './supplierPerformance';
 
 /** Isolated fixture drilldown for SUP-005. Never labels synthetic OTIF as live supplier performance. */
 export function SupplierPerformancePanel({riskId,supplier,item,siteName,leadTime,snapshot}:{riskId:string;supplier:string;item:string;siteName:string;leadTime:number;snapshot:string}) {
   const available=riskId==='RISK-TAL-0003';
   const result=inspectSupplier(DEMO_PURCHASE_LINES,'risk-supplier');
+  const variability=inspectSupplierVariability(DEMO_PURCHASE_LINES,'risk-supplier');
+  const [selectedLine,setSelectedLine]=useState<string|null>(null);
   const rows=DEMO_PURCHASE_LINES.filter(x=>x.supplier==='risk-supplier');
   return <section className="space-y-4 rounded-xl border bg-white p-4" data-testid="supplier-performance">
     <h3 className="font-bold">تحلیل عملکرد تأمین‌کننده · SUP.4 / REQ-SUP-005</h3>
@@ -16,8 +18,13 @@ export function SupplierPerformancePanel({riskId,supplier,item,siteName,leadTime
         <div className="rounded-lg border p-3"><b>نمونه واجد شرایط</b><p>{result.eligible} خط · حداقل {result.minSample} خط</p><p className="text-amber-800">{result.insufficient?'نمونه ناکافی؛ رتبه‌بندی ممنوع':'آستانه تعداد نمونه برقرار است'}</p></div>
         <div className="rounded-lg border p-3"><b>تمرکز مقداری فیکسچر</b><p>{result.concentration===null?'نامعلوم':(result.concentration*100).toFixed(1)+'٪'} از مقدار سفارش خطوط کامل فیکسچر</p></div>
       </div>
+      <div className="grid sm:grid-cols-2 gap-2 text-sm" data-testid="supplier-variability">
+        <div className="rounded-lg border p-3"><b>زمان تأمین (روز) / پراکندگی جمعیت مصنوعی</b><p>میانگین: {variability.meanDays?.toFixed(2)??'ناموجود'} · انحراف معیار: {variability.stdDays?.toFixed(2)??'ناموجود'}</p><p>نمونه: {variability.leadSample} · فاقد داده: {variability.leadMissing}</p></div>
+        <div className="rounded-lg border p-3"><b>نرخ اقلام قبول‌شده در بازرسی</b><p>{variability.passRate===null?'ناموجود':(variability.passRate*100).toFixed(1)+'٪'} · {variability.inspected-variability.rejected}/{variability.inspected}</p><p>خط بازرسی معتبر: {variability.qualitySample} · فاقد داده: {variability.qualityMissing}</p></div>
+      </div>
       <p className="text-xs">پوشش: {result.total} خط منتسب به تأمین‌کننده، {result.eligible} واجد شرایط، {result.missing} با ورودی ناقص. یک خط از تأمین‌کننده دیگر نیز فاقد فیلدهای الزامی است و از مخرج تحلیل کنار گذاشته شده است. بازه فیکسچر: ۱۷ تا ۲۴ اکتبر ۲۰۲۶؛ نسخه قرارداد، ارز و هزینه واقعی: نامعلوم.</p>
-      <div className="overflow-x-auto"><table className="min-w-[640px] w-full text-right text-xs"><thead><tr className="bg-slate-50 border-b">{['شناسه خط آزمایشی','سفارش','تحویل','تاریخ توافق','تاریخ رسید','در موعد و کامل؟'].map(t=><th key={t} className="p-2">{t}</th>)}</tr></thead><tbody>{rows.map(r=><tr key={r.id} className="border-b"><td className="p-2" dir="ltr">{r.id}</td><td className="p-2">{r.ordered??'نامعلوم'}</td><td className="p-2">{r.delivered??'نامعلوم'}</td><td className="p-2">{r.agreedDate??'نامعلوم'}</td><td className="p-2">{r.receivedDate??'نامعلوم'}</td><td className="p-2">{r.delivered!==null&&r.ordered!==null&&r.receivedDate&&r.agreedDate?(r.delivered>=r.ordered&&r.receivedDate<=r.agreedDate?'بله':'خیر'):'غیرقابل محاسبه'}</td></tr>)}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="min-w-[640px] w-full text-right text-xs"><thead><tr className="bg-slate-50 border-b">{['شناسه خط آزمایشی','سفارش','تحویل','تاریخ توافق','تاریخ رسید','در موعد و کامل؟'].map(t=><th key={t} className="p-2">{t}</th>)}</tr></thead><tbody>{rows.map(r=><tr key={r.id} className="border-b"><td className="p-2" dir="ltr"><button className="underline text-teal-700" onClick={()=>setSelectedLine(selectedLine===r.id?null:r.id)}>{r.id}</button></td><td className="p-2">{r.ordered??'نامعلوم'}</td><td className="p-2">{r.delivered??'نامعلوم'}</td><td className="p-2">{r.agreedDate??'نامعلوم'}</td><td className="p-2">{r.receivedDate??'نامعلوم'}</td><td className="p-2">{r.delivered!==null&&r.ordered!==null&&r.receivedDate&&r.agreedDate?(r.delivered>=r.ordered&&r.receivedDate<=r.agreedDate?'بله':'خیر'):'غیرقابل محاسبه'}</td></tr>)}</tbody></table></div>
+      {selectedLine&&(()=>{const line=rows.find(x=>x.id===selectedLine);return line?<div className="rounded-lg border p-3 text-xs" data-testid="supplier-line-detail"><strong>جزئیات ردیابی {line.id}</strong><p>ثبت سفارش: {line.placedDate||'ناموجود'} · رسید: {line.receivedDate||'ناموجود'}</p><p>بازرسی‌شده: {line.inspected??'ناموجود'} · رد کیفیت: {line.rejected??'ناموجود'}</p><p>باقی‌مانده تحویل: {line.ordered!==null&&line.delivered!==null?Math.max(0,line.ordered-line.delivered):'ناموجود'} · صرفاً فیکسچر SYN-PO</p></div>:null})()}
       <p className="text-xs text-amber-800">برای استفاده عملیاتی باید جمعیت خرید واجد شرایط، قرارداد مؤثر، تاریخ توافق منجمد، رسیدهای نسخه‌دار، استثناها و مجوزهای دسترسی از منبع معتبر دریافت شوند.</p>
     </>}
   </section>;

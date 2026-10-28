@@ -35,7 +35,15 @@ export function alertEvidence(a: WorkAlert): EvidenceItem[] {
   if (a.metric) items.push({ id: `${a.id}-m`, kind: 'metric', title: `اندازه‌گیری ${a.metric.label}`, source: a.source, capturedAt: a.raisedAt, detail: `مقدار ${a.metric.value} در برابر آستانه ${a.metric.threshold}${a.module==='FIN'?' · نوع نرخ (تعداد پرونده ردشده یا مبلغ کسورات): نامشخص در داده نمایشی؛ صورت، مخرج، جامعه پرونده‌های رسیدگی‌شده و موارد مستثنا ارائه نشده‌اند. این شاهد برای نتیجه‌گیری درباره نرخ قابل اتکا نیست.':''}` });
   items.push({ id: `${a.id}-r`, kind: 'record', title: 'رکورد خام دریافتی از منبع', source: a.source, capturedAt: a.raisedAt, detail: a.description });
   items.push({ id: `${a.id}-l`, kind: 'log', title: 'گزارش موتور قواعد هشدار', source: 'HIM-OS Rules Engine', capturedAt: a.raisedAt, detail: `قاعده هشدار ${a.code} فعال شد و رخداد ثبت گردید.` });
-  return items.map(i => ({ ...i, hash: hashOf(i.id + i.detail) }));
+  // Only this named alert has a dedicated synthetic provenance fixture. Never infer metadata from capturedAt.
+  const sample = a.id==='ALR-1050'?{
+    sourceVersion:'fixture-contract-bed-v1 [SYNTHETIC]',metricVersion:'bed-capacity-count@demo-1',
+    ruleVersion:'capacity-threshold@demo-2',snapshotCutoff:'2026-10-23T23:59:59+03:30',
+    sourceEventAt:'2026-10-23T23:58:00+03:30',ingestedAt:'2026-10-23T23:58:09+03:30',
+    assumptions:'فیکسچر آزمایشی: همه مقادیر و زمان‌ها غیرعملیاتی هستند.',
+    limitations:'فقط آزمایش رابط؛ شناسه قرارداد و زمان‌ها از منبع واقعی دریافت نشده‌اند.'
+  }:{};
+  return items.map(i => ({ ...i,...sample, hash: hashOf(i.id + i.detail) }));
 }
 
 /** Evidence for a task: its own records plus the linked alert's package. */

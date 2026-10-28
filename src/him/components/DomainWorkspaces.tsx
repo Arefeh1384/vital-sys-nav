@@ -1,10 +1,13 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {useApp} from '../context/AppContext';
+import {SyntheticDataFlow} from './SyntheticDataFlow';
+import {SyntheticRetentionPlan} from './SyntheticRetentionPlan';
+import {compareOccupancyFixtures} from '../executive/dashboardStore';
 
 /** Domain-specific, site-scoped synthetic workflow. No upstream writes or clinical decisions. */
 type Kind='text'|'date'|'datetime-local'|'number'|'textarea'|'select';
 type Field={key:string;label:string;kind?:Kind;required?:boolean;options?:string[];placeholder?:string};
-type RecordItem={id:string;tab:number;values:Record<string,string>;at:string;state:string;note:string;originId?:string};
+type RecordItem={id:string;tab:number;values:Record<string,string>;at:string;state:string;note:string;originId?:string;createdBy?:string;reviewedBy?:string;reviewedAt?:string;publishedAt?:string};
 type Definition={title:string;tabs:Array<{name:string;fields:Field[];help:string}>;warning:string};
 const f=(key:string,label:string,kind:Kind='text',required=true,options?:string[]):Field=>({key,label,kind,required,options});
 const definitions:Record<string,Definition>={
@@ -81,7 +84,7 @@ export function validateDomain(path:string,tab:number,v:Record<string,string>,it
   if(!root)errors.push('این مرحله باید به شناسه یک پیش‌نویس گزارش در همین دامنه متصل باشد.');
   if(tab===2&&root&&v.reviewer===root.values.editor)errors.push('بازبین نباید همان ویرایشگر گزارش باشد.');
   if(tab===3){
-    if(!items.some(x=>x.tab===2&&x.values.brief===v.brief&&x.state==='awaiting_independent_review'))errors.push('درخواست انتشار فقط پس از ثبت پرونده بازبینی مستقل مجاز است؛ انتشار واقعی همچنان مسدود است.');
+    if(!items.some(x=>x.tab===2&&x.values.brief===v.brief&&x.state==='review_approved_synthetic'))errors.push('درخواست انتشار پس از تأیید نمایشی بازبینی مستقل مجاز است؛ انتشار واقعی همچنان مسدود است.');
     if(root&&v.reviewer===root.values.editor)errors.push('بازبین انتشار باید از ویرایشگر مستقل باشد.');
   }
  }
@@ -94,7 +97,12 @@ export function validateDomain(path:string,tab:number,v:Record<string,string>,it
  if(path==='/data/ingestion'&&tab===2&&Number(v.checkpoint)>100)errors.push('پیشرفت از ۱۰۰ درصد بیشتر نیست.');
  if(path==='/operations/forecasts'&&tab===0&&Number(v.horizon)<=0)errors.push('افق باید مثبت باشد.');
  if(path==='/quality/workflows'&&tab===3&&!v.review_end)errors.push('پایان پنجره بررسی الزامی است.');
- if(path==='/settings/modules'&&((tab===2&&v.target==='active')||(tab===0&&v.state==='active')))errors.push('انتقال به حالت active بدون تأیید واقعی دروازه‌های مستقل مسدود است.');
+ if(path==='/settings/modules'&&tab===0&&v.state==='active')errors.push('فعال‌سازی واقعی با فرم مستقیم ممنوع است؛ ابتدا shadow، گیت و بازبینی مستقل لازم است.');
+ if(path==='/settings/modules'&&tab===2&&v.target==='active'){
+   const gate=items.some(x=>x.tab===1&&x.values.module===v.module&&x.values.version===v.version&&['contract_gate','policy_gate','release_gate'].every(k=>x.values[k]==='verified_synthetic')&&['validated_synthetic','awaiting_independent_review','review_approved_synthetic'].includes(x.state));
+   const draft=items.some(x=>x.tab===0&&x.values.module===v.module&&x.values.version===v.version&&x.values.state==='shadow');
+   if(!gate||!draft)errors.push('در فیکسچر: برای درخواست فعال‌سازی، نسخه shadow و سه گیت معتبر مصنوعی لازم است.');
+ }
  if(path==='/settings/agents'&&tab===1&&v.nodes&&v.edges&&v.tool_schema){try{
  const nodes=JSON.parse(v.nodes),edges=JSON.parse(v.edges),schema=JSON.parse(v.tool_schema);
  if(!Array.isArray(nodes)||!Array.isArray(edges)||!schema||typeof schema!=='object'||Array.isArray(schema))throw Error('ساختار JSON باید آرایه گره، آرایه یال و شیء schema باشد.');
@@ -108,7 +116,10 @@ export function validateDomain(path:string,tab:number,v:Record<string,string>,it
  if(Number(v.max_steps)<=0||Number(v.max_calls)<=0||Number(v.max_seconds)<=0)errors.push('بودجه گام، ابزار و زمان باید مثبت باشد.');}
  return errors;
 }
-function storageKey(path:string,siteId:string,userId:string){return `him.synthetic.domain.v2:${path}:${siteId}:${userId}`;}
+function storageKey(path:string,siteId:string,userId:string){
+ const reviewable=['/executive/briefs','/settings/modules','/settings/governance','/data/contracts'];
+ return `him.synthetic.domain.v2:${path}:${siteId}:${reviewable.includes(path)?'shared-demo':userId}`;
+}
 export function DomainWorkspace({path,siteName}:{path:string;siteName:string}){
  const {scope,user}=useApp();
  return <DomainWorkspaceContent key={`${path}:${scope.siteId}:${user?.id||'demo'}`} path={path} siteId={scope.siteId||'no-site'} siteName={siteName} userId={user?.id||'demo'}/>;
@@ -122,7 +133,7 @@ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteI
  const fields=def?.tabs[tab]?.fields||[];
  const errors=useMemo(()=>validateDomain(path,tab,values,items),[path,tab,values,items]);
  const update=(k:string,v:string)=>setValues(old=>({...old,[k]:v}));
- const save=()=>{if(!fields.length||errors.length)return;const record:RecordItem={id:`SYN-${Math.random().toString(36).slice(2,9)}`,tab,values:{...values},at:iso(),state:path==='/operations/forecasts'?'awaiting_source':path==='/executive/briefs'&&tab===3?'publication_request_unapproved':'draft',note:'فقط پیش‌نویس در مرورگر؛ شواهد و تأیید واقعی موجود نیست.'};setItems(old=>[record,...old]);setValues({});};
+ const save=()=>{if(!fields.length||errors.length)return;const record:RecordItem={id:`SYN-${Math.random().toString(36).slice(2,9)}`,tab,values:{...values},at:iso(),state:path==='/operations/forecasts'?'awaiting_source':path==='/executive/briefs'&&tab===3?'publication_request_unapproved':'draft',note:'فقط پیش‌نویس در مرورگر؛ شواهد و تأیید واقعی موجود نیست.',createdBy:userId};setItems(old=>[record,...old]);setValues({});};
  const transition=(record:RecordItem,action:'validate'|'review'|'cancel'|'retry'|'successor')=>{
   let state=record.state,note=record.note;
   if(action==='validate'){state='validated_synthetic';note='اعتبارسنجی فرم فقط با قواعد محلی؛ قرارداد و مرجع داده تأیید نشده‌اند.';}
@@ -133,6 +144,32 @@ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteI
   setItems(old=>old.map(x=>x.id===record.id?{...x,state,note}:x));
  };
  if(!def)return null;
+ const approve=(record:RecordItem)=>{
+  if(record.state!=='awaiting_independent_review'||record.createdBy===userId)return;
+  const linked=record.tab===2&&path==='/executive/briefs'?items.find(x=>x.id===record.values.brief&&x.tab===0):null;
+  if(path==='/executive/briefs'&&(record.values.reviewer!==userId||!linked||linked.createdBy===userId||!items.some(x=>x.tab===1&&x.values.brief===record.values.brief)))return;
+  if(path==='/settings/modules'&&record.tab===2&&record.values.reviewer!==userId)return;
+  if(!['/executive/briefs','/settings/modules'].includes(path))return;
+  setItems(old=>old.map(x=>x.id===record.id?{...x,state:'review_approved_synthetic',reviewedBy:userId,reviewedAt:iso(),note:'بازبینی مستقل در شبیه‌سازی محلی تأیید شد؛ امضای سازمانی نیست.'}:x));
+ };
+ const publish=(record:RecordItem)=>{
+  if(record.createdBy!==userId || record.state!=='publication_request_unapproved' || path!=='/executive/briefs')return;
+  const approved=items.find(x=>x.tab===2&&x.values.brief===record.values.brief&&x.state==='review_approved_synthetic');
+  if(!approved || !approved.reviewedBy || approved.reviewedBy===userId)return;
+  setItems(old=>old.map(x=>x.id===record.id?{...x,state:'published_synthetic',publishedAt:iso(),note:'نسخه نمایشی گزارش منتشر شد؛ هیچ گیرنده واقعی یا سرویس ارسال فراخوانی نشد.'}:x));
+ };
+ const promote=(record:RecordItem)=>{
+  if(path!=='/settings/modules'||record.tab!==2||record.values.target!=='active'||record.state!=='review_approved_synthetic'||record.createdBy!==userId||record.reviewedBy===userId)return;
+  setItems(old=>old.map(x=>x.id===record.id?{...x,state:'active_synthetic',publishedAt:iso(),note:'فعال‌سازی در مدل محلی؛ هیچ ماژول عملیاتی تغییر نکرد.'}:x));
+ };
+ const briefPreview=(ref:string)=>{
+  const root=items.find(x=>x.tab===0&&x.id===ref),evidence=items.find(x=>x.tab===1&&x.values.brief===ref);
+  if(!root||!evidence)return null;
+  const fixture=compareOccupancyFixtures([siteId],'day');
+  const row=fixture.rows[0];
+  const compatible=root.values.boundary==='last_complete_day'&&evidence.values.metric===fixture.definition&&row?.included&&evidence.values.evidence.includes(row.snapshot||'__missing__');
+  return {root,evidence,compatible:!!compatible,value:compatible?row.value:null,source:row?.snapshot||'unavailable',cutoff:fixture.cutoff};
+ };
  const visible=items.filter(x=>(JSON.stringify(x.values)+' '+x.id).toLowerCase().includes(q.toLowerCase()));
  return <section dir="rtl" data-testid="domain-workspace" className="space-y-4">
   <header className="rounded-xl bg-white border p-5 space-y-1"><h1 className="font-bold text-xl">{def.title}</h1><p className="text-sm text-slate-500">سایت انتخابی: {siteName} · <bdi>{siteId}</bdi> · کاربر نمونه: <bdi>{userId}</bdi></p></header>
@@ -145,16 +182,23 @@ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteI
    <button type="button" className={primary} disabled={errors.length>0} onClick={save}>{path==='/operations/forecasts'&&tab===0?'ثبت درخواست پیش‌بینی (در انتظار منبع)':'ثبت نسخه پیش‌نویس نمونه'}</button>
   </div>}
   {path==='/operations/forecasts'&&tab===1&&<div className="rounded-lg bg-slate-50 p-3 text-sm" data-testid="forecast-results"><strong>نتیجه: unavailable</strong><p>point: ناموجود · p10: ناموجود · p50: ناموجود · p90: ناموجود</p><p>علت: مدل/نسخه و snapshot ورودی در دسترس نیست. عدد جایگزین تولید نمی‌شود.</p></div>}
+  {path==='/executive/briefs'&&<section data-testid="brief-preview" className="rounded-lg border p-3 text-sm space-y-2"><h3 className="font-bold">پیش‌نمایش نسخه‌دار گزارش مدیریتی · صرفاً آزمایشی</h3>{items.filter(x=>x.tab===0).map(root=>{const preview=briefPreview(root.id);return <div key={root.id} className="rounded border p-3"><p>گزارش: {root.values.title} · {root.values.template} · شناسه {root.id}</p><p>دوره: {root.values.boundary} · دامنه: {root.values.scope} · گیرندگان پیشنهادی: {root.values.recipients}</p>{preview?.compatible?<><p className="font-semibold">اشغال تخت مصنوعی: {preview.value}%</p><p>ارجاع: {preview.source} · نسخه: available_staffed_bed_occupancy@1 · cutoff: {preview.cutoff}</p><p>محدودیت: فیکسچر کهنه/محلی؛ گزارش بیرونی معتبر نیست.</p></>:<p role="alert">داده هم‌دوره و شواهد هماهنگ وجود ندارند؛ تولید شاخص عددی ممنوع است. برای پیش‌نمایش عددی باید متریک available_staffed_bed_occupancy@1 و مرجع snapshot همین سایت ثبت شود.</p>}</div>})}</section>}
+  {path==='/settings/governance'&&tab===2&&<SyntheticRetentionPlan/>}
+  {path==='/data/ingestion'&&<SyntheticDataFlow/>}
   {path==='/data/ingestion'&&tab===2&&<p className="text-xs text-slate-600">نمایش Job شامل وضعیت اجرا، accepted/duplicate/quarantined، cutoff، consistency و checkpoint از داده واردشده مصنوعی است. هیچ پردازشی آغاز نمی‌شود.</p>}
   {path==='/settings/modules'&&<div data-testid="module-activation-gates" className="border rounded-lg p-3 space-y-2 text-sm"><h3 className="font-semibold">نتیجه گیت‌های لازم برای فعال‌سازی سایت / نسخه</h3><div className="grid sm:grid-cols-3 gap-2">{['وابستگی‌ها و نسخه قرارداد','سیاست و دسترسی سازمانی','ارزیابی، بازگشت و تأیید مستقل'].map(x=><div className="rounded border p-2" key={x}><b>{x}</b><p className="text-amber-800">تأیید نشده — BLOCKED</p></div>)}</div><p className="text-xs">این جدول نشان‌دهنده عبور واقعی از گیت نیست؛ Promote و فعال‌سازی بدون اثبات کنترل‌ها مجاز نیست.</p></div>}
-  {path==='/settings/modules'&&tab===2&&<p className="text-xs text-rose-800">در این محیط Promote to active ممنوع است؛ درخواست Suspend صرفاً یک پیش‌نویس است و اجرای جاری را متوقف نمی‌کند.</p>}
+  {path==='/settings/modules'&&tab===2&&<p className="text-xs text-rose-800">Promote فقط به حالت active_synthetic محلی، پس از گیت‌های synthetic و بازبینی کاربر مستقل انجام می‌شود؛ درخواست Suspend اجرای جاری را متوقف نمی‌کند.</p>}
   <div className="space-y-2"><h3 className="font-semibold">سوابق محلی همین سایت و کاربر</h3><input aria-label="جستجوی سوابق" className={cls} value={q} onChange={e=>setQ(e.target.value)} placeholder="جستجو بر اساس شناسه یا اطلاعات"/>
    {!visible.length?<p className="p-3 text-sm bg-slate-50">رکوردی برای این سایت ذخیره نشده است.</p>:visible.map(item=><details key={item.id} className="rounded-lg border p-3 text-sm"><summary className="cursor-pointer"><bdi dir="ltr">{item.id}</bdi> · {def.tabs[item.tab]?.name} · <bdi>{item.state}</bdi></summary><div className="mt-2 space-y-2"><p className="text-xs">{item.at} · {item.note}</p>{item.originId&&<p className="text-xs">مرجع نسخه پیشین: {item.originId}</p>}<dl className="grid sm:grid-cols-2 gap-1 text-xs">{Object.entries(item.values).map(([k,v])=><div key={k} className="break-words"><dt className="font-bold inline">{k}: </dt><dd className="inline">{v}</dd></div>)}</dl><div className="flex flex-wrap gap-2">
     {item.state==='draft'&&<button className="border rounded p-2" onClick={()=>transition(item,'validate')}>اعتبارسنجی فرم</button>}
     {(item.state==='draft'||item.state==='validated_synthetic')&&<button className="border rounded p-2" onClick={()=>transition(item,'review')}>درخواست بازبینی مستقل</button>}
     {path==='/data/ingestion'&&!item.state.includes('cancel')&&<button className="border rounded p-2" onClick={()=>transition(item,'cancel')}>درخواست لغو (نمایشی)</button>}
     {path==='/data/ingestion'&&<button className="border rounded p-2" onClick={()=>transition(item,'retry')}>تلاش مجدد پیونددار (نمایشی)</button>}
+    {item.state==='awaiting_independent_review'&&((path==='/executive/briefs'&&item.tab===2)||(path==='/settings/modules'&&item.tab===2))&&<button className="border rounded p-2" disabled={item.createdBy===userId||item.values.reviewer!==userId} onClick={()=>approve(item)}>تأیید مستقل در محیط نمایشی</button>}
+    {path==='/executive/briefs'&&item.tab===3&&<button className="border rounded p-2" disabled={item.state!=='publication_request_unapproved'||item.createdBy!==userId} onClick={()=>publish(item)}>تولید نسخه منتشرشده نمایشی</button>}
+    {path==='/settings/modules'&&item.tab===2&&item.values.target==='active'&&<button className="border rounded p-2" disabled={item.state!=='review_approved_synthetic'||item.createdBy!==userId} onClick={()=>promote(item)}>فعال‌سازی محلی (فیکسچر)</button>}
     {path==='/data/identity'&&<button className="border rounded p-2" onClick={()=>transition(item,'successor')}>درخواست جانشین / Unmerge</button>}
+   {item.state==='published_synthetic'&&path==='/executive/briefs'&&<p>خروجی تأییدشده فقط برای این مرورگر: {item.id} · {item.publishedAt} · ارسال واقعی انجام نشد.</p>}
    </div></div></details>)}</div>
   </div>
  </section>;
