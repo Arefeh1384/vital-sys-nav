@@ -1,0 +1,134 @@
+diff --git a/src/him/phase6/Phase6.tsx b/src/him/phase6/Phase6.tsx
+--- a/src/him/phase6/Phase6.tsx
++++ b/src/him/phase6/Phase6.tsx
+@@ -36,6 +36,7 @@
+  const save=()=>{if(saving)return;if(!memo.title.trim()||!memo.problem.trim()){setError('عنوان یادداشت و شرح مسئله الزامی است.');return}setSaving(true);try{const result=demoStore.saveMemo(memo);setMemo(result);setDirty(false);refresh();setError('');bypassSaveNavigationGuard.current=true;try{openWorkView({kind:'memo-edit',id:result.id})}finally{bypassSaveNavigationGuard.current=false}showNotification('پیش‌نویس یادداشت با موفقیت ذخیره شد')}catch{setError('ذخیره پیش‌نویس ناموفق بود؛ فضای ذخیره‌سازی مرورگر را بررسی کنید.')}finally{setSaving(false)}};
+  const task=id?(demoStore.tasks().find(t=>t.id===id&&t.siteId===scope.siteId) || (legacyTasks.find(t=>t.id===id&&t.siteId===scope.siteId) ? legacyAsPhase6(legacyTasks.find(t=>t.id===id)!) : undefined)):undefined;
+  const [taskForm,setTaskForm]=useState<DemoTask|null>(null);
++ const [reopenReason,setReopenReason]=useState('');
+  useEffect(()=>{if(task)setTaskForm(task)},[id,tick]);
+  const openLinkedSupplyCase=(caseId:string)=>{
+   const linkedRisk=supplyRisks.find(r=>r.caseId===caseId);
+@@ -46,7 +47,7 @@
+   }
+   openWorkView({kind:'supply-case',id:caseId});
+  };
+- const updateTask=(p:Partial<DemoTask>,event:string)=>{if(!taskForm)return;setError('');if(p.owner && !eligibleOwners(taskForm.siteId).some(u=>u.id===p.owner)){setError('شناسه مسئول معتبر یا در محدوده بیمارستان مجاز نیست.');return}if(p.status==='blocked' && (!(p.blocker??taskForm.blocker).trim() || !(p.nextReview??taskForm.nextReview) || (p.nextReview??taskForm.nextReview)<today())){setError('برای وضعیت مسدود، دلیل مانع و تاریخ بازبینی امروز یا آینده الزامی است.');return}try{const result={...taskForm,...p,history:[...taskForm.history,{at:new Date().toISOString(),text:event}]};demoStore.saveTask(result);setTaskForm(result);refresh();showNotification('تغییرات وظیفه ذخیره شد')}catch{setError('ذخیره تغییرات ناموفق بود')}};
++ const updateTask=(p:Partial<DemoTask>,event:string)=>{if(!taskForm)return;setError('');if(task?.status==='completed'&&(p.status??taskForm.status)!=='completed'&&!reopenReason.trim()){setError('بازگشایی وظیفه تکمیل‌شده به دلیل ثبت‌شده نیاز دارد.');return}if(p.owner && !eligibleOwners(taskForm.siteId).some(u=>u.id===p.owner)){setError('شناسه مسئول معتبر یا در محدوده بیمارستان مجاز نیست.');return}if(p.status==='blocked' && (!(p.blocker??taskForm.blocker).trim() || !(p.nextReview??taskForm.nextReview) || (p.nextReview??taskForm.nextReview)<today())){setError('برای وضعیت مسدود، دلیل مانع و تاریخ بازبینی امروز یا آینده الزامی است.');return}try{const result={...taskForm,...p,history:[...taskForm.history,{at:new Date().toISOString(),text:task?.status==='completed'&&(p.status??taskForm.status)!=='completed'?`${event} · دلیل بازگشایی: ${reopenReason.trim()}`:event}]};demoStore.saveTask(result);setTaskForm(result);if(task?.status==='completed'&&(p.status??taskForm.status)!=='completed')setReopenReason('');refresh();showNotification('تغییرات وظیفه ذخیره شد')}catch{setError('ذخیره تغییرات ناموفق بود')}};
+  if(mode==='task')return !task?<p role="alert">وظیفه یافت نشد یا به این بیمارستان تعلق ندارد.</p>:<div className="space-y-5"><Button variant="outline" onClick={()=>go({kind:'tasks'})}>بازگشت به وظایف</Button><Panel title={taskForm?.title||task.title}>
+  <p className="text-xs text-slate-500">مدیریت وظیفه · ذخیره‌سازی نمایشی محلی</p>
+  <Field label="ویرایش عنوان" required value={taskForm?.title||''} change={title=>setTaskForm(x=>x?{...x,title}:x)}/>
+@@ -55,7 +56,8 @@
+  <p>وضعیت: {labels[taskForm?.status||task.status]} · اولویت: {priorities[taskForm?.priority||task.priority]} · مسئول: {taskForm?.owner||task.queue||'نامشخص'}</p>
+  <p>موعد: {task.dueDate||'نامشخص'}</p><p>مرجع پیوند: {task.supplyCaseId?<a href={`/supply/cases/${encodeURIComponent(task.supplyCaseId)}`} className="inline-flex rounded text-teal-700 underline underline-offset-2 hover:text-teal-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600" onClick={e=>{e.preventDefault();openLinkedSupplyCase(task.supplyCaseId!)}} aria-label={`باز کردن پرونده ${task.supplyCaseId}`}><bdi dir="ltr">{task.supplyCaseId}</bdi></a>:task.memoId||task.answerId||'ندارد'}</p><p className="text-xs">مراجع شواهد: {task.evidenceIds.join('، ')||'ندارد'}</p>
+  {task.memoId&&<Button variant="outline" onClick={()=>go({kind:'memo',id:task.memoId!})}>یادداشت مرتبط</Button>}{task.answerId&&<Button variant="outline" onClick={()=>go({kind:'copilot',answerId:task.answerId})}>پاسخ کوپایلت</Button>}
+- <label className="block">تغییر وضعیت<select className={field} value={taskForm?.status||task.status} onChange={e=>{const status=e.target.value as DemoTask['status'];if(status==='blocked'){setTaskForm(x=>x?{...x,status}:x);setError('برای ثبت وضعیت مسدود، دلیل مانع و تاریخ بازبینی را وارد و سپس ثبت کنید.');return}if(status==='completed'&&task.reviewRequired){setError('تکمیل فقط با تأیید نتیجه در مرحله بررسی انجام می‌شود.');return}if(taskForm?.status==='submitted_for_review'){setError('ابتدا نتیجه را تأیید یا رد کنید.');return}setError('');updateTask({status},`تغییر وضعیت به ${labels[status]}`)}}>{Object.entries(labels).filter(([k])=>k!=='completed'||!task.reviewRequired).map(([k,v])=><option key={k} value={k}>{v}</option>)}{taskForm?.status==='completed'&&<option value="completed">تکمیل‌شده</option>}</select></label>
++ <label className="block">تغییر وضعیت<select className={field} value={taskForm?.status||task.status} onChange={e=>{const status=e.target.value as DemoTask['status'];if(task.status==='completed'&&status!=='completed'){setTaskForm(x=>x?{...x,status}:x);setError('برای بازگشایی، دلیل را ثبت کنید؛ تغییر وضعیت هنوز ذخیره نشده است.');return}if(status==='blocked'){setTaskForm(x=>x?{...x,status}:x);setError('برای ثبت وضعیت مسدود، دلیل مانع و تاریخ بازبینی را وارد و سپس ثبت کنید.');return}if(status==='completed'&&task.reviewRequired){setError('تکمیل فقط با تأیید نتیجه در مرحله بررسی انجام می‌شود.');return}if(taskForm?.status==='submitted_for_review'){setError('ابتدا نتیجه را تأیید یا رد کنید.');return}setError('');updateTask({status},`تغییر وضعیت به ${labels[status]}`)}}>{Object.entries(labels).filter(([k])=>k!=='completed'||!task.reviewRequired).map(([k,v])=><option key={k} value={k}>{v}</option>)}{taskForm?.status==='completed'&&<option value="completed">تکمیل‌شده</option>}</select></label>
++ {task.status==='completed'&&taskForm?.status!=='completed'&&<div className="rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2"><Field label="دلیل الزامی بازگشایی" multi value={reopenReason} change={setReopenReason}/><p className="text-xs">این عملیات فقط در محیط نمایشی است؛ دلیل در تاریخچه ذخیره می‌شود.</p><Button disabled={!reopenReason.trim()} onClick={()=>updateTask({status:taskForm!.status},`بازگشایی وظیفه به ${labels[taskForm!.status]}`)}>ثبت بازگشایی با دلیل</Button></div>}
+  <label className="block text-sm">واگذاری به کاربر مجاز<select className={field} value={eligibleOwners(taskForm?.siteId||'').some(u=>u.id===taskForm?.owner)?taskForm?.owner:''} onChange={e=>setTaskForm(x=>x?{...x,owner:e.target.value}:x)}><option value="">انتخاب کاربر معتبر</option>{eligibleOwners(taskForm?.siteId||'').map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label><Button variant="outline" disabled={!taskForm?.owner||!eligibleOwners(taskForm.siteId).some(u=>u.id===taskForm.owner)} onClick={()=>updateTask({owner:taskForm!.owner,queue:'',status:'assigned'},'واگذاری مجدد')}>ثبت مسئول</Button>
+  {taskForm?.status==='blocked'&&<><Field label="دلیل انسداد" value={taskForm.blocker} change={blocker=>setTaskForm(x=>x?{...x,blocker}:x)}/><label>تاریخ بررسی مجدد<input type="date" className={field} value={taskForm.nextReview} onChange={e=>setTaskForm(x=>x?{...x,nextReview:e.target.value}:x)}/></label><Button disabled={!taskForm.blocker.trim()||!taskForm.nextReview||taskForm.nextReview<today()} onClick={()=>updateTask({status:'blocked',blocker:taskForm.blocker,nextReview:taskForm.nextReview},'ثبت مانع')}>ثبت مانع</Button></>}
+  <Field label="نتیجه" value={taskForm?.outcome||''} multi change={outcome=>setTaskForm(x=>x?{...x,outcome}:x)}/>
+diff --git a/src/him/components/WorkViews.tsx b/src/him/components/WorkViews.tsx
+--- a/src/him/components/WorkViews.tsx
++++ b/src/him/components/WorkViews.tsx
+@@ -209,6 +209,8 @@
+ 
+ export const AlertDetailView: React.FC<{ id: string }> = ({ id }) => {
+   const { alerts, tasks, scope, openWorkView, updateAlertStatus } = useApp();
++  const [resolutionCode,setResolutionCode]=useState('');
++  const [resolutionComment,setResolutionComment]=useState('');
+   const a = alerts.find(x => x.id === id);
+   const back = () => openWorkView({ kind: 'alerts' });
+   if (!a || a.siteId !== scope.siteId) return <NotFound onBack={back} text="این هشدار در دامنه کاری فعلی یافت نشد." />;
+@@ -245,6 +247,7 @@
+               </ul>
+             )}
+           </div>
++          <div className="bg-white border rounded-xl p-4 space-y-2"><h2 className="font-bold">خط زمانی هشدار</h2><p className="text-xs">ثبت اولیه: {a.raisedAt}</p>{(a.activity||[]).map((entry,i)=><p key={i} className="text-xs border-r-2 pr-2">{entry.text} · {entry.at}</p>)}{a.resolution&&<p className="text-xs">شاهد رفع: {a.resolution.comment}</p>}</div>
+           <EvidencePackage items={alertEvidence(a)} code={a.code} />
+         </div>
+         <div className="space-y-4">
+@@ -260,7 +263,10 @@
+               className="w-full px-3 py-2 rounded-lg text-xs font-semibold border border-amber-200 bg-amber-50 text-amber-800 disabled:opacity-40">
+               تأیید دریافت هشدار
+             </button>
+-            <button type="button" disabled={a.status === 'resolved'} onClick={() => updateAlertStatus(a.id, 'resolved')}
++            <label className="block text-xs">کد دلیل رفع<select aria-label="کد دلیل رفع هشدار" className="w-full border rounded p-2 mt-1" value={resolutionCode} onChange={e=>setResolutionCode(e.target.value)}><option value="">انتخاب دلیل</option>{[['condition_cleared','شرط هشدار برطرف شده'],['duplicate','تکراری'],['false_positive','هشدار اشتباه'],['source_corrected','منبع اصلاح شده'],['accepted_risk','پذیرش ریسک (نیازمند سرپرست)']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
++            <label className="block text-xs">شاهد یا توضیح رفع<textarea aria-label="شاهد یا توضیح رفع" className="w-full border rounded p-2 mt-1" value={resolutionComment} onChange={e=>setResolutionComment(e.target.value)}/></label>
++            {resolutionCode==='accepted_risk'&&<p role="alert" className="text-xs text-amber-700">پذیرش ریسک در این محیط بدون سرپرست احراز‌شده مسدود است.</p>}
++            <button type="button" disabled={a.status === 'resolved'||!resolutionCode||!resolutionComment.trim()||resolutionCode==='accepted_risk'} onClick={() => updateAlertStatus(a.id, 'resolved',{reasonCode:resolutionCode,comment:resolutionComment})}
+               className="w-full px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-600 text-white disabled:opacity-40 inline-flex items-center justify-center gap-1">
+               <CheckCircle2 className="w-4 h-4" /> علامت‌گذاری به‌عنوان برطرف‌شده
+             </button>
+diff --git a/src/him/context/AppContext.tsx b/src/him/context/AppContext.tsx
+--- a/src/him/context/AppContext.tsx
++++ b/src/him/context/AppContext.tsx
+@@ -48,7 +48,7 @@
+   if(p==='/knowledge/stewardship')return {kind:'stewardship'};
+   if(p==='/knowledge/stewardship/issues')return {kind:'stewardship-issues'};
+   const qualityIssue=/^\/knowledge\/stewardship\/issues\/([^/]+)$/.exec(p);if(qualityIssue)return {kind:'stewardship-issue',id:decodeURIComponent(qualityIssue[1]!)};
+-  if(['/settings/access','/settings/modules','/settings/agents','/clinical/capabilities','/clinical/review','/models/use-cases','/models/datasets','/models/evaluations','/models/annotations','/models/jobs-and-releases','/workforce','/quality/workflows','/assets/workflows','/finance/workflows'].includes(p))return {kind:'spec-page',path:p};
++  if(['/settings/access','/settings/modules','/settings/agents','/clinical/capabilities','/clinical/review','/models/use-cases','/models/datasets','/models/evaluations','/models/annotations','/models/jobs-and-releases','/workforce','/quality/workflows','/assets/workflows','/finance/workflows','/executive/investigations','/operations/forecasts','/operations/scenarios','/work-queues','/knowledge/documents','/knowledge/search','/executive/briefs','/assistant/runs'].includes(p))return {kind:'spec-page',path:p};
+   if(p==='/manual-executions')return {kind:'manual-list'};
+   if(p==='/manual-executions/new')return {kind:'manual-new'};
+   const manualId=/^\/manual-executions\/([^/]+)$/.exec(p);if(manualId)return {kind:'manual-detail',id:decodeURIComponent(manualId[1]!)};
+@@ -115,7 +115,7 @@
+   tasks: WorkTask[];
+   alerts: WorkAlert[];
+   updateTaskStatus: (id: string, status: TaskStatus) => void;
+-  updateAlertStatus: (id: string, status: AlertStatus) => void;
++  updateAlertStatus: (id: string, status: AlertStatus, resolution?: {reasonCode:string;comment:string}) => void;
+   notifications: AppNotification[];
+   readNotificationIds: string[];
+   markNotificationsRead: (ids: string[]) => void;
+@@ -245,9 +245,18 @@
+     setTasks(prev => prev.map(t => t.id === id ? { ...t, status, history: [...t.history, { at: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }), text: `وضعیت توسط ${user?.name ?? 'کاربر'} تغییر کرد.` }] } : t));
+     showNotification('وضعیت وظیفه به‌روزرسانی شد.');
+   };
+-  const updateAlertStatus = (id: string, status: AlertStatus) => {
+-    setAlerts(prev => prev.map(a => a.id === id ? { ...a, status } : a));
+-    showNotification(status === 'resolved' ? 'هشدار برطرف‌شده ثبت شد.' : 'دریافت هشدار تأیید شد.');
++  const updateAlertStatus = (id: string, status: AlertStatus, resolution?: {reasonCode:string;comment:string}) => {
++    const validCodes=['condition_cleared','duplicate','false_positive','accepted_risk','source_corrected'];
++    if(status==='resolved'&&(!resolution||!validCodes.includes(resolution.reasonCode)||!resolution.comment.trim())){
++      showNotification('برای رفع هشدار، کد دلیل و شاهد یا توضیح الزامی است.');return;
++    }
++    if(status==='resolved'&&resolution?.reasonCode==='accepted_risk'){
++      showNotification('پذیرش ریسک فقط با تأیید سرپرست مجاز است؛ این محیط مجوز معتبر ندارد.');return;
++    }
++    setAlerts(prev=>prev.map(a=>a.id!==id?a:{...a,status,
++      resolution:status==='resolved'?{reasonCode:resolution!.reasonCode,comment:resolution!.comment.trim(),at:new Date().toISOString()}:a.resolution,
++      activity:[...(a.activity||[]),{at:new Date().toISOString(),text:status==='resolved'?`رفع: ${resolution!.reasonCode} · ${resolution!.comment.trim()}`:status==='acknowledged'?'دریافت هشدار تأیید شد':`تغییر وضعیت: ${status}`}]}));
++    showNotification(status==='resolved'?'هشدار با دلیل و شاهد ثبت شد.':'دریافت هشدار تأیید شد.');
+   };
+   const [viewState, setViewState] = useState<ViewState>('normal');
+   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+diff --git a/src/him/data/workData.ts b/src/him/data/workData.ts
+--- a/src/him/data/workData.ts
++++ b/src/him/data/workData.ts
+@@ -31,6 +31,8 @@
+   status: AlertStatus;
+   raisedAt: string;
+   source: string;
++  resolution?: {reasonCode: string; comment: string; at: string};
++  activity?: {at: string; text: string}[];
+   metric?: { label: string; value: string; threshold: string };
+ }
+ 
+diff --git a/src/him/components/SpecificationWorkspaces.tsx b/src/him/components/SpecificationWorkspaces.tsx
+--- a/src/him/components/SpecificationWorkspaces.tsx
++++ b/src/him/components/SpecificationWorkspaces.tsx
+@@ -2,6 +2,13 @@
+ 
+ /** Frontend-only specification workspaces. No authentication or source-system operation. */
+ const SCREENS: Record<string,{title:string;intro:string;tabs:string[];warning:string}> = {
++ '/executive/investigations':{title:'بررسی مدیریتی ناهنجاری‌ها',intro:'فرضیه‌ها، شواهد موافق/مخالف/ناموجود و نتیجه بررسی',tabs:['فرضیه‌ها','شواهد و خلأها','وظایف راستی‌آزمایی','جمع‌بندی بازبین'],warning:'این فضای کار نمایشی است و نتیجه بررسی واقعی تأیید نشده است.'},
++ '/executive/briefs':{title:'ساخت گزارش مدیریتی',intro:'پیش‌نویس نسخه‌دار گزارش دوره‌ای',tabs:['قالب و دامنه','شواهد و برش داده','بازبینی','انتشار'],warning:'هیچ انتشار یا زمان‌بندی واقعی وجود ندارد؛ داده‌های مرجع متصل نشده‌اند.'},
++ '/operations/forecasts':{title:'پیش‌بینی ظرفیت',intro:'درخواست پیش‌بینی، ورودی‌ها و وضعیت نتایج',tabs:['درخواست','نتایج و بازه‌های عدم قطعیت','پیشینه و بازبینی'],warning:'مدل پیش‌بینی متصل نیست؛ هیچ عدد پیش‌بینی معتبری تولید نشده است.'},
++ '/operations/scenarios':{title:'آزمایش سناریوی ظرفیت',intro:'مقایسه فرضیه‌های ظرفیت با خط پایه',tabs:['خط پایه','تغییر پارامترها','محدودیت‌ها','خروجی سناریو'],warning:'اعتبارسنجی امکان‌پذیری انجام نشده و این بخش عملیات واقعی را تغییر نمی‌دهد.'},
++ '/work-queues':{title:'صف‌های کاری',intro:'نمای نمونه صف‌های عملیاتی و دامنه‌های اختصاص',tabs:['صف‌ها','اعضا و دامنه مجاز','واگذاری'],warning:'عضویت و مجوزها تأیید نشده‌اند؛ واگذاری واقعی امکان‌پذیر نیست.'},
++ '/knowledge/documents':{title:'مخزن مستندات',intro:'فهرست، نسخه و چرخه انتشار اسناد دانش',tabs:['فهرست اسناد','نسخه‌ها','تأیید انتشار'],warning:'هیچ سند واقعی بارگذاری نشده است؛ تأیید مرجع سند نیازمند داده معتبر است.'},
++ '/knowledge/search':{title:'جستجوی دانش',intro:'درخواست جستجوی محدود به دسترسی و زمان',tabs:['جستجو','شواهد و نتایج','محدودیت‌ها'],warning:'موتور بازیابی یا نمایه معتبر متصل نیست؛ نتایج ساختگی تولید نمی‌شود.'},
+  '/settings/access':{title:'مدیریت دسترسی و تفویض',intro:'فهرست مجوزهای نمونه، دامنه سایت و درخواست تغییر دسترسی',tabs:['کاربران نمونه','مجوزهای محدود به سایت','درخواست مجوز','تفویض زمان‌دار'],warning:'این بخش فقط نمایشی است و مجوز واقعی صادر نمی‌کند.'},
+  '/settings/modules':{title:'فعال‌سازی و نسخه‌های ماژول',intro:'مدیریت وضعیت‌های چرخه عمر ماژول در محیط آزمایشی',tabs:['ماژول‌ها','اعتبارسنجی نسخه','ارتقا و تعلیق','تاریخچه نمونه'],warning:'Validate، Promote و Suspend در این نما هیچ اثر اجرایی واقعی ندارند.'},
+  '/settings/agents':{title:'استودیوی عامل‌های هوشمند',intro:'تعریف و بازبینی نسخه نمایشی عامل، محدوده، ابزار و سیاست ارزیابی',tabs:['عامل‌ها','نسخه و ابزارها','ارزیابی','انتشار محدود'],warning:'هیچ عامل یا مدل واقعی اجرا یا منتشر نمی‌شود.'},

@@ -10,10 +10,10 @@ export type MetricQuality='fresh'|'stale'|'unavailable'|'not_computable';
 export interface MetricEvidence {id:string;title:string;source:string;snapshot:string;metricVersion:string;asOf:string;sourceEventAt?:string|null;ingestedAt?:string|null;scope:string;excerpt:string;limitations:string;}
 export interface DashboardMetric {key:DashboardMetricKey;title:string;value:number|null;unit:string;quality:MetricQuality;description:string;formula?:string;numerator?:number;denominator?:number;version:string;asOf:string;evidence:MetricEvidence[];target:string;}
 export interface DashboardSnapshot {siteId:string;siteName:string;period:Period;cutoff:string;refreshedAt:string;metrics:DashboardMetric[];alerts:WorkAlert[];tasks:ReturnType<typeof canonicalTasks>;issues:ReturnType<typeof listQualityIssues>;risks:typeof supplyRisks;}
-const OCCUPANCY_FIXTURE:Record<string,{occupied:number;staffed:number;snapshot:string}>= {
- [SITES_DATA[0]?.id||'none']:{occupied:80,staffed:100,snapshot:'SYN-OPS-TAL-20261023-v1'},
- [SITES_DATA[1]?.id||'none']:{occupied:85,staffed:110,snapshot:'SYN-OPS-IMAM-20261023-v1'},
- [SITES_DATA[2]?.id||'none']:{occupied:0,staffed:0,snapshot:'SYN-OPS-SHO-EMPTY-v1'},
+const OCCUPANCY_FIXTURE:Record<string,{occupied:number;staffed:number;snapshot:string;syntheticSourceEventAt:string;syntheticIngestedAt:string}>= {
+ [SITES_DATA[0]?.id||'none']:{occupied:80,staffed:100,snapshot:'SYN-OPS-TAL-20261023-v1',syntheticSourceEventAt:'2026-10-23T23:48:00+03:30',syntheticIngestedAt:'2026-10-23T23:50:00+03:30'},
+ [SITES_DATA[1]?.id||'none']:{occupied:85,staffed:110,snapshot:'SYN-OPS-IMAM-20261023-v1',syntheticSourceEventAt:'2026-10-23T23:42:00+03:30',syntheticIngestedAt:'2026-10-23T23:44:00+03:30'},
+ [SITES_DATA[2]?.id||'none']:{occupied:0,staffed:0,snapshot:'SYN-OPS-SHO-EMPTY-v1',syntheticSourceEventAt:'2026-10-23T23:10:00+03:30',syntheticIngestedAt:'2026-10-23T23:12:00+03:30'},
 };
 /** Comparison is explicitly restricted to authorized synthetic fixtures; not approved cross-site analytics. */
 export function compareOccupancyFixtures(siteIds:string[],period:Period){
@@ -46,7 +46,7 @@ export function getExecutiveDashboard(siteId:string,period:Period,alerts:WorkAle
  const occupancy=OCCUPANCY_FIXTURE[siteId];
  const cutoff='2026-10-23T23:59:59+03:30';
  const sourceTime='2026-10-23T23:59:59+03:30';
- const evidence:MetricEvidence[]=occupancy?[{id:`EVD-${occupancy.snapshot}`,title:'شواهد ظرفیت و اشغال نمونه',source:'فیکسچر مصنوعی عملیات',snapshot:occupancy.snapshot,metricVersion:'available_staffed_bed_occupancy@1',asOf:sourceTime,sourceEventAt:null,ingestedAt:null,scope:siteId,excerpt:`${occupancy.occupied} تخت اشغال‌شده / ${occupancy.staffed} تخت فعال دارای نیروی انسانی`,limitations:'ارقام ساختگی برای آزمون رابط؛ داده بیمارستانی یا HIS نیست.'}]:[];
+ const evidence:MetricEvidence[]=occupancy?[{id:`EVD-${occupancy.snapshot}`,title:'شواهد ظرفیت و اشغال نمونه',source:'فیکسچر مصنوعی عملیات',snapshot:occupancy.snapshot,metricVersion:'available_staffed_bed_occupancy@1',asOf:sourceTime,sourceEventAt:occupancy.syntheticSourceEventAt,ingestedAt:occupancy.syntheticIngestedAt,scope:siteId,excerpt:`${occupancy.occupied} تخت اشغال‌شده / ${occupancy.staffed} تخت فعال دارای نیروی انسانی`,limitations:'ارقام و هر دو timestamp صرفاً فیکسچر ساختگی مستقل از as-of هستند؛ این زمان‌ها از HIS/سامانه واقعی دریافت یا راستی‌آزمایی نشده‌اند.'}]:[];
  const definitions:[DashboardMetricKey,string,number|null,string,string,string,string][]=[
   ['occupancy','نرخ اشغال تخت',occupancy?calculateOccupancy(occupancy.occupied,occupancy.staffed):null,'٪','نسبت تخت اشغال‌شده به تخت فعال دارای نیروی انسانی','/operations','available_staffed_bed_occupancy@1'],
   ['alerts','هشدارهای فعال',scopedAlerts.filter(activeAlert).length,'مورد','هشدارهای حل‌نشده در محدوده جاری','/alerts','alert-lifecycle@1'],

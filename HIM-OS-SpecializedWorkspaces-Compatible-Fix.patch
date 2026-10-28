@@ -1,0 +1,30 @@
+--- a/src/him/components/SpecializedWorkspaces.tsx
++++ b/src/him/components/SpecializedWorkspaces.tsx
+@@ -65,6 +65,7 @@
+  const [estimate,setEstimate]=useState(''); const [currency,setCurrency]=useState('IRR'); const [assumption,setAssumption]=useState('');
+  const [prepared,setPrepared]=useState(false);
+  const [selectedAsset,setSelectedAsset]=useState('');
++ const [historyAsset,setHistoryAsset]=useState(''),[historyFrom,setHistoryFrom]=useState(''),[historyTo,setHistoryTo]=useState(''),[telemetryUnit,setTelemetryUnit]=useState(''),[telemetryMetric,setTelemetryMetric]=useState('');
+  const errors = [!str(asset||selectedAsset)?'شناسه دارایی الزامی است.':'',!str(recommendation)?'مرجع پیشنهاد نگهداشت الزامی است.':'',!validMaintenanceReason(reason)?'شرح دلیل باید بین ۲۰ تا ۲۰۰۰ نویسه باشد.':'',!validTimeWindow(start,end)?'پایان بازه باید پس از شروع بازه باشد.':'',!queue?'صف نگهداشت الزامی است.':'',estimate!==''&&(!Number.isFinite(Number(estimate))||Number(estimate)<0)?'برآورد هزینه معتبر نیست.':'',estimate!==''&&!str(assumption)?'برای برآورد هزینه، منبع فرض الزامی است.':''].filter(Boolean);
+  const values={'شناسه دارایی':asset||selectedAsset,'پیشنهاد مرجع':recommendation,'دلیل':reason,'شروع':start,'پایان':end,'فوریت':urgency,'صف':queue,'برآورد':estimate?`${estimate} ${currency}`:'ثبت نشده','مبنای برآورد':assumption};
+  const prepare=(e:React.FormEvent)=>{e.preventDefault();if(errors.length)return;setPrepared(true);};
+@@ -85,7 +86,18 @@
+   </form>
+   {prepared&&<section className="space-y-3 rounded-xl border border-teal-300 p-4" role="region" aria-label="مقایسه با سفارش‌های فعال"><h3 className="font-semibold">پیش‌نمایش و مقایسه با سفارش‌های منبع</h3><p className="text-sm">دارایی {asset||selectedAsset}، پیشنهاد {recommendation}، بازه {start} تا {end}، صف {queue}.</p><Blocked>مقایسه با سفارش‌های فعال: نامشخص — اتصال خواندنی CMMS وجود ندارد. نبود تداخل یا امکان اجرا تأیید نشده است؛ تأیید/ارسال غیرفعال است.</Blocked><button className={btnClass} type="button" onClick={()=>{save('maintenance',`نگهداشت ${asset||selectedAsset}`,values,'پیش‌نویس داخلی؛ تطبیق CMMS و بازبینی مستقل انجام نشده است.');setPrepared(false)}}>ذخیره پیش‌نویس نمایشی</button></section>}
+   <DraftHistory entries={entries} category="maintenance"/>
+- </>:<><h2 className="font-bold">{tabs[tab]}</h2><Blocked>این بخش به داده مرجع، مجوز و قرارداد مربوط به CMMS نیاز دارد و هنوز گردش‌کار کاملش پیاده نشده است. داده خیالی به‌عنوان تاریخچه/شاهد تجهیزات نمایش داده نمی‌شود.</Blocked></>}</Panel></>;
++ </>:tab===1||tab===2?<section className="space-y-3" data-testid={tab===1?'asset-source-history':'asset-telemetry'}>
++  <h2 className="font-bold">{tab===1?'AST-02 · تاریخچه همگام‌سازی منبع':'AST-02 · مرور تله‌متری تجهیزات'}</h2>
++  <div className="grid sm:grid-cols-2 gap-3">
++   {field('شناسه دارایی / منبع',<input className={inputClass} value={historyAsset||selectedAsset} onChange={e=>{setHistoryAsset(e.target.value);setSelectedAsset('');}} placeholder="شناسه دارایی"/>)}
++   {tab===2?field('اندازه‌گیری / شاخص',<select className={inputClass} value={telemetryMetric} onChange={e=>setTelemetryMetric(e.target.value)}><option value="">انتخاب شاخص</option><option value="temperature">دما</option><option value="runtime">ساعات کارکرد</option><option value="energy">مصرف انرژی</option></select>):field('مرجع تغییر / نوع رخداد',<select className={inputClass} value={telemetryUnit} onChange={e=>setTelemetryUnit(e.target.value)}><option value="">همه رخدادها</option><option value="maintenance">نگهداشت</option><option value="status">وضعیت منبع</option><option value="sync">همگام‌سازی</option></select>)}
++   {field('از تاریخ',<input type="date" className={inputClass} value={historyFrom} onChange={e=>setHistoryFrom(e.target.value)}/>)}
++   {field('تا تاریخ',<input type="date" className={inputClass} value={historyTo} onChange={e=>setHistoryTo(e.target.value)}/>)}
++  </div>
++  {historyFrom&&historyTo&&historyTo<historyFrom&&<p role="alert" className="text-rose-700 text-xs">پایان دوره قبل از شروع آن است.</p>}
++  <Blocked>{tab===1?'رویدادهای ثبت‌شده در منبع و وضعیت همگام‌سازی تأیید نشده‌اند. سابقه‌ای جعل نمی‌شود.':'خوانش خام، واحد UCUM، کیفیت سنسور و زمان دریافت موجود نیست. روند و هشدار بدون داده معتبر محاسبه نمی‌شود.'}</Blocked>
++  <p className="rounded-lg bg-slate-50 p-3 text-sm">هیچ رخداد یا خوانش معتبر برای این فیلترها ثبت نشده است.</p>
++ </section>:<><h2 className="font-bold">{tabs[tab]}</h2><Blocked>این بخش به داده مرجع، مجوز و قرارداد مربوط به CMMS نیاز دارد و هنوز گردش‌کار کاملش پیاده نشده است. داده خیالی به‌عنوان تاریخچه/شاهد تجهیزات نمایش داده نمی‌شود.</Blocked></>}</Panel></>;
+ }
+ 
+ function Workforce({save,entries}:{save:ReturnType<typeof useLocalDrafts>['save'];entries:Draft[]}){

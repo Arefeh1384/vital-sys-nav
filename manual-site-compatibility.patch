@@ -1,0 +1,59 @@
+--- a/src/him/manual/store.ts
++++ b/src/him/manual/store.ts
+@@ -10,12 +10,21 @@
+ export type Activity={id:string;at:string;actor:string;from:ManualState|null;to:ManualState;reason:string;evidenceId?:string};
+ export type ManualRecord={id:string;siteId:string;recommendationId:string;recommendationRevision:number;caseId:string;taskId?:string;effect:Effect;state:ManualState;reviews:Review[];proposer:string;executorId?:string;claim?:Claim;observation?:ObservationRun;verifierId?:string;verifiedEvidenceId?:string;reason?:string;deadline:string;updatedAt:string;history:Activity[];version:number};
+ export const stateLabels:Record<ManualState,string>={draft:'پیش‌نویس',awaiting_review:'در انتظار بررسی',ready_for_handoff:'آماده ارجاع',assigned:'اختصاص‌یافته',execution_reported:'اجرای دستی گزارش‌شده',awaiting_observation:'در انتظار مشاهده نتیجه',verified_completed:'تکمیل تأییدشده',disputed:'دارای اختلاف',expired:'مهلت منقضی‌شده',canceled:'لغوشده',closed_unverified:'بسته‌شده بدون تأیید نتیجه'};
++// HIM-OS navigation uses a public site key; Supply fixtures use a UUID.
++// Translate only the explicitly recognized Taleghani site, never broadening scope.
++const TALEGHANI_WORK_SITE = 'SITE-TALEGHANI';
++const TALEGHANI_SUPPLY_SITE = '10000000-0000-4000-8000-000000000011';
++const supplySiteFor = (siteId:string) => siteId === TALEGHANI_WORK_SITE ? TALEGHANI_SUPPLY_SITE : siteId;
++const inWorkSite = (risk:{siteId:string},siteId:string) => risk.siteId === supplySiteFor(siteId);
++const actorSites = [...new Set(supplyRisks.map(r=>r.siteId).concat(
++  supplyRisks.some(r=>r.siteId===TALEGHANI_SUPPLY_SITE) ? [TALEGHANI_WORK_SITE] : []
++))];
+ export const DEMO_ACTORS:Actor[]=[
+- {id:'proposer',name:'تهیه‌کننده پیشنهاد (نمایشی)',siteIds:supplyRisks.map(r=>r.siteId).filter((id,index,ids)=>ids.indexOf(id)===index),capabilities:['read','create']},
+- {id:'reviewer',name:'مسئول بررسی فرایند (نمایشی)',siteIds:supplyRisks.map(r=>r.siteId).filter((id,index,ids)=>ids.indexOf(id)===index),capabilities:['read','review']},
+- {id:'executor',name:'مجری انسانی الف (نمایشی)',siteIds:supplyRisks.map(r=>r.siteId).filter((id,index,ids)=>ids.indexOf(id)===index),capabilities:['read','report']},
+- {id:'verifier',name:'راستی‌آزمای مستقل ب (نمایشی)',siteIds:supplyRisks.map(r=>r.siteId).filter((id,index,ids)=>ids.indexOf(id)===index),capabilities:['read','verify']},
+- {id:'closer',name:'مسئول بستن پرونده (نمایشی)',siteIds:supplyRisks.map(r=>r.siteId).filter((id,index,ids)=>ids.indexOf(id)===index),capabilities:['read','close']},
++ {id:'proposer',name:'تهیه‌کننده پیشنهاد (نمایشی)',siteIds:actorSites,capabilities:['read','create']},
++ {id:'reviewer',name:'مسئول بررسی فرایند (نمایشی)',siteIds:actorSites,capabilities:['read','review']},
++ {id:'executor',name:'مجری انسانی الف (نمایشی)',siteIds:actorSites,capabilities:['read','report']},
++ {id:'verifier',name:'راستی‌آزمای مستقل ب (نمایشی)',siteIds:actorSites,capabilities:['read','verify']},
++ {id:'closer',name:'مسئول بستن پرونده (نمایشی)',siteIds:actorSites,capabilities:['read','close']},
+ ];
+ const KEY='him.manual.executions.v1';
+ const now=()=>new Date().toISOString();
+@@ -30,11 +39,8 @@
+ // Dedicated, read-only acceptance fixture. Never saved into Supply or treated as a hospital recommendation.
+ export const MANUAL_DEMO_PROPOSAL_ID = 'DEMO-MANUAL-REPLENISHMENT-24-V1';
+ export function manualDemoProposal(siteId:string):SupplyProposal|null {
+- const risk = siteId === 'SITE-TALEGHANI'
+-  ? supplyRisks.find(r =>
+-      r.siteId === '10000000-0000-4000-8000-000000000011' &&
+-      r.riskType === 'projected_stockout'
+-    )
++ const risk = siteId === TALEGHANI_WORK_SITE
++  ? supplyRisks.find(r => inWorkSite(r,siteId) && r.riskType === 'projected_stockout')
+   : undefined;
+  if(!risk)return null;
+  return {
+@@ -49,13 +55,13 @@
+  };
+ }
+ export function manualEligibleProposals(siteId:string):SupplyProposal[] {
+- const saved=getProposals().filter(p=>eligibleRecommendation(p)&&supplyRisks.some(r=>r.id===p.riskId&&r.siteId===siteId));
++ const saved=getProposals().filter(p=>eligibleRecommendation(p)&&supplyRisks.some(r=>r.id===p.riskId&&inWorkSite(r,siteId)));
+  const demo=manualDemoProposal(siteId);
+  return demo&&eligibleRecommendation(demo)?[...saved,demo]:saved;
+ }
+ export function createManualExecutionDraft(proposalId:string,actor:Actor,siteId:string){
+  const p=manualEligibleProposals(siteId).find(x=>x.id===proposalId);if(!p||!eligibleRecommendation(p))deny('پیشنهاد واجد شرایط نیست؛ نسخه اعتبارسنجی‌شده و اثر قطعی لازم است.');
+- if(!actor.capabilities.includes('create')||!actor.siteIds.includes(siteId)||!supplyRisks.some(r=>r.id===p.riskId&&r.siteId===siteId))deny('مجوز ایجاد در این سایت یا انطباق سایت پیشنهاد وجود ندارد.');
++ if(!actor.capabilities.includes('create')||!actor.siteIds.includes(siteId)||!supplyRisks.some(r=>r.id===p.riskId&&inWorkSite(r,siteId)))deny('مجوز ایجاد در این سایت یا انطباق سایت پیشنهاد وجود ندارد.');
+  const prior=listManualExecutions().find(x=>x.recommendationId===p.id&&x.recommendationRevision===p.revision&&x.state!=='canceled');if(prior)return prior;
+  const effect:Effect={action:p.type,item:p.item,quantity:String(p.quantity),unit:p.unit,siteId,sourceSystem:'HIS-DEMO-NO-SAFE-WRITE',destination:p.destination,...(p.price?{currency:p.currency}:{})};
+  const r:ManualRecord={id:`MAN-${crypto.randomUUID()}`,siteId,recommendationId:p.id,recommendationRevision:p.revision,caseId:p.caseId,effect,state:'draft',reviews:[{kind:'business',role:'reviewer',status:'pending',revision:p.revision}],proposer:actor.id,deadline:new Date(Date.now()+7*86400000).toISOString(),updatedAt:now(),history:[],version:1};

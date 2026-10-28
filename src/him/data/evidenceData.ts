@@ -40,8 +40,14 @@ export function alertEvidence(a: WorkAlert): EvidenceItem[] {
     sourceVersion:'fixture-contract-bed-v1 [SYNTHETIC]',metricVersion:'bed-capacity-count@demo-1',
     ruleVersion:'capacity-threshold@demo-2',snapshotCutoff:'2026-10-23T23:59:59+03:30',
     sourceEventAt:'2026-10-23T23:58:00+03:30',ingestedAt:'2026-10-23T23:58:09+03:30',
-    assumptions:'فیکسچر آزمایشی: همه مقادیر و زمان‌ها غیرعملیاتی هستند.',
+    assumptions:'فیکسچر آزمایشی: همه مقادیر و زمان‌ها غیرعملیاتی هستند؛ خط پایه ۷ مقدار مرجع ساختگی در synthetic-reference-window@demo-1 است. نه مدل مصوب.',
     limitations:'فقط آزمایش رابط؛ شناسه قرارداد و زمان‌ها از منبع واقعی دریافت نشده‌اند.'
+  }:a.code==='ALR-1001'?{
+    sourceVersion:'inventory-connector-mock@1 (فیکسچر، نه قرارداد مصوب)',
+    metricVersion:'inventory-on-hand-demo@1',ruleVersion:'stock-threshold-demo@1',
+    snapshotCutoff:'2026-10-14T07:35:00+03:30 [SYNTHETIC ONLY]',sourceEventAt:'2026-10-14T07:30:00+03:30 [SYNTHETIC ONLY]',ingestedAt:'2026-10-14T07:32:00+03:30 [SYNTHETIC ONLY]',
+    assumptions:'آستانه ۳۰۰ ویال و موجودی ۱۲۰ ویال داده نمایشی هستند؛ این مقادیر از انبار واقعی خوانده نشده‌اند.',
+    limitations:'زمان‌های cutoff/رخداد/دریافت فقط سناریوی ساختگی جدیدند و در داده اولیه گزارش نشده‌اند. نسخه‌ها شناسه فیکسچر هستند، نه منشأ واقعی یا رکورد ممیزی.'
   }:{};
   return items.map(i => ({ ...i,...sample, hash: hashOf(i.id + i.detail) }));
 }

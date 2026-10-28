@@ -1,0 +1,86 @@
+diff --git a/src/components/ui/calendar.tsx b/src/components/ui/calendar.tsx
+index 91c3e23..2deadfd 100644
+--- a/src/components/ui/calendar.tsx
++++ b/src/components/ui/calendar.tsx
+@@ -73,7 +73,7 @@ function Calendar({
+             : "[&>svg]:text-muted-foreground flex h-8 items-center gap-1 rounded-md pl-2 pr-1 text-sm [&>svg]:size-3.5",
+           defaultClassNames.caption_label,
+         ),
+-        table: "w-full border-collapse",
++        month_grid: cn("w-full border-collapse", defaultClassNames.month_grid),
+         weekdays: cn("flex", defaultClassNames.weekdays),
+         weekday: cn(
+           "text-muted-foreground flex-1 select-none rounded-md text-[0.8rem] font-normal",
+diff --git a/src/components/ui/chart.tsx b/src/components/ui/chart.tsx
+index 5e4bc6e..3520c6f 100644
+--- a/src/components/ui/chart.tsx
++++ b/src/components/ui/chart.tsx
+@@ -94,8 +94,8 @@ const ChartTooltip = RechartsPrimitive.Tooltip;
+ 
+ const ChartTooltipContent = React.forwardRef<
+   HTMLDivElement,
+-  React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
+-    React.ComponentProps<"div"> & {
++  React.ComponentProps<"div"> &
++    Partial<RechartsPrimitive.TooltipContentProps<RechartsPrimitive.TooltipValueType, string>> & {
+       hideLabel?: boolean;
+       hideIndicator?: boolean;
+       indicator?: "line" | "dot" | "dashed";
+@@ -170,18 +170,18 @@ const ChartTooltipContent = React.forwardRef<
+             .map((item, index) => {
+               const key = `${nameKey || item.name || item.dataKey || "value"}`;
+               const itemConfig = getPayloadConfigFromPayload(config, item, key);
+-              const indicatorColor = color || item.payload.fill || item.color;
++              const indicatorColor = color || item.payload?.fill || item.color;
+ 
+               return (
+                 <div
+-                  key={item.dataKey}
++                  key={String(item.dataKey ?? item.name ?? index)}
+                   className={cn(
+                     "flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5 [&>svg]:text-muted-foreground",
+                     indicator === "dot" && "items-center",
+                   )}
+                 >
+                   {formatter && item?.value !== undefined && item.name ? (
+-                    formatter(item.value, item.name, item, index, item.payload)
++                    formatter(item.value, item.name, item, index, payload)
+                   ) : (
+                     <>
+                       {itemConfig?.icon ? (
+@@ -243,7 +243,8 @@ const ChartLegend = RechartsPrimitive.Legend;
+ const ChartLegendContent = React.forwardRef<
+   HTMLDivElement,
+   React.ComponentProps<"div"> &
+-    Pick<RechartsPrimitive.LegendProps, "payload" | "verticalAlign"> & {
++    Pick<RechartsPrimitive.LegendProps, "verticalAlign"> & {
++      payload?: RechartsPrimitive.DefaultLegendContentProps["payload"];
+       hideIcon?: boolean;
+       nameKey?: string;
+     }
+diff --git a/src/him/manual/store.ts b/src/him/manual/store.ts
+index d37aeb4..8dddbb2 100644
+--- a/src/him/manual/store.ts
++++ b/src/him/manual/store.ts
+@@ -32,7 +32,7 @@ function storage(){return typeof window==='undefined'?null:window.localStorage}
+ export function listManualExecutions():ManualRecord[]{try{return JSON.parse(storage()?.getItem(KEY)||'[]') as ManualRecord[]}catch{return []}}
+ export function getManualExecution(id:string){return listManualExecutions().find(r=>r.id===id)}
+ function persist(r:ManualRecord){storage()?.setItem(KEY,JSON.stringify([...listManualExecutions().filter(x=>x.id!==r.id),r]));return r}
+-const deny=(msg:string):never=>{throw new Error(msg)};
++function deny(msg: string): never { throw new Error(msg); }
+ function requireActor(a:Actor|undefined,r:ManualRecord,cap:string){if(!a||!a.capabilities.includes(cap)||!a.siteIds.includes(r.siteId))deny('مجوز نمایشی برای این عملیات یا سایت وجود ندارد.');}
+ function change(r:ManualRecord,actor:string,to:ManualState,reason:string,evidenceId?:string,extra:Partial<ManualRecord>={}):ManualRecord{const updated={...r,...extra,state:to,version:r.version+1,updatedAt:now(),history:[...r.history,{id:crypto.randomUUID(),at:now(),actor,from:r.state,to,reason,evidenceId}]};return persist(updated)}
+ export function eligibleRecommendation(p:SupplyProposal){return p.status==='validated'&&p.revision>0&&Number.isFinite(p.quantity)&&p.quantity>0&&!!p.destination.trim()&&!!p.item.trim()&&p.type==='replenishment'&&p.constraints.every(c=>c.state!=='failed'&&c.state!=='unknown')&&supplyRisks.some(r=>r.id===p.riskId&&r.caseId===p.caseId&&r.site===p.site);} // cross-site source review fixture not configured: fail closed
+diff --git a/src/him/stewardship/store.ts b/src/him/stewardship/store.ts
+index 8898f08..372ae36 100644
+--- a/src/him/stewardship/store.ts
++++ b/src/him/stewardship/store.ts
+@@ -42,7 +42,7 @@ export function proposalSignature(r:Resolution):string {return JSON.stringify([r
+ export function getImpactOutput(id:string,outputId:string,siteId:string){const issue=getQualityIssue(id);if(!issue||issue.siteId!==siteId)return undefined;return issue.resolution?.preview?.outputs.find(o=>o.id===outputId&&o.siteId===siteId);}
+ 
+ export type Verification = { status:VerificationState; requestedAt:string; at?:string; verifier?:string; snapshot:string; checks:number; passed:number; remaining:number|null; evidence:string };
+-export interface QualityIssue { id:string; fingerprint:string; title:string; description:string; orgId:string; siteId:string; datasetId:string; sourceSystem:string; partition:string; snapshot:string; cutoff:string; rule:QualityRuleVersion; dimension:Dimension; severity:Severity; state:IssueState; owner:string; sourceOwner:string; ruleOwner:string; dueAt:string; firstSeen:string; lastSeen:string; recordVersion:number; fields:string[]; samples:Sample[]; observations:Observation[]; impact:{metrics:string[];reports:string[];alerts:string[];models:string[]; eligibility:string}; investigation:string; cause:string; notes:string; blocker:string; resumeState:IssueState; reviewDate:string; resolution?:Resolution; verification?:Verification; history:HistoryEvent[]; originalClosedAt?:string }
++export interface QualityIssue { id:string; fingerprint:string; title:string; description:string; orgId:string; siteId:string; datasetId:string; sourceSystem:string; partition:string; snapshot:string; cutoff:string; rule:QualityRuleVersion; dimension:Dimension; severity:Severity; state:IssueState; owner:string; sourceOwner:string; ruleOwner:string; dueAt:string; firstSeen:string; lastSeen:string; recordVersion:number; fields:string[]; samples:Sample[]; observations:Observation[]; impact:{metrics:string[];reports:string[];alerts:string[];models:string[]; eligibility:string}; investigation:string; cause:string; notes:string; blocker:string; resumeState:IssueState; reviewDate:string; resolution?:Resolution; verification?:Verification; history:HistoryEvent[]; originalClosedAt?:string; latestObservationId?:string }
+ export const STATE_LABELS:Record<IssueState,string> = {open:'باز',triaged:'غربال‌شده',in_progress:'در حال بررسی',resolution_proposed:'اصلاح پیشنهادی',approved_for_change:'مجاز برای تغییر',awaiting_verification:'در انتظار راستی‌آزمایی',resolved:'حل‌شده',closed:'بسته‌شده',blocked:'مسدود',rejected_proposal:'پیشنهاد ردشده',accepted_exception:'استثنای پذیرفته‌شده',reopened:'بازگشایی‌شده'};
+ export const DIMENSION_LABELS:Record<Dimension,string> = {completeness:'کامل بودن داده',validity:'معتبر بودن داده',uniqueness:'یکتایی',referential_integrity:'یکپارچگی ارجاعی',consistency:'سازگاری داده',timeliness:'به‌موقع بودن',distribution:'توزیع داده'};
+ export const SEVERITY_LABELS:Record<Severity,string> = {critical:'بحرانی',high:'زیاد',medium:'متوسط',low:'کم'};

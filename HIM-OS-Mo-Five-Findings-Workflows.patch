@@ -1,0 +1,289 @@
+--- a/src/him/executive/ExecutiveDashboard.tsx
++++ b/src/him/executive/ExecutiveDashboard.tsx
+@@ -9,7 +9,7 @@
+ const button='rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-600';
+ const nf=(n:number|null,unit='')=>n===null?'—':`${n.toLocaleString('fa-IR')}${unit==='٪'?'٪':''}`;
+ export function ExecutiveDashboard(){
+- const {scope,alerts,tasks,openWorkView,setIsScopeModalOpen,setActiveModule}=useApp();
++ const {scope,alerts,tasks,openWorkView,setIsScopeModalOpen,setActiveModule,copilot}=useApp();
+  const [period,setPeriod]=useState<Period>(()=>{try{const p=sessionStorage.getItem('him.executive.period');return p==='week'||p==='month'?p:'day'}catch{return 'day'}});
+  useEffect(()=>{try{sessionStorage.setItem('him.executive.period',period)}catch{}},[period]);
+  const [revision,setRevision]=useState(0);
+@@ -19,6 +19,14 @@
+  const snapshot=useMemo(()=>getExecutiveDashboard(scope.siteId??'',period,alerts,tasks),[scope.siteId,period,alerts,tasks,revision]);
+  useEffect(()=>{setSelected(null);setEvidence(null);setTab('summary')},[scope.siteId,period]);
+  const metric=snapshot.metrics.find(m=>m.key===selected);
++ const askAboutMetric=(m:DashboardMetric)=>{
++  // Carry the exact displayed reporting context into a new, unsent Copilot draft.
++  const range=periodLabels[period];
++  copilot.changeContext({range,purpose:'بررسی شواهد'});
++  copilot.setDraft(`شاخص «${m.title}» (${m.version}) برای «${scope.siteName}» در بازه «${range}» را با تعریف، صورت، مخرج، زمان مبنا و شواهد توضیح بده. اگر داده معتبر برای این بازه نیست، مقدار امروز را جایگزین نکن.`);
++  copilot.selectTurn(null);
++  openWorkView({kind:'copilot'});
++ };
+  const go=(key:DashboardMetric['key'])=>{
+   if(key==='occupancy')return setActiveModule('OPS');
+   if(key==='alerts'||key==='criticalAlerts')return openWorkView({kind:'alerts',filter:'active'});
+@@ -40,7 +48,7 @@
+     {tab==='trend'&&<div className="rounded-lg p-3 bg-slate-50 text-sm"><p>روند دارای مشاهده معتبر برای بازه انتخاب‌شده در این فیکسچر موجود نیست؛ مقدار فعلی را به نقاط تاریخی جعلی تبدیل نمی‌کنیم.</p><table className="mt-3 w-full"><thead><tr><th className="text-right">بازه</th><th>مشاهده</th></tr></thead><tbody><tr><td>{periodLabels[period]}</td><td>داده تاریخی موجود نیست</td></tr></tbody></table></div>}
+     {tab==='evidence'&&<div className="space-y-2">{metric.evidence.length?metric.evidence.map(ev=><button key={ev.id} className={`${button} w-full text-right`} onClick={()=>setEvidence(ev)}><FileSearch className="inline w-4 h-4"/> {ev.title} · {ev.id}</button>):<p className="text-sm text-slate-500">برای این شاخص شواهد دارای مجوز در فیکسچر تعریف نشده است.</p>}</div>}
+     {tab==='quality'&&<p className="text-sm">وضعیت: {qualityLabels[metric.quality]} · مرجع داده: {metric.asOf} · کیفیت داده نمایشی است و نه گواه اعتبار داده واقعی.</p>}
+-    <div className="flex gap-2 flex-wrap"><button className={button} onClick={()=>go(metric.key)}>ورود به ماژول مرتبط</button><button className={button} onClick={()=>openWorkView({kind:'copilot'})}>پرسش از Copilot</button></div>
++    <div className="flex gap-2 flex-wrap"><button className={button} onClick={()=>go(metric.key)}>ورود به ماژول مرتبط</button><button className={button} onClick={()=>askAboutMetric(metric)}>پرسش از Copilot</button></div>
+    </div></div>}
+   {evidence&&<div role="dialog" aria-modal="true" aria-label="جزئیات شواهد" className="fixed inset-0 z-[60] bg-black/50 flex justify-end"><div className="bg-white max-w-lg w-full h-full overflow-auto p-6 space-y-4"><button className={button} onClick={()=>setEvidence(null)} aria-label="بستن شواهد"><X className="inline h-4 w-4"/> بستن</button><h3 className="font-bold">{evidence.title}</h3>{Object.entries(evidence).map(([k,v])=><p className="text-sm break-words" key={k}><strong>{k}:</strong> {v}</p>)}</div></div>}
+  </div>;
+--- a/src/him/components/CopilotView.tsx
++++ b/src/him/components/CopilotView.tsx
+@@ -69,7 +69,7 @@
+       <Button variant="outline" onClick={() => setIsScopeModalOpen(true)} className="max-w-full h-auto whitespace-normal py-2"><Building2 className="size-4 shrink-0" />{scope.siteName}</Button>
+       <label className="grid gap-1 text-xs">هدف<select aria-label="هدف" className={fieldClass} value={c.context.purpose} onChange={e => c.changeContext({ purpose: e.target.value })}><option>مدیریت عملیات</option><option>بررسی شواهد</option></select></label>
+       <label className="grid gap-1 text-xs">زبان<select aria-label="زبان" className={fieldClass} value={c.context.language} onChange={e => c.changeContext({ language: e.target.value === 'en' ? 'en' : 'fa' })}><option value="fa">فارسی</option><option value="en">انگلیسی</option></select></label>
+-      <label className="grid gap-1 text-xs">بازه زمانی<select aria-label="بازه زمانی" className={fieldClass} value={c.context.range} onChange={e => c.changeContext({ range: e.target.value })}><option>امروز</option><option>۷ روز</option><option>۳۰ روز</option></select></label>
++      <label className="grid gap-1 text-xs">بازه زمانی<select aria-label="بازه زمانی" className={fieldClass} value={c.context.range} onChange={e => c.changeContext({ range: e.target.value })}><option>امروز</option><option>آخرین روز کامل</option><option>۷ روز</option><option>۷ روز کامل</option><option>۳۰ روز</option><option>۳۰ روز کامل</option></select></label>
+       <label className="flex gap-2 items-center text-xs py-2"><input type="checkbox" checked={c.simulateFailure} onChange={e => c.setSimulateFailure(e.target.checked)} />شبیه‌سازی قطع مدل (نمونه)</label>
+     </section>
+     {c.contextChanged && <p role="status" className="mb-4 inline-flex rounded-md bg-action-info/10 text-action-info px-3 py-2 text-xs">{c.scopeMessage && `${c.scopeMessage}؛ `}زمینه تغییر کرد؛ سؤال بعدی یک نوبت جدید است</p>}
+--- a/src/him/data/workData.ts
++++ b/src/him/data/workData.ts
+@@ -32,7 +32,7 @@
+   raisedAt: string;
+   source: string;
+   resolution?: {reasonCode: string; comment: string; at: string};
+-  activity?: {at: string; text: string}[];
++  activity?: {at: string; text: string; actorId?: string; actorName?: string}[];
+   metric?: { label: string; value: string; threshold: string };
+ }
+ 
+--- a/src/him/context/AppContext.tsx
++++ b/src/him/context/AppContext.tsx
+@@ -256,7 +256,7 @@
+     }
+     setAlerts(prev=>prev.map(a=>a.id!==id?a:{...a,status,
+       resolution:status==='resolved'?{reasonCode:resolution!.reasonCode,comment:resolution!.comment.trim(),at:new Date().toISOString()}:a.resolution,
+-      activity:[...(a.activity||[]),{at:new Date().toISOString(),text:status==='resolved'?`رفع: ${resolution!.reasonCode} · ${resolution!.comment.trim()}`:status==='acknowledged'?'دریافت هشدار تأیید شد':`تغییر وضعیت: ${status}`}]}));
++      activity:[...(a.activity||[]),{at:new Date().toISOString(),actorId:user?.id??'unauthenticated-demo',actorName:user?.name??'کاربر ناشناس (نمایشی)',text:status==='resolved'?`رفع: ${resolution!.reasonCode} · ${resolution!.comment.trim()}`:status==='acknowledged'?'دریافت هشدار تأیید شد':`تغییر وضعیت: ${status}`}]}));
+     showNotification(status==='resolved'?'هشدار با دلیل و شاهد ثبت شد.':'دریافت هشدار تأیید شد.');
+   };
+   const [viewState, setViewState] = useState<ViewState>('normal');
+--- a/src/him/components/WorkViews.tsx
++++ b/src/him/components/WorkViews.tsx
+@@ -248,7 +248,7 @@
+               </ul>
+             )}
+           </div>
+-          <div className="bg-white border rounded-xl p-4 space-y-2"><h2 className="font-bold">خط زمانی هشدار</h2><p className="text-xs">ثبت اولیه: {a.raisedAt}</p>{(a.activity||[]).map((entry,i)=><p key={i} className="text-xs border-r-2 pr-2">{entry.text} · {entry.at}</p>)}{a.resolution&&<p className="text-xs">شاهد رفع: {a.resolution.comment}</p>}</div>
++          <div className="bg-white border rounded-xl p-4 space-y-2"><h2 className="font-bold">خط زمانی هشدار</h2><p className="text-xs">ثبت اولیه: {a.raisedAt}</p>{(a.activity||[]).map((entry,i)=><p key={i} className="text-xs border-r-2 pr-2">{entry.text} · {entry.at} · عامل: {entry.actorName || 'نامشخص (ثبت قدیمی)'}{entry.actorId && <span dir="ltr"> ({entry.actorId})</span>}</p>)}{a.resolution&&<p className="text-xs">شاهد رفع: {a.resolution.comment}</p>}</div>
+           <EvidencePackage items={alertEvidence(a)} code={a.code} />
+         </div>
+         <div className="space-y-4">
+--- a/src/him/components/SpecificationWorkspaces.tsx
++++ b/src/him/components/SpecificationWorkspaces.tsx
+@@ -1,3 +1,4 @@
++import { SpecializedWorkspace } from './SpecializedWorkspaces';
+ import React, { useMemo, useState } from 'react';
+ 
+ /** Frontend-only specification workspaces. No authentication or source-system operation. */
+@@ -36,6 +37,10 @@
+ export const specPaths = Object.keys(SCREENS);
+ const STATE_KEY = 'him.spec-workspaces.demo.v1';
+ export function SpecificationWorkspace({path,siteName}:{path:string;siteName:string}) {
++ if(['/assets/workflows','/workforce','/settings/access'].includes(path))return <SpecializedWorkspace path={path} siteName={siteName}/>;
++ return <GenericSpecificationWorkspace path={path} siteName={siteName}/>;
++}
++function GenericSpecificationWorkspace({path,siteName}:{path:string;siteName:string}) {
+  const page = SCREENS[path];
+  const [tab,setTab]=useState(0);
+  const [query,setQuery]=useState('');
+--- a/src/him/components/SpecializedWorkspaces.tsx
++++ b/src/him/components/SpecializedWorkspaces.tsx
+@@ -0,0 +1,147 @@
++import React, { useEffect, useState } from 'react';
++import { useApp } from '../context/AppContext';
++import { validTimeWindow, validMaintenanceReason, normalizeWeights } from './domainDraftRules';
++
++/** Synthetic-only planning and request drafts: never grants permissions or dispatches source actions. */
++type Draft = { id: string; category: string; title: string; createdAt: string; values: Record<string,string>; assessment: string };
++const inputClass = 'mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm bg-white';
++const btnClass = 'rounded-lg bg-teal-800 px-4 py-2 text-sm text-white disabled:opacity-40';
++const tabClass = (selected:boolean) => `rounded-lg border px-3 py-2 text-sm ${selected?'bg-teal-800 text-white':'bg-white text-slate-800'}`;
++const today = () => new Date().toISOString().slice(0,10);
++
++const field = (title:string, control:React.ReactNode) => <label className="block text-sm font-medium text-slate-700">{title}{control}</label>;
++const str = (value:string) => value.trim();
++function useLocalDrafts(path:string,siteId:string,userId:string) {
++ const key = `him.synthetic.specialized.v1:${path}:${siteId}:${userId}`;
++ const [entries,setEntries] = useState<Draft[]>(()=>{try {const data=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(data)?data:[];}catch{return [];}});
++ useEffect(()=>{try{localStorage.setItem(key,JSON.stringify(entries));}catch{/* Local-only drafts are best effort. */}},[key,entries]);
++ const save=(category:string,title:string,values:Record<string,string>,assessment:string)=>{
++  const next={id:`demo-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,category,title,createdAt:new Date().toISOString(),values,assessment};
++  setEntries(prev=>[next,...prev]);
++ };
++ return {entries,save};
++}
++function DraftHistory({entries,category}:{entries:Draft[];category:string}){
++ const visible=entries.filter(e=>e.category===category);
++ return <section className="space-y-2" aria-label="پیش‌نویس‌های ذخیره‌شده"><h3 className="font-semibold">پیش‌نویس‌های ذخیره‌شده در مرورگر</h3>{visible.length?visible.map(e=><details key={e.id} className="rounded-lg border p-3 text-sm"><summary className="cursor-pointer font-semibold">{e.title} · {new Date(e.createdAt).toLocaleString('fa-IR')}</summary><p className="mt-2 text-amber-800">{e.assessment}</p><dl className="mt-2 grid gap-1 text-xs text-slate-600">{Object.entries(e.values).map(([k,v])=><div key={k}><dt className="inline font-medium">{k}: </dt><dd className="inline whitespace-pre-wrap break-words">{v}</dd></div>)}</dl></details>):<p className="text-sm text-slate-500">هنوز پیش‌نویسی در این بخش ذخیره نشده است.</p>}</section>;
++}
++const Panel=({children}:{children:React.ReactNode})=><div className="rounded-xl border bg-white p-5 space-y-4">{children}</div>;
++const Blocked=({children}:{children:React.ReactNode})=><p role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{children}</p>;
++
++function Assets({save,entries}:{save:ReturnType<typeof useLocalDrafts>['save'];entries:Draft[]}) {
++ const tabs=['فهرست دارایی','تاریخچه منبع','تله‌متری','نگهداری','قطعات یدکی','پیشنهادها','شواهد','ناهنجاری کنتور'];
++ const [tab,setTab]=useState(3);
++ const [asset,setAsset]=useState(''); const [recommendation,setRecommendation]=useState('');
++ const [reason,setReason]=useState(''); const [start,setStart]=useState(''); const [end,setEnd]=useState('');
++ const [urgency,setUrgency]=useState('normal'); const [queue,setQueue]=useState('');
++ const [estimate,setEstimate]=useState(''); const [currency,setCurrency]=useState('IRR'); const [assumption,setAssumption]=useState('');
++ const [prepared,setPrepared]=useState(false);
++ const errors = [!str(asset)?'شناسه دارایی الزامی است.':'',!str(recommendation)?'مرجع پیشنهاد نگهداشت الزامی است.':'',!validMaintenanceReason(reason)?'شرح دلیل باید بین ۲۰ تا ۲۰۰۰ نویسه باشد.':'',!validTimeWindow(start,end)?'پایان بازه باید پس از شروع بازه باشد.':'',!queue?'صف نگهداشت الزامی است.':'',estimate!==''&&(!Number.isFinite(Number(estimate))||Number(estimate)<0)?'برآورد هزینه معتبر نیست.':'',estimate!==''&&!str(assumption)?'برای برآورد هزینه، منبع فرض الزامی است.':''].filter(Boolean);
++ const values={'شناسه دارایی':asset,'پیشنهاد مرجع':recommendation,'دلیل':reason,'شروع':start,'پایان':end,'فوریت':urgency,'صف':queue,'برآورد':estimate?`${estimate} ${currency}`:'ثبت نشده','مبنای برآورد':assumption};
++ const prepare=(e:React.FormEvent)=>{e.preventDefault();if(errors.length)return;setPrepared(true);};
++ return <><nav role="tablist" aria-label="میزکار دارایی" className="flex flex-wrap gap-2">{tabs.map((t,i)=><button type="button" role="tab" key={t} aria-selected={tab===i} className={tabClass(tab===i)} onClick={()=>setTab(i)}>{t}</button>)}</nav><Panel>{tab===3?<>
++  <h2 className="font-bold">AST-03 · بازبینی و آماده‌سازی اقدام نگهداشت</h2><Blocked>داده‌های این فرم مصنوعی است. آماده‌سازی، صرفاً یک پیش‌نویس T1 می‌سازد؛ وضعیت سفارش‌های کاری فعال CMMS قابل استعلام نیست. هیچ اقدام واقعی یا تأیید عملیاتی انجام نمی‌شود.</Blocked>
++  <form onSubmit={prepare} className="grid sm:grid-cols-2 gap-3">
++   {field('دارایی / شناسه منبع *',<input aria-label="شناسه دارایی" className={inputClass} value={asset} onChange={e=>{setAsset(e.target.value);setPrepared(false)}} placeholder="شناسه دارایی نمایشی"/>)}
++   {field('مرجع توصیه نگهداشت *',<input aria-label="توصیه نگهداشت" className={inputClass} value={recommendation} onChange={e=>{setRecommendation(e.target.value);setPrepared(false)}} placeholder="کد پیشنهاد"/>)}
++   <div className="sm:col-span-2">{field('دلیل اقدام * (۲۰ تا ۲۰۰۰ نویسه)',<textarea aria-label="دلیل نگهداشت" className={inputClass} rows={3} maxLength={2000} value={reason} onChange={e=>{setReason(e.target.value);setPrepared(false)}}/>)}</div>
++   {field('شروع پنجره درخواستی *',<input aria-label="شروع نگهداشت" type="datetime-local" className={inputClass} value={start} onChange={e=>{setStart(e.target.value);setPrepared(false)}}/>)}
++   {field('پایان پنجره درخواستی *',<input aria-label="پایان نگهداشت" type="datetime-local" className={inputClass} value={end} onChange={e=>{setEnd(e.target.value);setPrepared(false)}}/>)}
++   {field('فوریت *',<select className={inputClass} value={urgency} onChange={e=>{setUrgency(e.target.value);setPrepared(false)}}><option value="normal">عادی</option><option value="urgent">فوری</option><option value="critical">بحرانی</option></select>)}
++   {field('صف مسئول نگهداشت *',<select aria-label="صف نگهداشت" className={inputClass} value={queue} onChange={e=>{setQueue(e.target.value);setPrepared(false)}}><option value="">انتخاب صف</option><option value="biomedical">تجهیزات پزشکی</option><option value="facilities">تأسیسات</option><option value="engineering">مهندسی نگهداشت</option></select>)}
++   {field('برآورد هزینه اختیاری',<input aria-label="برآورد هزینه" type="number" min="0" step="any" className={inputClass} value={estimate} onChange={e=>{setEstimate(e.target.value);setPrepared(false)}}/>)}
++   {field('واحد پول برآورد',<select className={inputClass} value={currency} onChange={e=>{setCurrency(e.target.value);setPrepared(false)}}><option value="IRR">IRR</option><option value="USD">USD</option></select>)}
++   <div className="sm:col-span-2">{field('منبع/فرض برآورد',<input className={inputClass} value={assumption} onChange={e=>{setAssumption(e.target.value);setPrepared(false)}} placeholder="فقط فرض نمایشی، نه قیمت معتبر"/>)}</div>
++   <div className="sm:col-span-2 space-y-2">{errors.length>0&&<ul role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{errors.map(err=><li key={err}>{err}</li>)}</ul>}<button type="submit" className={btnClass} disabled={errors.length>0}>آماده‌سازی اقدام (پیش‌نویس)</button></div>
++  </form>
++  {prepared&&<section className="space-y-3 rounded-xl border border-teal-300 p-4" role="region" aria-label="مقایسه با سفارش‌های فعال"><h3 className="font-semibold">پیش‌نمایش و مقایسه با سفارش‌های منبع</h3><p className="text-sm">دارایی {asset}، پیشنهاد {recommendation}، بازه {start} تا {end}، صف {queue}.</p><Blocked>مقایسه با سفارش‌های فعال: نامشخص — اتصال خواندنی CMMS وجود ندارد. نبود تداخل یا امکان اجرا تأیید نشده است؛ تأیید/ارسال غیرفعال است.</Blocked><button className={btnClass} type="button" onClick={()=>{save('maintenance',`نگهداشت ${asset}`,values,'پیش‌نویس داخلی؛ تطبیق CMMS و بازبینی مستقل انجام نشده است.');setPrepared(false)}}>ذخیره پیش‌نویس نمایشی</button></section>}
++  <DraftHistory entries={entries} category="maintenance"/>
++ </>:<><h2 className="font-bold">{tabs[tab]}</h2><Blocked>این بخش به داده مرجع، مجوز و قرارداد مربوط به CMMS نیاز دارد و هنوز گردش‌کار کاملش پیاده نشده است. داده خیالی به‌عنوان تاریخچه/شاهد تجهیزات نمایش داده نمی‌شود.</Blocked></>}</Panel></>;
++}
++
++function Workforce({save,entries}:{save:ReturnType<typeof useLocalDrafts>['save'];entries:Draft[]}){
++ const tabs=['پوشش نیروی انسانی','برنامه شیفت','مهارت و بارکاری','سیاست منابع انسانی'];
++ const [tab,setTab]=useState(1);
++ const [name,setName]=useState(''),[revision,setRevision]=useState(''),[periodStart,setPeriodStart]=useState(''),[periodEnd,setPeriodEnd]=useState(''),[constraint,setConstraint]=useState(''),[pool,setPool]=useState(''),[demand,setDemand]=useState(''),[locked,setLocked]=useState('');
++ const [weights,setWeights]=useState({coverage:'1',fairness:'1',changes:'1',overtime:'1'});
++ const [unit,setUnit]=useState(''),[role,setRole]=useState(''),[skill,setSkill]=useState(''),[validTo,setValidTo]=useState(''),[hours,setHours]=useState(''),[fte,setFte]=useState('');
++ const [policyScope,setPolicyScope]=useState(''),[category,setCategory]=useState(''),[effective,setEffective]=useState(today()),[question,setQuestion]=useState('');
++ const normalized=normalizeWeights(weights);
++ const total=normalized?.total??0;
++ const weightsOK=normalized!==null;
++ const rosterReady=Boolean(str(name)&&str(revision)&&validTimeWindow(periodStart,periodEnd)&&str(constraint)&&str(pool)&&str(demand)&&weightsOK);
++ return <><nav role="tablist" aria-label="برنامه‌ریزی نیروی انسانی" className="flex flex-wrap gap-2">{tabs.map((t,i)=><button type="button" role="tab" key={t} aria-selected={tab===i} className={tabClass(tab===i)} onClick={()=>setTab(i)}>{t}</button>)}</nav><Panel>
++ {tab===0&&<><h2 className="font-bold">WFM-01 · پایش پوشش</h2><Blocked>برای محاسبه ساعات موردنیاز، نیروی واجدصلاحیت، نیروی در دسترس و کسری پوشش به Snapshot تقاضا، اعتبار مهارت و مرخصی‌های مجاز نیاز است. این داده‌ها متصل نیستند و به‌جای صفر، «ناموجود» نشان داده می‌شود.</Blocked><div className="grid grid-cols-2 md:grid-cols-4 gap-3">{['ساعت موردنیاز','ساعت تخصیص‌یافته واجدصلاحیت','ساعت نیروی در دسترس','ساعت پوشش‌داده‌نشده'].map(x=><div key={x} className="rounded-lg border p-3 text-sm"><b>{x}</b><p>ناموجود</p></div>)}</div></>}
++ {tab===1&&<><h2 className="font-bold">WFM-02 · پیش‌نویس سناریوی شیفت</h2><Blocked>نسخه برنامه، مجموعه محدودیت‌های مصوب و منبع دسترس‌پذیری باید راستی‌آزمایی شوند. این فرم فقط سناریو را ذخیره می‌کند؛ حل مسئله، تأیید برنامه و انتشار شیفت انجام نمی‌شوند.</Blocked><div className="grid sm:grid-cols-2 gap-3">
++  {field('نام سناریو *',<input aria-label="نام سناریوی شیفت" className={inputClass} value={name} onChange={e=>setName(e.target.value)}/>)}
++  {field('نسخه برنامه مبدأ *',<input aria-label="نسخه برنامه مبدأ" className={inputClass} value={revision} onChange={e=>setRevision(e.target.value)}/>)}
++  {field('شروع دوره *',<input type="date" className={inputClass} value={periodStart} onChange={e=>setPeriodStart(e.target.value)}/>)}
++  {field('پایان دوره *',<input type="date" className={inputClass} value={periodEnd} onChange={e=>setPeriodEnd(e.target.value)}/>)}
++  {field('نسخه محدودیت‌های مصوب *',<input aria-label="نسخه محدودیت‌ها" className={inputClass} value={constraint} onChange={e=>setConstraint(e.target.value)}/>)}
++  {field('شناسه مجموعه کارکنان مجاز *',<input className={inputClass} value={pool} onChange={e=>setPool(e.target.value)}/>)}
++  {field('مرجع Snapshot تقاضا *',<input className={inputClass} value={demand} onChange={e=>setDemand(e.target.value)}/>)}
++  {field('قفل‌های شیفت (شناسه‌های مرجع، اختیاری)',<input className={inputClass} value={locked} onChange={e=>setLocked(e.target.value)}/>)}
++  {Object.entries({coverage:'پوشش',fairness:'عدالت شیفت',changes:'تغییرات برنامه',overtime:'اضافه‌کاری'}).map(([key,label])=>field(`وزن ${label}`,<input key={key} aria-label={`وزن ${label}`} type="number" min="0" step="any" className={inputClass} value={weights[key as keyof typeof weights]} onChange={e=>setWeights(v=>({...v,[key]:e.target.value}))}/>))}
++ </div><div className="text-xs text-slate-700">جمع وزن‌ها: {total.toLocaleString('fa-IR')} · وزن‌های نرمال‌شده: {total>0?Object.entries(weights).map(([k,v])=>`${k}: ${((Number(v)||0)/total*100).toFixed(1)}٪`).join(' · '):'نامعتبر'}</div>
++ {!rosterReady&&<p role="alert" className="text-sm text-rose-700">نام، نسخه‌ها، مراجع داده، ترتیب تاریخ‌ها و حداقل یک وزن مثبت الزامی است.</p>}
++ <button className={btnClass} disabled={!rosterReady} onClick={()=>save('roster',name,{'نسخه برنامه':revision,'دوره':`${periodStart} تا ${periodEnd}`,'محدودیت مصوب (ادعای کاربر)':constraint,'مجموعه کارکنان':pool,'Snapshot تقاضا':demand,'قفل‌ها':locked,'وزن‌ها':JSON.stringify(weights)},'پیش‌نویس حل‌نشده: مجوز، دسترس‌پذیری و قیود سخت قابل‌تأیید نیستند؛ قابل انتشار نیست.')}>ذخیره سناریوی نمایشی</button>
++ <DraftHistory category="roster" entries={entries}/></>}
++ {tab===2&&<><h2 className="font-bold">WFM-04 · شکاف مهارت و بارکاری</h2><Blocked>ورودی صرفاً تجمیعی/آزمایشی است. بدون تأیید منبع مدارک مهارت و مجوز HR، صلاحیت فرد تأیید نمی‌شود؛ داده‌های شخصی نمایش داده نمی‌شوند.</Blocked><div className="grid sm:grid-cols-2 gap-3">
++ {field('واحد',<input className={inputClass} value={unit} onChange={e=>setUnit(e.target.value)}/>)}
++ {field('نقش',<input className={inputClass} value={role} onChange={e=>setRole(e.target.value)}/>)}
++ {field('مهارت لازم',<input className={inputClass} value={skill} onChange={e=>setSkill(e.target.value)}/>)}
++ {field('انقضای اعتبار مدرک',<input type="date" className={inputClass} value={validTo} onChange={e=>setValidTo(e.target.value)}/>)}
++ {field('ساعت برنامه‌ریزی‌شده',<input type="number" min="0" className={inputClass} value={hours} onChange={e=>setHours(e.target.value)}/>)}
++ {field('FTE',<input type="number" min="0.01" step="0.01" className={inputClass} value={fte} onChange={e=>setFte(e.target.value)}/>)}
++ </div><p className="text-sm">ساعت نرمال‌شده بر FTE: {Number(hours)>=0&&Number(fte)>0&&hours!==''?`${(Number(hours)/Number(fte)).toFixed(1)} ساعت (با فرض داده ورودی)`: 'قابل محاسبه نیست'}</p>
++ <button className={btnClass} disabled={!str(unit)||!str(role)||!str(skill)||!validTo||hours===''||!Number.isFinite(Number(hours))||Number(hours)<0||!Number.isFinite(Number(fte))||Number(fte)<=0} onClick={()=>save('skills',`${unit} · ${role}`,{'مهارت':skill,'انقضا':validTo,'ساعات':hours,'FTE':fte},'تأیید مرجع مدرک و سازگاری با مجوز HR انجام نشده است.')}>ثبت تحلیل نمونه</button><DraftHistory entries={entries} category="skills"/></>}
++ {tab===3&&<><h2 className="font-bold">WFM-05 · درخواست بررسی سیاست منابع انسانی</h2><Blocked>مخزن سیاست رسمی HR متصل نیست. نتیجه فردی درباره حقوق، اضافه‌کاری یا مزایا بدون وضعیت استخدام و سند مؤثر ارائه نمی‌شود. هیچ سند یا ارجاع ساختگی تولید نمی‌شود.</Blocked><div className="grid sm:grid-cols-2 gap-3">{field('دامنه سیاست *',<input className={inputClass} value={policyScope} onChange={e=>setPolicyScope(e.target.value)}/>)}{field('دسته کارکنان (اختیاری)',<input className={inputClass} value={category} onChange={e=>setCategory(e.target.value)}/>)}{field('تاریخ اعتبار سیاست *',<input type="date" className={inputClass} value={effective} onChange={e=>setEffective(e.target.value)}/>)}</div>{field('سؤال *',<textarea className={inputClass} value={question} onChange={e=>setQuestion(e.target.value)}/>)}<button className={btnClass} disabled={!str(policyScope)||!effective||!str(question)} onClick={()=>save('policy',question.slice(0,90),{'دامنه':policyScope,'دسته':category||'نامشخص','تاریخ اعتبار':effective,'سؤال':question},'نیازمند شفاف‌سازی وضعیت مستخدم و بازیابی سند سیاست مصوب در تاریخ انتخابی؛ پاسخی تأیید نشده است.')}>ذخیره درخواست بررسی</button><DraftHistory entries={entries} category="policy"/></>}
++ </Panel></>;
++}
++
++function Access({save,entries}:{save:ReturnType<typeof useLocalDrafts>['save'];entries:Draft[]}) {
++ const {user,permittedSites,scope}=useApp();
++ const tabs=['کاربران نمونه','مجوزهای محدود به سایت','درخواست مجوز','تفویض زمان‌دار'];const [tab,setTab]=useState(2);
++ const [target,setTarget]=useState(''),[role,setRole]=useState(''),[site,setSite]=useState(scope.siteId||''),[reason,setReason]=useState(''),[start,setStart]=useState(''),[expiry,setExpiry]=useState(''),[reviewer,setReviewer]=useState('');
++ const [delegate,setDelegate]=useState(''),[capability,setCapability]=useState(''),[delegationReason,setDelegationReason]=useState(''),[delegationExpiry,setDelegationExpiry]=useState('');
++ const validGrant=Boolean(str(target)&&role&&site&&reason.trim().length>=20&&reason.trim().length<=1000&&inOrder(start,expiry)&&str(reviewer)&&reviewer.trim()!==target.trim());
++ const validDelegation=Boolean(user?.id&&str(delegate)&&delegate.trim()!==user.id&&capability&&delegationReason.trim().length>=20&&delegationExpiry&&new Date(delegationExpiry).getTime()>Date.now());
++ return <><nav role="tablist" aria-label="مدیریت دسترسی" className="flex flex-wrap gap-2">{tabs.map((t,i)=><button role="tab" type="button" key={t} aria-selected={tab===i} className={tabClass(tab===i)} onClick={()=>setTab(i)}>{t}</button>)}</nav><Panel>
++ <Blocked>این صفحه صرفاً درخواست/پیش‌نویس محلی ذخیره می‌کند. هیچ نقش، مجوز یا تفویض واقعی ایجاد یا فعال نمی‌شود. تأیید مستقل، احراز هویت و موتور سیاست متصل نیستند.</Blocked>
++ {tab===0&&<><h2 className="font-bold">کاربر فعال نمونه</h2><p className="text-sm">{user?.name||'ورود احراز نشده'} · شناسه: {user?.id||'ندارد'}</p><p className="text-sm">این فهرست از سرویس رسمی هویت دریافت نشده و نباید مبنای صدور دسترسی باشد.</p></>}
++ {tab===1&&<><h2 className="font-bold">دامنه انتخاب‌شده در نمونه</h2>{permittedSites.map(s=><p key={s.id} className="rounded border p-2 text-sm">{s.name} ({s.id})</p>)}<p className="text-sm">مجوزها باید توسط سرویس IAM با منابع، مقاصد استفاده و انقضا ارزیابی شوند؛ انتخاب سایت در فرانت‌اند به‌تنهایی مجوز نیست.</p></>}
++ {tab===2&&<><h2 className="font-bold">درخواست اعطای مجوز محدود</h2><div className="grid sm:grid-cols-2 gap-3">
++  {field('شناسه کاربر درخواست‌شونده *',<input aria-label="کاربر درخواست مجوز" className={inputClass} value={target} onChange={e=>setTarget(e.target.value)}/>)}
++  {field('نقش درخواستی *',<select aria-label="نقش درخواستی" className={inputClass} value={role} onChange={e=>setRole(e.target.value)}><option value="">انتخاب نقش</option>{['viewer','analyst','operator','data_steward'].map(x=><option key={x} value={x}>{x}</option>)}</select>)}
++  {field('دامنه سایت *',<select aria-label="دامنه مجوز" className={inputClass} value={site} onChange={e=>setSite(e.target.value)}><option value="">انتخاب سایت</option>{permittedSites.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>)}
++  {field('شناسه بازبین مستقل *',<input aria-label="بازبین مجوز" className={inputClass} value={reviewer} onChange={e=>setReviewer(e.target.value)}/>)}
++  {field('شروع اعتبار *',<input type="datetime-local" className={inputClass} value={start} onChange={e=>setStart(e.target.value)}/>)}
++  {field('پایان اعتبار *',<input type="datetime-local" className={inputClass} value={expiry} onChange={e=>setExpiry(e.target.value)}/>)}
++  <div className="sm:col-span-2">{field('علت درخواست (۲۰ تا ۱۰۰۰ نویسه) *',<textarea aria-label="علت درخواست مجوز" className={inputClass} maxLength={1000} value={reason} onChange={e=>setReason(e.target.value)}/>)}</div>
++ </div>{!validGrant&&<p className="text-xs text-rose-700">برای ثبت پیش‌نویس، کاربر، نقش، سایت، بازبین متفاوت، دلیل کافی و بازه زمانی معتبر لازم است.</p>}
++ <button className={btnClass} disabled={!validGrant} onClick={()=>save('grant',`${target} · ${role}`,{'کاربر':target,'نقش':role,'سایت':site,'دلیل':reason,'شروع':start,'انقضا':expiry,'بازبین':reviewer},'درخواست ذخیره شد، ولی هیچ مجوزی صادر نشده؛ راستی‌آزمایی هویت و بازبینی مستقل لازم است.')}>ذخیره درخواست برای بررسی (نمایشی)</button><DraftHistory entries={entries} category="grant"/></>}
++ {tab===3&&<><h2 className="font-bold">پیشنهاد تفویض زمان‌دار</h2><div className="grid sm:grid-cols-2 gap-3">
++ {field('تفویض‌کننده (نمایشی)',<input className={inputClass} readOnly value={user?.id||'فاقد هویت'}/>)}
++ {field('شناسه دریافت‌کننده تفویض *',<input aria-label="دریافت‌کننده تفویض" className={inputClass} value={delegate} onChange={e=>setDelegate(e.target.value)}/>)}
++ {field('دسته اقدام مجاز درخواستی *',<select aria-label="دسته اقدام" className={inputClass} value={capability} onChange={e=>setCapability(e.target.value)}><option value="">انتخاب دسته</option><option value="view">مشاهده در دامنه مجاز</option><option value="review">بازبینی محدود</option><option value="draft">ثبت پیش‌نویس</option></select>)}
++ {field('انقضای تفویض *',<input aria-label="انقضای تفویض" type="datetime-local" className={inputClass} value={delegationExpiry} onChange={e=>setDelegationExpiry(e.target.value)}/>)}
++ {field('دامنه تقاضا',<input className={inputClass} readOnly value={scope.siteName}/>)}
++ <div className="sm:col-span-2">{field('دلیل تفویض (حداقل ۲۰ نویسه) *',<textarea aria-label="دلیل تفویض" className={inputClass} value={delegationReason} onChange={e=>setDelegationReason(e.target.value)}/>)}</div>
++ </div>{!validDelegation&&<p className="text-xs text-rose-700">دریافت‌کننده متفاوت، دسته اقدام، دلیل و تاریخ انقضای آینده ضروری است.</p>}
++ <button className={btnClass} disabled={!validDelegation} onClick={()=>save('delegation',`${user?.id} → ${delegate}`,{'تفویض‌کننده':user?.id||'','دریافت‌کننده':delegate,'دسته اقدام':capability,'سایت':scope.siteId||'','دلیل':delegationReason,'انقضا':delegationExpiry},'فقط پیشنهاد تفویض؛ زنجیره‌کردن و افزایش اختیارات در فرانت‌اند فعال نیست. هیچ حق واقعی صادر نشده است.')}>ذخیره پیشنهاد تفویض (نمایشی)</button><DraftHistory entries={entries} category="delegation"/></>}
++ </Panel></>;
++}
++export function SpecializedWorkspace({path,siteName}:{path:string;siteName:string}) {
++ const {scope,user}=useApp();
++ return <ScopedSpecializedWorkspace key={`${path}:${scope.siteId}:${user?.id}`} path={path} siteName={siteName}/>;
++}
++function ScopedSpecializedWorkspace({path,siteName}:{path:string;siteName:string}) {
++ const {scope,user}=useApp();
++ const [search,setSearch]=useState('');
++ const {entries,save}=useLocalDrafts(path,scope.siteId||'none',user?.id||'guest');
++ const title=path==='/assets/workflows'?'دارایی و نگهداشت تجهیزات (AST)':path==='/workforce'?'برنامه‌ریزی نیروی انسانی (WFM)':'درخواست و تفویض دسترسی (PLT)';
++ return <section dir="rtl" data-testid="spec-workspace" className="space-y-5"><header className="bg-white border rounded-xl p-5"><h1 className="text-xl font-bold">{title}</h1><p className="text-sm text-slate-600">سایت انتخابی: {siteName} · رابط نمونه محدود به همین مرورگر</p></header>
++ {path==='/assets/workflows'?<Assets save={save} entries={entries}/>:path==='/workforce'?<Workforce save={save} entries={entries}/>:<Access save={save} entries={entries}/>}
++ <details className="rounded-lg border bg-white p-4"><summary className="text-sm cursor-pointer font-semibold">جست‌وجو در پیش‌نویس‌های همین کاربر و سایت</summary><input className={inputClass} aria-label="جست‌وجو در پیش‌نویس‌ها" value={search} onChange={e=>setSearch(e.target.value)}/><ul className="mt-2 space-y-1 text-sm">{entries.filter(x=>(x.title+' '+x.category).includes(search)).map(x=><li key={x.id}>{x.title} · {x.category}</li>)}</ul></details>
++ </section>;
++}
+--- a/src/him/components/domainDraftRules.ts
++++ b/src/him/components/domainDraftRules.ts
+@@ -0,0 +1,16 @@
++/** Frontend-only validation. Valid input is not approval or authorization. */
++export function validTimeWindow(start:string,end:string):boolean {
++  const from=new Date(start).getTime(), to=new Date(end).getTime();
++  return !!start && !!end && Number.isFinite(from) && Number.isFinite(to) && to>from;
++}
++export function validMaintenanceReason(reason:string):boolean {
++  const n=Array.from(reason.trim()).length;
++  return n>=20 && n<=2000;
++}
++export function normalizeWeights(weights:Record<string,string>): {total:number;normalized:Record<string,number>}|null {
++  const pairs=Object.entries(weights);
++  if(!pairs.length||pairs.some(([,v])=>!v.trim()||!Number.isFinite(Number(v))||Number(v)<0))return null;
++  const total=pairs.reduce((sum,[,v])=>sum+Number(v),0);
++  if(!Number.isFinite(total)||total<=0)return null;
++  return {total,normalized:Object.fromEntries(pairs.map(([k,v])=>[k,Number(v)/total]))};
++}
+--- a/src/test/specialized-workspaces.test.ts
++++ b/src/test/specialized-workspaces.test.ts
+@@ -0,0 +1,20 @@
++import { describe,it,expect } from 'vitest';
++import { normalizeWeights, validMaintenanceReason, validTimeWindow } from '../him/components/domainDraftRules';
++
++describe('domain workspace draft guards',()=>{
++ it('rejects invalid maintenance reasons and windows',()=>{
++  expect(validMaintenanceReason('short')).toBe(false);
++  expect(validMaintenanceReason('دلیل بازبینی نگهداشت تجهیزات پزشکی')).toBe(true);
++  expect(validMaintenanceReason('a'.repeat(2001))).toBe(false);
++  expect(validTimeWindow('2026-11-05T10:00','2026-11-05T10:00')).toBe(false);
++  expect(validTimeWindow('2026-11-05T11:00','2026-11-05T10:00')).toBe(false);
++  expect(validTimeWindow('2026-11-05T10:00','2026-11-05T11:00')).toBe(true);
++ });
++ it('rejects zero or negative roster weights',()=>{
++  expect(normalizeWeights({coverage:'0',fairness:'0'})).toBeNull();
++  expect(normalizeWeights({coverage:'1',fairness:'-1'})).toBeNull();
++  expect(normalizeWeights({coverage:'',fairness:'1'})).toBeNull();
++  const weights=normalizeWeights({coverage:'2',fairness:'1'});
++  expect(weights?.normalized.coverage).toBeCloseTo(2/3);
++ });
++});

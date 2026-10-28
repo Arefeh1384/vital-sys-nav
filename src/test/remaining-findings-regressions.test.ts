@@ -36,7 +36,8 @@ describe('Outstanding Mo findings: real guards and labelled fixtures',()=>{
   expect(validMemoActionTemplate('arbitrary-unregistered-template')).toBe(false);
  });
  it('rejects duplicate versions of data contracts',()=>{
-  const values={contract_id:'hospital_his',source:'synthetic',dataset:'beds',schema_version:'1',owner:'steward',grain:'site-day',timezone:'Asia/Tehran',required_fields:'site_id,value',quality_rules:'quarantine invalid values',freshness_seconds:'3600',effective_from:'2026-10-01',effective_to:'2026-11-01'};
+  const values={contract_id:'hospital_his',source:'synthetic',dataset:'beds',schema_version:'1',owner:'steward',reviewer:'independent-reviewer',grain:'site-day',timezone:'Asia/Tehran',required_fields:'site_id,value',quality_rules:'quarantine invalid values',freshness_seconds:'3600',effective_from:'2026-10-01',effective_to:'2026-11-01'};
+  expect(validateDomain('/data/contracts',0,{...values,reviewer:''},[])).toEqual(expect.arrayContaining([expect.stringContaining('بازبین مستقل')]));
   expect(validateDomain('/data/contracts',0,values,[])).toHaveLength(0);
   const prior={id:'SYN-1',tab:0,values,at:'2026-10-01',state:'draft',note:'fixture'};
   expect(validateDomain('/data/contracts',0,values,[prior])).toEqual(expect.arrayContaining([expect.stringContaining('قبلاً ثبت')]));

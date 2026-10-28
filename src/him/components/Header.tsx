@@ -34,8 +34,8 @@ export const Header: React.FC = () => {
   const [lang,setLang] = useShellLanguage();
   const [calendar,setCalendar] = useState<'persian'|'gregory'>(()=>{try{return localStorage.getItem('him.ui.calendar')==='gregory'?'gregory':'persian';}catch{return 'persian';}});
   const [timeZone,setTimeZone] = useState<'Asia/Tehran'|'UTC'>(()=>{try{return localStorage.getItem('him.ui.timeZone')==='UTC'?'UTC':'Asia/Tehran';}catch{return 'Asia/Tehran';}});
-  const updateCalendar=(v:'persian'|'gregory')=>{setCalendar(v);try{localStorage.setItem('him.ui.calendar',v);}catch{/* optional */}};
-  const updateTimeZone=(v:'Asia/Tehran'|'UTC')=>{setTimeZone(v);try{localStorage.setItem('him.ui.timeZone',v);}catch{/* optional */}};
+  const updateCalendar=(v:'persian'|'gregory')=>{setCalendar(v);try{localStorage.setItem('him.ui.calendar',v);}catch{/* optional */}window.dispatchEvent(new Event('him:preferences'));};
+  const updateTimeZone=(v:'Asia/Tehran'|'UTC')=>{setTimeZone(v);try{localStorage.setItem('him.ui.timeZone',v);}catch{/* optional */}window.dispatchEvent(new Event('him:preferences'));};
   const displayDate=new Intl.DateTimeFormat(lang==='en'?'en-US':'fa-IR',{calendar,weekday:'long',year:'numeric',month:'long',day:'numeric',timeZone}).format(new Date());
   const unreadCount = notifications.filter(n => !readNotificationIds.includes(n.id)).length;
 

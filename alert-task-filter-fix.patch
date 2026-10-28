@@ -1,0 +1,35 @@
+--- a/src/him/components/WorkViews.tsx
++++ b/src/him/components/WorkViews.tsx
+@@ -1,4 +1,4 @@
+-import React, { useMemo, useState } from 'react';
++import React, { useEffect, useMemo, useState } from 'react';
+ import { ArrowRight, Bell, ClipboardList, Search, CheckCircle2, Clock, User as UserIcon, Link2, FileCheck2, Inbox } from 'lucide-react';
+ import { useApp } from '../context/AppContext';
+ import { MODULES_CONFIG } from '../data/mockData';
+@@ -68,8 +68,10 @@
+ );
+ 
+ export const TaskListView: React.FC = () => {
+- const {tasks,scope,openWorkView}=useApp();
+- const [status,setStatus]=useState(()=>new URLSearchParams(window.location.search).get('filter')==='unfinished'?'unfinished':'all');const [q,setQ]=useState('');
++ const {tasks,scope,openWorkView,workView}=useApp();
++ const routeFilter = workView?.kind === 'tasks' ? workView.filter : undefined;
++ const [status,setStatus]=useState(()=>routeFilter==='unfinished'?'unfinished':'all');const [q,setQ]=useState('');
++ useEffect(()=>{setStatus(routeFilter==='unfinished'?'unfinished':'all');},[routeFilter]);
+  // One list and one detail page for legacy and Copilot-created tasks.
+  const overrides=demoStore.tasks();
+  const rows=[...tasks.map(t=>overrides.find(o=>o.id===t.id)||legacyAsPhase6(t)),...overrides.filter(t=>!tasks.some(l=>l.id===t.id))]
+@@ -155,9 +157,11 @@
+ };
+ 
+ export const AlertListView: React.FC = () => {
+-  const { alerts, scope, openWorkView } = useApp();
++  const { alerts, scope, openWorkView, workView } = useApp();
+   const [status, setStatus] = useState<AlertStatus | 'all'>('all');
+-  const [activeOnly,setActiveOnly]=useState(()=>new URLSearchParams(window.location.search).get('filter')==='active');
++  const routeFilter = workView?.kind === 'alerts' ? workView.filter : undefined;
++  const [activeOnly,setActiveOnly]=useState(()=>routeFilter==='active');
++  useEffect(()=>{setActiveOnly(routeFilter==='active');},[routeFilter]);
+   const [severity, setSeverity] = useState<Priority | 'all'>('all');
+   const [q, setQ] = useState('');
+   const rows = useMemo(() => alerts.filter(a => a.siteId === scope.siteId

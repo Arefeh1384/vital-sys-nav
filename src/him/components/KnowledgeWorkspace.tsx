@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { normalizeFaSearch } from './faSearch';
 import { scopedDraftKey } from './scopedDraftKey';
 import {DEMO_USERS} from '../data/mockData';
+import {evaluateMockRetrieval, type RetrievalEvalCase} from './knowledgeRetrievalEvaluation';
 
 type Document = {
   id: string;
@@ -43,6 +44,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
   const legacyKey = scopedDraftKey('him.knowledge.local.v1','documents',scope.siteId||'none',user?.id||'guest');
   const [items, setItems] = useState<Document[]>(() => {const shared=get(key);return shared.length?shared:get(legacyKey);});
   const [tab, setTab] = useState(0);
+  const [evaluation,setEvaluation]=useState<ReturnType<typeof evaluateMockRetrieval>|null>(null);
   const [title, setTitle] = useState(''),
     [owner, setOwner] = useState(''),
     [category, setCategory] = useState('policy'),
@@ -221,7 +223,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
           اجرای جستجوی محدود نمایشی
         </button>
         <div role="tablist" className="flex gap-2 flex-wrap">
-          {['جستجو', 'شواهد و نتایج', 'محدودیت‌ها'].map((v, i) => (
+          {['جستجو', 'شواهد و نتایج', 'محدودیت‌ها', 'ارزیابی بازیابی'].map((v, i) => (
             <button
               role="tab"
               aria-selected={tab === i}
@@ -261,6 +263,20 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
               </>
             )}
           </div>
+        )}
+        {tab === 3 && (
+          <section data-testid="knowledge-retrieval-evaluation" className="rounded-lg border bg-white p-4 space-y-3">
+            <h2 className="font-bold">KNO · آزمون قابل تکرار بازیابی و امتناع (demo)</h2>
+            <p className="text-sm">مجموعه آزمون به‌طور پویا از نسخه‌های محلی همین سایت ساخته می‌شود: سند منتشرشده، سند منتشرنشده/محدود و تاریخ خارج از اعتبار. نتیجه، ارزیابی سامانه واقعی جستجو یا ACL نیست.</p>
+            <button className={btn} onClick={()=>setEvaluation(evaluateMockRetrieval(items,scope.siteId||''))}>اجرای مجموعه آزمون مصنوعی</button>
+            {evaluation&&<div role="status" className="space-y-2 text-sm" data-testid="knowledge-evaluation-score">
+              <p>تعداد مورد قابل ارزیابی: {evaluation.total} · موفق: {evaluation.passed} · شکست: {evaluation.total-evaluation.passed}</p>
+              {evaluation.total===0?<p role="alert">داده آزمایشی واجد شرایط برای امتیازدهی وجود ندارد؛ نمره تولید نمی‌شود.</p>:<>
+                <p>Recall@1: {evaluation.recallAt1===null?'N/A':`${Math.round(evaluation.recallAt1*100)}%`} · Citation coverage: {evaluation.citationCoverage===null?'N/A':`${Math.round(evaluation.citationCoverage*100)}%`} · صحت امتناع: {evaluation.abstentionAccuracy===null?'N/A':`${Math.round(evaluation.abstentionAccuracy*100)}%`}</p>
+                {evaluation.results.map((x:RetrievalEvalCase,i)=><div key={i} className="rounded border p-2"><b>{x.passed?'PASS':'FAIL'} · {x.name}</b><p>پرسش: {x.query} · تاریخ: {x.asOf||'بدون فیلتر'}</p><p>مورد انتظار: {x.expected||'امتناع'} · مشاهده‌شده: {x.actual||'امتناع'}</p><p className="text-xs">{x.reason}</p></div>)}
+              </>}
+            </div>}
+          </section>
         )}
         {tab === 2 && (
           <div className={info}>

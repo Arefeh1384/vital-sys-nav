@@ -1,0 +1,36 @@
+diff --git a/src/him/components/WorkViews.tsx b/src/him/components/WorkViews.tsx
+--- a/src/him/components/WorkViews.tsx
++++ b/src/him/components/WorkViews.tsx
+@@ -1,7 +1,7 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { ArrowRight, Bell, ClipboardList, Search, CheckCircle2, Clock, User as UserIcon, Link2, FileCheck2, Inbox } from 'lucide-react';
+ import { useApp } from '../context/AppContext';
+-import { MODULES_CONFIG, DEMO_USERS } from '../data/mockData';
++import { MODULES_CONFIG, DEMO_USERS, SITES_DATA } from '../data/mockData';
+ import {
+   PRIORITY_CLASS, PRIORITY_LABEL, TASK_STATUS_LABEL, ALERT_STATUS_LABEL,
+   type TaskStatus, type AlertStatus, type Priority,
+@@ -17,7 +17,8 @@
+ /** Readable identity for fixture tasks; never presents an unknown ID as an authenticated person. */
+ export const displayTaskOwner = (owner: string, siteId: string) => {
+   if (!owner) return 'بدون مسئول';
+-  const person = DEMO_USERS.find(u => u.id === owner && u.permittedSiteIds.includes(siteId));
++  const canonicalSiteId = SITES_DATA.find(s => s.id === siteId || s.code === siteId)?.id;
++  const person = DEMO_USERS.find(u => u.id === owner && canonicalSiteId && u.permittedSiteIds.includes(canonicalSiteId));
+   return person?.name ?? (owner.startsWith('usr-') ? `شناسه ناشناخته (${owner})` : owner);
+ };
+ 
+diff --git a/src/him/executive/dashboardStore.ts b/src/him/executive/dashboardStore.ts
+--- a/src/him/executive/dashboardStore.ts
++++ b/src/him/executive/dashboardStore.ts
+@@ -17,7 +17,9 @@
+ };
+ /** Comparison is explicitly restricted to authorized synthetic fixtures; not approved cross-site analytics. */
+ export function compareOccupancyFixtures(siteIds:string[],period:Period){
+- const allowed=[...new Set(siteIds)];
++ // Resolve short site codes to canonical UUIDs; callers must still supply their permitted site list.
++ // Unknown identifiers stay excluded, and aliases for one site must not count twice.
++ const allowed=[...new Set(siteIds.map(value=>SITES_DATA.find(s=>s.id===value||s.code===value)?.id??value))];
+  const rows=allowed.map(siteId=>{
+    const row=OCCUPANCY_FIXTURE[siteId];
+    const site=SITES_DATA.find(x=>x.id===siteId);

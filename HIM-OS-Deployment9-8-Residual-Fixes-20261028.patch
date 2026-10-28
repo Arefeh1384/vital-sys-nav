@@ -1,0 +1,628 @@
+diff --git a/scripts/verify-deployment9-fixes.cjs b/scripts/verify-deployment9-fixes.cjs
+new file mode 100644
+index 0000000..5f10743
+--- /dev/null
++++ b/scripts/verify-deployment9-fixes.cjs
+@@ -0,0 +1,42 @@
++/** Local deterministic tests of newly added *synthetic* helpers. No network, no real data. */
++const assert=require('node:assert/strict');
++const fs=require('node:fs');const path=require('node:path');
++const transpile=(source,rel)=>{try{return require('esbuild').transformSync(source,{sourcefile:rel,loader:rel.endsWith('.tsx')?'tsx':'ts',format:'cjs',target:'es2022'}).code;}catch{return require('typescript').transpileModule(source,{fileName:rel,compilerOptions:{module:1,target:9}}).outputText;}};
++const root=path.resolve(__dirname,'..');
++const normalizeFaSearch=s=>s.toLowerCase().replace(/\s+/g,' ').trim();
++function load(rel,external={}){
++ const source=fs.readFileSync(path.join(root,rel),'utf8');
++ const code=transpile(source,rel);
++ const mod={exports:{}};
++ new Function('module','exports','require',code)(mod,mod.exports,id=>{
++  if(id==='./faSearch')return {normalizeFaSearch};
++  if(id==='react')return {useEffect:()=>{},useState:()=>{}};
++  if(external[id])return external[id];
++  throw Error(`Unexpected import ${id} in ${rel}`);
++ });
++ return mod.exports;
++}
++const date=load('src/him/components/datePreferences.ts');
++const converted=date.parseDemoDate('۱۴۰۵/۰۷/۲۲');assert(converted);assert.equal(converted.toISOString().slice(0,10),'2026-10-14');
++assert.equal(date.parseDemoDate('not-a-date'),null);
++const evalr=load('src/him/components/knowledgeRetrievalEvaluation.ts');
++const docs=[
++ {id:'DOC-PUB',title:'Synthetic blue lantern policy',abstract:'blue lantern',category:'policy',state:'published_synthetic',version:1,siteId:'site-a',accessClass:'synthetic_internal',effectiveFrom:'2026-01-01',effectiveTo:'2027-01-01'},
++ {id:'DOC-DRAFT',title:'Synthetic unopened page',abstract:'never reveal',category:'policy',state:'review_requested',version:1,siteId:'site-a',accessClass:'synthetic_internal',effectiveFrom:'2026-01-01',effectiveTo:'2027-01-01'},
++ {id:'DOC-RESTRICTED',title:'Private fixture',abstract:'no access',category:'policy',state:'published_synthetic',version:1,siteId:'site-a',accessClass:'synthetic_restricted',effectiveFrom:'2026-01-01',effectiveTo:'2027-01-01'},
++ ];
++const result=evalr.evaluateMockRetrieval(docs,'site-a');
++assert.equal(result.total,4);assert.equal(result.passed,4);
++assert.equal(result.abstentionAccuracy,1);assert.equal(result.recallAt1,1);
++assert.equal(evalr.evaluateMockRetrieval([], 'site-a').total,0);
++const gov=load('src/him/components/syntheticDataGovernance.ts');
++const c={id:'contract',state:'review_approved_synthetic',reviewedBy:'usr-2',values:{contract_id:'sample_contract',source:'qa_demo_pacs',schema_version:'1',required_fields:'synthetic_id,event_time',dataset:'SYN-PACS'}};
++const co={id:'connector',key:'qa_demo_pacs',contract:'sample_contract',status:'active_synthetic',mode:'read_only',freshnessSeconds:'3600',kind:'PACS'};
++assert.deepEqual(gov.governedDemoCompatibility(co,c),[]);
++assert(gov.governedDemoCompatibility({...co,status:'draft'},c).length>0);
++assert(gov.governedDemoCompatibility({...co,contract:'wrong'},c).length>0);
++assert(gov.governedDemoCompatibility(co,{...c,reviewedBy:undefined}).length>0);
++const detector=load('src/him/components/syntheticDetector.ts');
++const d=detector.demoDetectorSummary(new Date('2026-10-28T12:00:00Z'));
++assert.equal(d.comparison,'ABOVE_DEMO_UPPER_BOUND');assert.equal(d.freshness,'stale-or-unverified');
++console.log('PASS: 11 deterministic smoke assertions (calendar, retrieval, governance, provenance)');
+diff --git a/src/him/components/ConnectorWorkspace.tsx b/src/him/components/ConnectorWorkspace.tsx
+index 9300a57..25c2b4c 100644
+--- a/src/him/components/ConnectorWorkspace.tsx
++++ b/src/him/components/ConnectorWorkspace.tsx
+@@ -1,31 +1,55 @@
+-import React, {useEffect,useState} from 'react';
++import React,{useEffect,useState} from 'react';
+ import {useApp} from '../context/AppContext';
++import {DEMO_USERS} from '../data/mockData';
++import {approvedSyntheticContracts,governedDemoCompatibility,syntheticConnectorRecords,type LocalConnector} from './syntheticDataGovernance';
+ 
+-type ConnectorDraft={id:string;key:string;kind:string;owner:string;contract:string;mode:'read_only';freshnessSeconds:string;createdAt:string;status:'draft'|'review_requested'};
+ const kindList=['HIS','PACS','LIS','pharmacy','inventory','file_import'];
+ const cls='w-full rounded-lg border border-slate-300 bg-white p-2 text-sm';
+ const btn='rounded-lg bg-teal-800 text-white px-3 py-2 text-sm disabled:opacity-40';
++type ConnectorDraft=LocalConnector & {owner:string;createdAt:string;reviewedAt?:string;testedAt?:string;activatedAt?:string};
+ export function ConnectorWorkspace(){
+  const {scope,user}=useApp();return <ScopedConnectors key={`${scope.siteId}:${user?.id||'demo'}`} siteId={scope.siteId||''} userId={user?.id||'demo'} siteName={scope.siteName}/>;
+ }
+ function ScopedConnectors({siteId,userId,siteName}:{siteId:string;userId:string;siteName:string}){
+- const key=`him.synthetic.connectors.v1:${siteId}:${userId}`;
+- const [items,setItems]=useState<ConnectorDraft[]>(()=>{try{const x=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(x)?x:[]}catch{return []}});
+- const [connectorKey,setConnectorKey]=useState(''),[kind,setKind]=useState('HIS'),[owner,setOwner]=useState(''),[contract,setContract]=useState(''),[freshness,setFreshness]=useState('3600'),[selected,setSelected]=useState<string|null>(null);
++ const key=`him.synthetic.connectors.v2:${siteId}:shared-demo`;
++ const [items,setItems]=useState<ConnectorDraft[]>(()=>{
++  const shared=syntheticConnectorRecords(siteId) as ConnectorDraft[];if(shared.length)return shared;
++  try{const legacy=JSON.parse(localStorage.getItem(`him.synthetic.connectors.v1:${siteId}:${userId}`)||'[]');return Array.isArray(legacy)?legacy:[];}catch{return []}
++ });
++ const [connectorKey,setConnectorKey]=useState(''),[kind,setKind]=useState('HIS'),[owner,setOwner]=useState(''),[contract,setContract]=useState(''),[freshness,setFreshness]=useState('3600'),[reviewerId,setReviewerId]=useState(''),[selected,setSelected]=useState<string|null>(null);
+  useEffect(()=>{try{localStorage.setItem(key,JSON.stringify(items))}catch{}},[key,items]);
+- const valid=/^[a-z][a-z0-9_-]{2,60}$/i.test(connectorKey)&&!!owner.trim()&&!!contract.trim()&&Number.isInteger(Number(freshness))&&Number(freshness)>0&&!items.some(x=>x.key===connectorKey);
+- const save=()=>{if(!valid)return;const item:ConnectorDraft={id:`SYN-CON-${Date.now()}`,key:connectorKey,kind,owner:owner.trim(),contract:contract.trim(),mode:'read_only',freshnessSeconds:freshness,createdAt:new Date().toISOString(),status:'draft'};setItems(v=>[item,...v]);setSelected(item.id);setConnectorKey('')};
++ const contracts=approvedSyntheticContracts(siteId);
++ const contractOf=(x:ConnectorDraft)=>contracts.find(c=>c.values.contract_id===x.contract&&c.values.source===x.key);
++ const valid=/^[a-z][a-z0-9_-]{2,60}$/i.test(connectorKey)&&!!owner.trim()&&!!contract.trim()&&Number.isInteger(Number(freshness))&&Number(freshness)>0&&reviewerId!==userId&&!!reviewerId&&DEMO_USERS.some(u=>u.id===reviewerId&&u.permittedSiteIds.includes(siteId))&&!items.some(x=>x.key===connectorKey);
++ const update=(id:string,changes:Partial<ConnectorDraft>)=>setItems(old=>old.map(x=>x.id===id?{...x,...changes}:x));
++ const save=()=>{if(!valid)return;const item:ConnectorDraft={id:`SYN-CON-${Date.now()}`,key:connectorKey,kind,owner:owner.trim(),contract:contract.trim(),mode:'read_only',freshnessSeconds:freshness,createdAt:new Date().toISOString(),status:'draft',createdBy:userId,reviewerId};setItems(v=>[item,...v]);setSelected(item.id);setConnectorKey('')};
+  const selectedItem=items.find(x=>x.id===selected);
+- return <section dir="rtl" className="space-y-4" data-testid="connector-workspace"><header className="rounded-xl bg-white border p-5"><h1 className="text-xl font-bold">DAT-01 · ثبت و بررسی کانکتورهای منبع</h1><p className="text-sm mt-2">سایت {siteName} · داده آزمایشی محلی، محدود به کاربر و سایت</p></header>
+- <p role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">هیچ اتصال، رمز عبور، قابلیت خواندن منبع یا قرارداد تأییدشده‌ای در این محیط وجود ندارد. این فرم درخواست پیکربندی است، نه ثبت اتصال عملیاتی.</p>
+- <form className="bg-white rounded-xl border p-5 space-y-3" onSubmit={e=>{e.preventDefault();save()}}><h2 className="font-bold">درخواست ثبت کانکتور</h2><div className="grid gap-3 sm:grid-cols-2">
+- <label>شناسه کانکتور *<input className={cls} aria-label="شناسه کانکتور" value={connectorKey} onChange={e=>setConnectorKey(e.target.value)} placeholder="hospital_his_read"/></label>
+- <label>نوع سامانه منبع *<select className={cls} aria-label="نوع کانکتور" value={kind} onChange={e=>setKind(e.target.value)}>{kindList.map(x=><option key={x}>{x}</option>)}</select></label>
+- <label>مسئول منبع *<input className={cls} aria-label="مالک کانکتور" value={owner} onChange={e=>setOwner(e.target.value)}/></label>
+- <label>نسخه قرارداد/schema *<input className={cls} aria-label="قرارداد کانکتور" value={contract} onChange={e=>setContract(e.target.value)}/></label>
+- <label>حد تازگی بر حسب ثانیه *<input type="number" min="1" step="1" className={cls} aria-label="حد تازگی کانکتور" value={freshness} onChange={e=>setFreshness(e.target.value)}/></label>
+- <label>حالت مجاز<input className={cls} readOnly value="read_only (پیشنهادی، غیرفعال)"/></label></div><button className={btn} disabled={!valid}>ثبت پیش‌نویس</button></form>
+- <section className="bg-white rounded-xl border p-5 space-y-3"><h2 className="font-bold">فهرست و جزئیات کانکتورهای پیشنهادی</h2><p className="text-xs">HIS، PACS، LIS و داروخانه صرفاً انواع منبعند؛ تعداد کانکتور فعالِ تأییدشده صفر یا نامشخص است.</p>{items.length?items.map(x=><button key={x.id} className="block w-full rounded-lg border p-3 text-right hover:border-teal-600" onClick={()=>setSelected(x.id)}>{x.key} · {x.kind} · {x.status==='draft'?'پیش‌نویس':'درخواست بررسی'}</button>):<p>کانکتور ثبت‌شده‌ای برای این سایت وجود ندارد.</p>}
+- {selectedItem&&<div role="region" className="rounded-lg border border-teal-200 p-4 space-y-2 text-sm"><h3 className="font-bold">{selectedItem.key} · نسخه قرارداد {selectedItem.contract}</h3><p>مالک: {selectedItem.owner} · حالت: {selectedItem.mode} · سقف تازگی: {selectedItem.freshnessSeconds} ثانیه</p><p>وضعیت قرارداد / بررسی نمونه / دسترسی منبع / اتصال / مقادیر checkpoint: ناموجود یا تأییدنشده</p><button className={btn} disabled={selectedItem.status==='review_requested'} onClick={()=>setItems(v=>v.map(x=>x.id===selectedItem.id?{...x,status:'review_requested'}:x))}>درخواست بررسی قرارداد (بدون فعال‌سازی)</button></div>}</section>
+- </section>;
++ const connectedContract=selectedItem?contractOf(selectedItem):undefined;
++ const runTest=()=>{if(!selectedItem||selectedItem.status!=='review_approved_synthetic')return;
++  const testConnector={...selectedItem,status:'active_synthetic'};
++  const problems=connectedContract?governedDemoCompatibility(testConnector,connectedContract):['قرارداد تأییدشده و منطبق یافت نشد'];
++  update(selectedItem.id,{status:problems.length?'review_approved_synthetic':'mock_test_passed',testedAt:new Date().toISOString(),testResult:problems.length?`BLOCKED: ${problems.join('؛ ')}`:'PASS: deterministic local handshake; no network access'});
++ };
++ return <section dir="rtl" className="space-y-4" data-testid="connector-workspace"><header className="rounded-xl bg-white border p-5"><h1 className="text-xl font-bold">DAT-01 · بازبینی و آزمایش کانکتور محلی</h1><p className="text-sm mt-2">سایت {siteName} · داده آزمایشی اشتراکی فقط در همین مرورگر</p></header>
++ <p role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">هیچ اتصال واقعی PACS/HIS، رمز عبور، API، ترافیک شبکه یا قرارداد مصوب برقرار نمی‌شود. آزمایش اتصال فقط سیاست و سازگاری رکوردهای محلی را بررسی می‌کند؛ فعال‌سازی نیز صرفاً synthetic است.</p>
++ <form className="bg-white rounded-xl border p-5 space-y-3" onSubmit={e=>{e.preventDefault();save()}}><h2 className="font-bold">پیشنهاد اتصال نمونه</h2><div className="grid gap-3 sm:grid-cols-2">
++ <label>شناسه کانکتور *<input className={cls} aria-label="شناسه کانکتور" value={connectorKey} onChange={e=>setConnectorKey(e.target.value)} placeholder="qa_demo_pacs"/></label>
++ <label>نوع منبع *<select className={cls} value={kind} onChange={e=>setKind(e.target.value)}>{kindList.map(x=><option key={x}>{x}</option>)}</select></label>
++ <label>مالک منبع *<input className={cls} value={owner} onChange={e=>setOwner(e.target.value)}/></label>
++ <label>شناسه قرارداد نسخه‌دار *<input className={cls} value={contract} onChange={e=>setContract(e.target.value)} placeholder="contract_id از DAT-02"/></label>
++ <label>حد تازگی ثانیه *<input className={cls} type="number" min="1" step="1" value={freshness} onChange={e=>setFreshness(e.target.value)}/></label>
++ <label>بازبین مستقل فیکسچر *<select className={cls} value={reviewerId} onChange={e=>setReviewerId(e.target.value)}><option value="">انتخاب بازبین</option>{DEMO_USERS.filter(x=>x.id!==userId&&x.permittedSiteIds.includes(siteId)).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
++ </div><p className="text-xs">حالت اتصال: read_only · پس از ثبت، بازبین دیگری باید درخواست را تأیید کند.</p><button className={btn} disabled={!valid}>ثبت پیش‌نویس</button></form>
++ <section className="bg-white rounded-xl border p-5 space-y-3"><h2 className="font-bold">فهرست کانکتورها و گیت اتصال</h2>
++ {items.length?items.map(x=><button key={x.id} className="block w-full rounded-lg border p-3 text-right hover:border-teal-600" onClick={()=>setSelected(x.id)}>{x.key} · {x.kind} · {x.status}</button>):<p>کانکتوری برای این سایت ثبت نشده است.</p>}
++ {selectedItem&&<div role="region" className="rounded-lg border border-teal-200 p-4 space-y-2 text-sm" data-testid="connector-gates"><h3 className="font-bold">{selectedItem.key} · {selectedItem.contract}</h3>
++ <p>مالک: {selectedItem.owner} · حالت: {selectedItem.mode} · سقف تازگی: {selectedItem.freshnessSeconds} ثانیه</p>
++ <p>نویسنده: {selectedItem.createdBy||'legacy/unknown'} · بازبین مستقل: {selectedItem.reviewerId||'legacy/unassigned'} · بازبینی: {selectedItem.reviewedAt||'انجام نشده'}</p>
++ <p>گیت قرارداد: {connectedContract?`PASS (contract ${connectedContract.values.contract_id} / schema ${connectedContract.values.schema_version})`:'BLOCKED — قرارداد تأییدشده با شناسه و source مطابق وجود ندارد'}</p>
++ <p>نتیجه آزمایش: {selectedItem.testResult||'انجام نشده'} · {selectedItem.testedAt||'—'}</p>
++ <p>وضعیت فعال‌سازی: {selectedItem.status==='active_synthetic'?'فعال فقط در مرورگر (mock)':'غیرفعال / نیازمند گیت'}</p>
++ <div className="flex flex-wrap gap-2"><button className={btn} disabled={selectedItem.status!=='draft'||selectedItem.createdBy!==userId||!selectedItem.reviewerId} onClick={()=>update(selectedItem.id,{status:'review_requested'})}>درخواست بررسی مستقل</button>
++ <button className={btn} disabled={selectedItem.status!=='review_requested'||selectedItem.createdBy===userId||selectedItem.reviewerId!==userId} onClick={()=>update(selectedItem.id,{status:'review_approved_synthetic',reviewedBy:userId,reviewedAt:new Date().toISOString()})}>تأیید بازبین مستقل (demo)</button>
++ <button className={btn} disabled={selectedItem.status!=='review_approved_synthetic'||!connectedContract} onClick={runTest}>اجرای تست اتصال بدون شبکه</button>
++ <button className={btn} disabled={selectedItem.status!=='mock_test_passed'||selectedItem.createdBy!==userId||!connectedContract} onClick={()=>update(selectedItem.id,{status:'active_synthetic',activatedAt:new Date().toISOString()})}>فعال‌سازی صرفاً مصنوعی</button></div></div>}</section></section>;
+ }
+diff --git a/src/him/components/DomainWorkspaces.tsx b/src/him/components/DomainWorkspaces.tsx
+index 7523e0a..c60ac3a 100644
+--- a/src/him/components/DomainWorkspaces.tsx
++++ b/src/him/components/DomainWorkspaces.tsx
+@@ -3,26 +3,27 @@ import {useApp} from '../context/AppContext';
+ import {SyntheticDataFlow} from './SyntheticDataFlow';
+ import {SyntheticRetentionPlan} from './SyntheticRetentionPlan';
+ import {compareOccupancyFixtures} from '../executive/dashboardStore';
++import {DEMO_USERS} from '../data/mockData';
+ 
+ /** Domain-specific, site-scoped synthetic workflow. No upstream writes or clinical decisions. */
+ type Kind='text'|'date'|'datetime-local'|'number'|'textarea'|'select';
+ type Field={key:string;label:string;kind?:Kind;required?:boolean;options?:string[];placeholder?:string};
+-type RecordItem={id:string;tab:number;values:Record<string,string>;at:string;state:string;note:string;originId?:string;createdBy?:string;reviewedBy?:string;reviewedAt?:string;publishedAt?:string};
++type RecordItem={id:string;tab:number;values:Record<string,string>;at:string;state:string;note:string;originId?:string;createdBy?:string;reviewedBy?:string;reviewedAt?:string;publishedAt?:string;rejectedBy?:string;rejectedAt?:string;rejectionReason?:string};
+ type Definition={title:string;tabs:Array<{name:string;fields:Field[];help:string}>;warning:string};
+ const f=(key:string,label:string,kind:Kind='text',required=true,options?:string[]):Field=>({key,label,kind,required,options});
+ const definitions:Record<string,Definition>={
+  '/settings/governance':{title:'حاکمیت، گیت‌ها و تصمیم‌های سکو · PLT-05',warning:'سوابق صرفاً پیشنهادهای ساختگی در مرورگر هستند؛ سیاست واقعی، دوره نگهداری یا گیت انتشار تأیید یا اعمال نمی‌شود.',tabs:[
+-  {name:'ثبت تصمیم',help:'DEC و مبنای انتخاب پیشنهادی برای بازبینی مالک؛ تصویب تنها پس از امضای صاحب اختیار واقعی.',fields:[f('decision_id','شناسه تصمیم'),f('topic','موضوع'),f('owner','مالک تصمیم'),f('state','وضعیت','select',true,['discovery_required','provisional_default','environment_gate','intended_use_gate','deferred_activation']),f('rationale','منطق و گزینه‌ها','textarea'),f('evidence','مرجع شواهد','textarea'),f('gate','گیت مربوط'),f('due','موعد','date')]},
++  {name:'ثبت تصمیم',help:'DEC و مبنای انتخاب پیشنهادی برای بازبینی مالک؛ تصویب تنها پس از امضای صاحب اختیار واقعی.',fields:[f('decision_id','شناسه تصمیم'),f('topic','موضوع'),f('owner','مالک تصمیم'),f('state','وضعیت','select',true,['discovery_required','provisional_default','environment_gate','intended_use_gate','deferred_activation']),f('rationale','منطق و گزینه‌ها','textarea'),f('evidence','مرجع شواهد','textarea'),f('gate','گیت مربوط'),f('due','موعد','date'),f('reviewer','بازبین مستقل')]},
+   {name:'گیت‌های انتشار',help:'مرور وابستگی و نتیجه کنترل‌ها؛ هیچ گیتی بدون شاهد معتبر Passed نمی‌شود.',fields:[f('gate_id','شناسه گیت'),f('module','ماژول'),f('version','نسخه'),f('check','کنترل/قرارداد'),f('evidence','شواهد','textarea'),f('reviewer','بازبین مستقل'),f('status','وضعیت','select',true,['unverified','blocked','awaiting_review'])]},
+   {name:'نگهداری و حذف',help:'پیشنهاد سیاست retention و legal hold؛ هیچ حذف یا نگهداری واقعی اجرا نمی‌شود.',fields:[f('record_type','نوع رکورد'),f('owner','مالک'),f('retention','مدت/سیاست نگهداری'),f('legal_hold','وضعیت منع حذف','select',true,['unknown','proposed','requires_approval']),f('evidence','مبنای تصمیم','textarea'),f('reviewer','بازبین')]},
+   {name:'بازبینی و ارتقا',help:'فقط ثبت درخواست بازبینی مستقل، بدون فعال‌سازی سیاست.',fields:[f('version_ref','مرجع نسخه'),f('change','خلاصه تغییر','textarea'),f('risk','ریسک/بازگشت','textarea'),f('reviewer','شناسه بازبین')]}]},
+  '/executive/briefs':{title:'Brief Builder · گزارش مدیریتی نسخه‌دار · EXE-03',warning:'زمان‌بندی و ارسال واقعی غیرفعال است؛ منابع سنجه/شواهد زنده و اجازه گیرندگان موجود نیست.',tabs:[
+-  {name:'قالب و دامنه',help:'ثبت پیش‌نویس دوره‌ای با بازه و مبنای زمانی؛ بدون ساخت گزارش خودکار.',fields:[f('title','عنوان گزارش'),f('template','قالب','select',true,['daily','weekly','custom']),f('scope','دامنه بیمارستان'),f('cadence','تناوب','select',true,['once','daily','weekly']),f('boundary','مرز دوره','select',true,['last_complete_day','last_complete_week','custom']),f('generate_at','زمان تولید پیشنهادی','datetime-local'),f('stale_policy','سیاست منبع قدیمی','select',true,['block','warn','omit']),f('editor','ویرایشگر'),f('reviewer','بازبین مستقل'),f('recipients','گیرندگان پیشنهادی')]},
++  {name:'قالب و دامنه',help:'ثبت پیش‌نویس دوره‌ای با بازه و مبنای زمانی؛ بدون ساخت گزارش خودکار.',fields:[f('title','عنوان گزارش'),f('template','قالب','select',true,['daily','weekly','custom']),f('scope','دامنه بیمارستان'),f('cadence','تناوب','select',true,['once','daily','weekly']),f('boundary','مرز دوره','select',true,['last_complete_day','last_complete_week','custom']),f('generate_at','زمان تولید پیشنهادی','datetime-local'),f('stale_policy','سیاست منبع قدیمی','select',true,['block','warn','omit']),f('editor','ویرایشگر'),f('reviewer','بازبین مستقل'),f('recipients','شناسه گیرندگان نمونه (با ویرگول)'),f('rendition','قالب نمایش','select',true,['html_preview','plain_text'])]},
+   {name:'شواهد و برش داده',help:'ثبت نسخه منبع و محدودیت، بدون تأیید آمار.',fields:[f('brief','شناسه پیش‌نویس'),f('metric','متریک و نسخه'),f('cutoff','قطع داده','datetime-local'),f('evidence','ارجاع شواهد','textarea'),f('limitations','محدودیت‌ها','textarea')]},
+   {name:'بازبینی',help:'ارسال برای بررسی نمایشی؛ هر نسخه باید شواهد و گیرندگان مجاز داشته باشد.',fields:[f('brief','شناسه پیش‌نویس'),f('editor','ویراستار'),f('reviewer','بازبین'),f('comment','نتیجه یا درخواست اصلاح','textarea')]},
+   {name:'انتشار',help:'ارسال و زمان‌بندی واقعی در این نمونه غیرفعال است؛ درخواست مجوز انتشار ثبت می‌شود.',fields:[f('brief','شناسه پیش‌نویس'),f('recipients','گیرندگان مجاز پیشنهادی'),f('publication_cutoff','زمان مبنا','datetime-local'),f('reviewer','بازبین تأییدکننده'),f('reason','دلیل درخواست','textarea')]}]},
+  '/data/contracts':{title:'DAT-02 · ثبت و بازبینی قرارداد نسخه‌دار منبع',warning:'این فرم فقط درخواست قرارداد مصنوعی ایجاد می‌کند؛ قرارداد اجرایی، داده واقعی یا اعتماد به اتصال منبع برقرار نمی‌کند.',tabs:[
+-  {name:'تعریف قرارداد',help:'محدوده، طرح نسخه‌دار، مرجع داده و قواعد کیفیت پیشنهادی؛ هیچ schema از سامانه منبع واکشی نشده است.',fields:[f('contract_id','شناسه قرارداد'),f('source','شناسه سامانه و کانکتور'),f('dataset','دامنه مجموعه‌داده'),f('schema_version','نسخه Schema'),f('owner','مالک منبع'),f('grain','دانه‌بندی داده'),f('timezone','منطقه زمانی','select',true,['Asia/Tehran','UTC']),f('required_fields','فیلدهای اجباری (با ویرگول)'),f('quality_rules','قواعد قرنطینه / کیفیت','textarea'),f('freshness_seconds','سقف تازگی به ثانیه','number'),f('effective_from','شروع اعتبار','date'),f('effective_to','پایان اعتبار','date')]},
++  {name:'تعریف قرارداد',help:'محدوده، طرح نسخه‌دار، مرجع داده و قواعد کیفیت پیشنهادی؛ هیچ schema از سامانه منبع واکشی نشده است.',fields:[f('contract_id','شناسه قرارداد'),f('source','شناسه سامانه و کانکتور'),f('dataset','دامنه مجموعه‌داده'),f('schema_version','نسخه Schema'),f('owner','مالک منبع'),f('grain','دانه‌بندی داده'),f('timezone','منطقه زمانی','select',true,['Asia/Tehran','UTC']),f('required_fields','فیلدهای اجباری (با ویرگول)'),f('quality_rules','قواعد قرنطینه / کیفیت','textarea'),f('freshness_seconds','سقف تازگی به ثانیه','number'),f('effective_from','شروع اعتبار','date'),f('effective_to','پایان اعتبار','date'),f('reviewer','بازبین مستقل')]},
+   {name:'تغییر نسخه و بررسی',help:'نسخه جانشین و بازبین مستقل؛ نسخه قبل پاک نمی‌شود و انتشار اجرایی غیرفعال است.',fields:[f('contract_id','شناسه قرارداد'),f('prior_version','نسخه مبدأ'),f('next_version','نسخه پیشنهادی'),f('change','تفاوت schema و قرارداد','textarea'),f('impact','اثر بر مصرف‌کنندگان پایین‌دست','textarea'),f('reviewer','شناسه بازبین مستقل')]},
+   {name:'گیت‌ها و وضعیت',help:'قراردادهای ثبت‌شده و نتیجه بازبینی داخلی فقط محلّی‌اند. کنترل‌های منبع، سازگاری عقب‌رو و IAM نامشخص‌اند.',fields:[]}
+  ]},
+@@ -127,6 +128,7 @@ export function DomainWorkspace({path,siteName}:{path:string;siteName:string}){
+ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteId:string;siteName:string;userId:string}){
+  const def=definitions[path];const [tab,setTab]=useState(0);
+  const [values,setValues]=useState<Record<string,string>>({});const [q,setQ]=useState('');
++ const [reviewReason,setReviewReason]=useState('');
+  const key=storageKey(path,siteId,userId);
+  const [items,setItems]=useState<RecordItem[]>(()=>{try{const a=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(a)?a:[];}catch{return [];}});
+  useEffect(()=>{try{localStorage.setItem(key,JSON.stringify(items));}catch{/* private-mode storage */}},[key,items]);
+@@ -137,7 +139,10 @@ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteI
+  const transition=(record:RecordItem,action:'validate'|'review'|'cancel'|'retry'|'successor')=>{
+   let state=record.state,note=record.note;
+   if(action==='validate'){state='validated_synthetic';note='اعتبارسنجی فرم فقط با قواعد محلی؛ قرارداد و مرجع داده تأیید نشده‌اند.';}
+-  if(action==='review'){state='awaiting_independent_review';note='برای بازبینی مستقل ثبت شده؛ بدون امضای بازبین معتبر انتشار ممکن نیست.';}
++  if(action==='review'){
++   if(path==='/settings/governance'&&(record.values.reviewer===record.createdBy||!DEMO_USERS.some(u=>u.id===record.values.reviewer&&u.permittedSiteIds.includes(siteId))))return;
++   state='awaiting_independent_review';note='برای بازبینی مستقل ثبت شده؛ بدون امضای بازبین معتبر انتشار ممکن نیست.';
++  }
+   if(action==='cancel'){state='cancel_requested';note='لغو تعاونی نمونه؛ هیچ Job واقعی اجرا نشده است.';}
+   if(action==='retry'){const clone={...record,id:`SYN-${Math.random().toString(36).slice(2,9)}`,originId:record.id,at:iso(),state:'retry_draft',note:'تلاش مجدد پیونددار نمونه بدون پردازش داده واقعی'};setItems(old=>[clone,...old]);return;}
+   if(action==='successor'){const clone={...record,id:`SYN-${Math.random().toString(36).slice(2,9)}`,originId:record.id,at:iso(),state:'successor_draft',note:'نگاشت جانشین / unmerge پیشنهادی؛ نسخه قبلی حفظ شد'};setItems(old=>[clone,...old]);return;}
+@@ -149,12 +154,21 @@ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteI
+   const linked=record.tab===2&&path==='/executive/briefs'?items.find(x=>x.id===record.values.brief&&x.tab===0):null;
+   if(path==='/executive/briefs'&&(record.values.reviewer!==userId||!linked||linked.createdBy===userId||!items.some(x=>x.tab===1&&x.values.brief===record.values.brief)))return;
+   if(path==='/settings/modules'&&record.tab===2&&record.values.reviewer!==userId)return;
+-  if(!['/executive/briefs','/settings/modules'].includes(path))return;
++  if(path==='/settings/governance'&&(!record.values.reviewer||record.values.reviewer!==userId||!DEMO_USERS.some(u=>u.id===userId&&u.permittedSiteIds.includes(siteId))))return;
++  if(!['/executive/briefs','/settings/modules','/settings/governance','/data/contracts'].includes(path))return;
++  if(path==='/data/contracts'&&(!record.values.reviewer||record.values.reviewer!==userId))return;
+   setItems(old=>old.map(x=>x.id===record.id?{...x,state:'review_approved_synthetic',reviewedBy:userId,reviewedAt:iso(),note:'بازبینی مستقل در شبیه‌سازی محلی تأیید شد؛ امضای سازمانی نیست.'}:x));
+  };
++ const rejectGovernance=(record:RecordItem)=>{
++  if(path!=='/settings/governance'||record.state!=='awaiting_independent_review'||record.createdBy===userId||record.values.reviewer!==userId||reviewReason.trim().length<10)return;
++  setItems(old=>old.map(x=>x.id===record.id?{...x,state:'review_rejected_synthetic',rejectedBy:userId,rejectedAt:iso(),rejectionReason:reviewReason.trim(),note:'بازبین مستقل، تصمیم پیشنهادی را در مرورگر رد کرد؛ هیچ سیاست عملیاتی تغییر نکرد.'}:x));
++  setReviewReason('');
++ };
+  const publish=(record:RecordItem)=>{
+   if(record.createdBy!==userId || record.state!=='publication_request_unapproved' || path!=='/executive/briefs')return;
+   const approved=items.find(x=>x.tab===2&&x.values.brief===record.values.brief&&x.state==='review_approved_synthetic');
++  const checks=briefChecks(record.values.brief);
++  if(!checks.recipientAllowed||!checks.freshnessAllowed)return;
+   if(!approved || !approved.reviewedBy || approved.reviewedBy===userId)return;
+   setItems(old=>old.map(x=>x.id===record.id?{...x,state:'published_synthetic',publishedAt:iso(),note:'نسخه نمایشی گزارش منتشر شد؛ هیچ گیرنده واقعی یا سرویس ارسال فراخوانی نشد.'}:x));
+  };
+@@ -170,6 +184,16 @@ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteI
+   const compatible=root.values.boundary==='last_complete_day'&&evidence.values.metric===fixture.definition&&row?.included&&evidence.values.evidence.includes(row.snapshot||'__missing__');
+   return {root,evidence,compatible:!!compatible,value:compatible?row.value:null,source:row?.snapshot||'unavailable',cutoff:fixture.cutoff};
+  };
++ const briefChecks=(ref:string)=>{
++   const preview=briefPreview(ref),root=preview?.root;
++   const recipients=(root?.values.recipients||'').split(/[,،]/).map(x=>x.trim()).filter(Boolean);
++   const recipientAllowed=recipients.length>0&&recipients.every(id=>DEMO_USERS.some(u=>u.id===id&&u.permittedSiteIds.includes(siteId)));
++   const cutoff=preview?.cutoff?Date.parse(preview.cutoff):NaN;
++   const ageDays=Number.isFinite(cutoff)?(Date.now()-cutoff)/86400000:Infinity;
++   const fresh=Boolean(preview?.compatible)&&ageDays>=0&&ageDays<=1;
++   const policy=root?.values.stale_policy||'block';
++   return {recipientAllowed,recipients,fresh,ageDays,policy,freshnessAllowed:!!preview?.compatible&&(fresh||policy==='warn'),rendition:root?.values.rendition||'html_preview'};
++ };
+  const visible=items.filter(x=>(JSON.stringify(x.values)+' '+x.id).toLowerCase().includes(q.toLowerCase()));
+  return <section dir="rtl" data-testid="domain-workspace" className="space-y-4">
+   <header className="rounded-xl bg-white border p-5 space-y-1"><h1 className="font-bold text-xl">{def.title}</h1><p className="text-sm text-slate-500">سایت انتخابی: {siteName} · <bdi>{siteId}</bdi> · کاربر نمونه: <bdi>{userId}</bdi></p></header>
+@@ -182,7 +206,7 @@ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteI
+    <button type="button" className={primary} disabled={errors.length>0} onClick={save}>{path==='/operations/forecasts'&&tab===0?'ثبت درخواست پیش‌بینی (در انتظار منبع)':'ثبت نسخه پیش‌نویس نمونه'}</button>
+   </div>}
+   {path==='/operations/forecasts'&&tab===1&&<div className="rounded-lg bg-slate-50 p-3 text-sm" data-testid="forecast-results"><strong>نتیجه: unavailable</strong><p>point: ناموجود · p10: ناموجود · p50: ناموجود · p90: ناموجود</p><p>علت: مدل/نسخه و snapshot ورودی در دسترس نیست. عدد جایگزین تولید نمی‌شود.</p></div>}
+-  {path==='/executive/briefs'&&<section data-testid="brief-preview" className="rounded-lg border p-3 text-sm space-y-2"><h3 className="font-bold">پیش‌نمایش نسخه‌دار گزارش مدیریتی · صرفاً آزمایشی</h3>{items.filter(x=>x.tab===0).map(root=>{const preview=briefPreview(root.id);return <div key={root.id} className="rounded border p-3"><p>گزارش: {root.values.title} · {root.values.template} · شناسه {root.id}</p><p>دوره: {root.values.boundary} · دامنه: {root.values.scope} · گیرندگان پیشنهادی: {root.values.recipients}</p>{preview?.compatible?<><p className="font-semibold">اشغال تخت مصنوعی: {preview.value}%</p><p>ارجاع: {preview.source} · نسخه: available_staffed_bed_occupancy@1 · cutoff: {preview.cutoff}</p><p>محدودیت: فیکسچر کهنه/محلی؛ گزارش بیرونی معتبر نیست.</p></>:<p role="alert">داده هم‌دوره و شواهد هماهنگ وجود ندارند؛ تولید شاخص عددی ممنوع است. برای پیش‌نمایش عددی باید متریک available_staffed_bed_occupancy@1 و مرجع snapshot همین سایت ثبت شود.</p>}</div>})}</section>}
++  {path==='/executive/briefs'&&<section data-testid="brief-preview" className="rounded-lg border p-3 text-sm space-y-2"><h3 className="font-bold">پیش‌نمایش نسخه‌دار گزارش مدیریتی · صرفاً آزمایشی</h3>{items.filter(x=>x.tab===0).map(root=>{const preview=briefPreview(root.id);return <div key={root.id} className="rounded border p-3"><p>گزارش: {root.values.title} · {root.values.template} · شناسه {root.id}</p><p>دوره: {root.values.boundary} · دامنه: {root.values.scope} · گیرندگان پیشنهادی: {root.values.recipients}</p>{(()=>{const checks=briefChecks(root.id);return <div data-testid="brief-compliance" className="my-2 rounded bg-slate-50 p-2 space-y-1"><p>قالب ارائه: {checks.rendition==='plain_text'?'متن ساده':'HTML (نمایش مرورگری)'}</p><p>کنترل تازگی منبع: {checks.fresh?'PASS (فیکسچر حداکثر ۲۴ساعت)':'STALE / UNKNOWN'} · سیاست: {checks.policy} · {checks.freshnessAllowed?'مجاز در شبیه‌سازی با هشدار':'BLOCKED'}</p><p>کنترل گیرندگان در فهرست کاربران مجاز همین سایت (فقط فیکسچر): {checks.recipientAllowed?'PASS (demo allowlist)':'BLOCKED — شناسه‌های usr-… را با ویرگول وارد کنید'}</p><p className="text-amber-800">این بررسی مجوز سازمانی یا ارسال واقعی را تأیید نمی‌کند.</p></div>})()}{preview?.compatible?root.values.rendition==='plain_text'?<pre className="whitespace-pre-wrap rounded bg-slate-50 p-3" data-testid="brief-plain-text-rendition">{`DEMO BRIEF / ${root.values.title}\nSynthetic occupancy: ${preview.value}%\nMetric: available_staffed_bed_occupancy@1\nSnapshot: ${preview.source}\nCutoff: ${preview.cutoff}\nNOT AUTHORISED FOR EXTERNAL DISTRIBUTION`}</pre>:<><p className="font-semibold">اشغال تخت مصنوعی: {preview.value}%</p><p>ارجاع: {preview.source} · نسخه: available_staffed_bed_occupancy@1 · cutoff: {preview.cutoff}</p><p>محدودیت: فیکسچر کهنه/محلی؛ گزارش بیرونی معتبر نیست.</p></>:<p role="alert">داده هم‌دوره و شواهد هماهنگ وجود ندارند؛ تولید شاخص عددی ممنوع است. برای پیش‌نمایش عددی باید متریک available_staffed_bed_occupancy@1 و مرجع snapshot همین سایت ثبت شود.</p>}</div>})}</section>}
+   {path==='/settings/governance'&&tab===2&&<SyntheticRetentionPlan/>}
+   {path==='/data/ingestion'&&<SyntheticDataFlow/>}
+   {path==='/data/ingestion'&&tab===2&&<p className="text-xs text-slate-600">نمایش Job شامل وضعیت اجرا، accepted/duplicate/quarantined، cutoff، consistency و checkpoint از داده واردشده مصنوعی است. هیچ پردازشی آغاز نمی‌شود.</p>}
+@@ -194,7 +218,10 @@ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteI
+     {(item.state==='draft'||item.state==='validated_synthetic')&&<button className="border rounded p-2" onClick={()=>transition(item,'review')}>درخواست بازبینی مستقل</button>}
+     {path==='/data/ingestion'&&!item.state.includes('cancel')&&<button className="border rounded p-2" onClick={()=>transition(item,'cancel')}>درخواست لغو (نمایشی)</button>}
+     {path==='/data/ingestion'&&<button className="border rounded p-2" onClick={()=>transition(item,'retry')}>تلاش مجدد پیونددار (نمایشی)</button>}
+-    {item.state==='awaiting_independent_review'&&((path==='/executive/briefs'&&item.tab===2)||(path==='/settings/modules'&&item.tab===2))&&<button className="border rounded p-2" disabled={item.createdBy===userId||item.values.reviewer!==userId} onClick={()=>approve(item)}>تأیید مستقل در محیط نمایشی</button>}
++    {item.state==='awaiting_independent_review'&&((path==='/executive/briefs'&&item.tab===2)||(path==='/settings/modules'&&item.tab===2)||path==='/settings/governance'||path==='/data/contracts')&&<button className="border rounded p-2" disabled={item.createdBy===userId||item.values.reviewer!==userId} onClick={()=>approve(item)}>تأیید مستقل در محیط نمایشی</button>}
++    {path==='/settings/governance'&&item.state==='awaiting_independent_review'&&item.createdBy!==userId&&item.values.reviewer===userId&&<label className="block w-full">دلیل رد در محیط نمایشی (حداقل ۱۰ نویسه)<textarea aria-label="دلیل رد تصمیم حاکمیتی" className={cls} value={reviewReason} onChange={e=>setReviewReason(e.target.value)}/><button className="border rounded p-2 mt-2" disabled={reviewReason.trim().length<10} onClick={()=>rejectGovernance(item)}>رد تصمیم پیشنهادی با ثبت دلیل</button></label>}
++    {item.rejectedBy&&<p>رد توسط: {item.rejectedBy} · {item.rejectedAt} · دلیل: {item.rejectionReason}</p>}
++    {item.reviewedBy&&<p>تأیید نمایشی توسط: {item.reviewedBy} · {item.reviewedAt}</p>}
+     {path==='/executive/briefs'&&item.tab===3&&<button className="border rounded p-2" disabled={item.state!=='publication_request_unapproved'||item.createdBy!==userId} onClick={()=>publish(item)}>تولید نسخه منتشرشده نمایشی</button>}
+     {path==='/settings/modules'&&item.tab===2&&item.values.target==='active'&&<button className="border rounded p-2" disabled={item.state!=='review_approved_synthetic'||item.createdBy!==userId} onClick={()=>promote(item)}>فعال‌سازی محلی (فیکسچر)</button>}
+     {path==='/data/identity'&&<button className="border rounded p-2" onClick={()=>transition(item,'successor')}>درخواست جانشین / Unmerge</button>}
+diff --git a/src/him/components/Header.tsx b/src/him/components/Header.tsx
+index 106a03a..55c39fe 100644
+--- a/src/him/components/Header.tsx
++++ b/src/him/components/Header.tsx
+@@ -34,8 +34,8 @@ export const Header: React.FC = () => {
+   const [lang,setLang] = useShellLanguage();
+   const [calendar,setCalendar] = useState<'persian'|'gregory'>(()=>{try{return localStorage.getItem('him.ui.calendar')==='gregory'?'gregory':'persian';}catch{return 'persian';}});
+   const [timeZone,setTimeZone] = useState<'Asia/Tehran'|'UTC'>(()=>{try{return localStorage.getItem('him.ui.timeZone')==='UTC'?'UTC':'Asia/Tehran';}catch{return 'Asia/Tehran';}});
+-  const updateCalendar=(v:'persian'|'gregory')=>{setCalendar(v);try{localStorage.setItem('him.ui.calendar',v);}catch{/* optional */}};
+-  const updateTimeZone=(v:'Asia/Tehran'|'UTC')=>{setTimeZone(v);try{localStorage.setItem('him.ui.timeZone',v);}catch{/* optional */}};
++  const updateCalendar=(v:'persian'|'gregory')=>{setCalendar(v);try{localStorage.setItem('him.ui.calendar',v);}catch{/* optional */}window.dispatchEvent(new Event('him:preferences'));};
++  const updateTimeZone=(v:'Asia/Tehran'|'UTC')=>{setTimeZone(v);try{localStorage.setItem('him.ui.timeZone',v);}catch{/* optional */}window.dispatchEvent(new Event('him:preferences'));};
+   const displayDate=new Intl.DateTimeFormat(lang==='en'?'en-US':'fa-IR',{calendar,weekday:'long',year:'numeric',month:'long',day:'numeric',timeZone}).format(new Date());
+   const unreadCount = notifications.filter(n => !readNotificationIds.includes(n.id)).length;
+ 
+diff --git a/src/him/components/KnowledgeWorkspace.tsx b/src/him/components/KnowledgeWorkspace.tsx
+index e4d5737..7119f58 100644
+--- a/src/him/components/KnowledgeWorkspace.tsx
++++ b/src/him/components/KnowledgeWorkspace.tsx
+@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
+ import { normalizeFaSearch } from './faSearch';
+ import { scopedDraftKey } from './scopedDraftKey';
+ import {DEMO_USERS} from '../data/mockData';
++import {evaluateMockRetrieval, type RetrievalEvalCase} from './knowledgeRetrievalEvaluation';
+ 
+ type Document = {
+   id: string;
+@@ -43,6 +44,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+   const legacyKey = scopedDraftKey('him.knowledge.local.v1','documents',scope.siteId||'none',user?.id||'guest');
+   const [items, setItems] = useState<Document[]>(() => {const shared=get(key);return shared.length?shared:get(legacyKey);});
+   const [tab, setTab] = useState(0);
++  const [evaluation,setEvaluation]=useState<ReturnType<typeof evaluateMockRetrieval>|null>(null);
+   const [title, setTitle] = useState(''),
+     [owner, setOwner] = useState(''),
+     [category, setCategory] = useState('policy'),
+@@ -221,7 +223,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+           اجرای جستجوی محدود نمایشی
+         </button>
+         <div role="tablist" className="flex gap-2 flex-wrap">
+-          {['جستجو', 'شواهد و نتایج', 'محدودیت‌ها'].map((v, i) => (
++          {['جستجو', 'شواهد و نتایج', 'محدودیت‌ها', 'ارزیابی بازیابی'].map((v, i) => (
+             <button
+               role="tab"
+               aria-selected={tab === i}
+@@ -262,6 +264,20 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+             )}
+           </div>
+         )}
++        {tab === 3 && (
++          <section data-testid="knowledge-retrieval-evaluation" className="rounded-lg border bg-white p-4 space-y-3">
++            <h2 className="font-bold">KNO · آزمون قابل تکرار بازیابی و امتناع (demo)</h2>
++            <p className="text-sm">مجموعه آزمون به‌طور پویا از نسخه‌های محلی همین سایت ساخته می‌شود: سند منتشرشده، سند منتشرنشده/محدود و تاریخ خارج از اعتبار. نتیجه، ارزیابی سامانه واقعی جستجو یا ACL نیست.</p>
++            <button className={btn} onClick={()=>setEvaluation(evaluateMockRetrieval(items,scope.siteId||''))}>اجرای مجموعه آزمون مصنوعی</button>
++            {evaluation&&<div role="status" className="space-y-2 text-sm" data-testid="knowledge-evaluation-score">
++              <p>تعداد مورد قابل ارزیابی: {evaluation.total} · موفق: {evaluation.passed} · شکست: {evaluation.total-evaluation.passed}</p>
++              {evaluation.total===0?<p role="alert">داده آزمایشی واجد شرایط برای امتیازدهی وجود ندارد؛ نمره تولید نمی‌شود.</p>:<>
++                <p>Recall@1: {evaluation.recallAt1===null?'N/A':`${Math.round(evaluation.recallAt1*100)}%`} · Citation coverage: {evaluation.citationCoverage===null?'N/A':`${Math.round(evaluation.citationCoverage*100)}%`} · صحت امتناع: {evaluation.abstentionAccuracy===null?'N/A':`${Math.round(evaluation.abstentionAccuracy*100)}%`}</p>
++                {evaluation.results.map((x:RetrievalEvalCase,i)=><div key={i} className="rounded border p-2"><b>{x.passed?'PASS':'FAIL'} · {x.name}</b><p>پرسش: {x.query} · تاریخ: {x.asOf||'بدون فیلتر'}</p><p>مورد انتظار: {x.expected||'امتناع'} · مشاهده‌شده: {x.actual||'امتناع'}</p><p className="text-xs">{x.reason}</p></div>)}
++              </>}
++            </div>}
++          </section>
++        )}
+         {tab === 2 && (
+           <div className={info}>
+             <b>عدم قطعیت و ممنوعیت استناد:</b> انتشار سند، مجوز استفاده، نسخه منبع و بازیابی متنی
+diff --git a/src/him/components/SyntheticDataFlow.tsx b/src/him/components/SyntheticDataFlow.tsx
+index 79c5b8a..76e01d6 100644
+--- a/src/him/components/SyntheticDataFlow.tsx
++++ b/src/him/components/SyntheticDataFlow.tsx
+@@ -1,9 +1,10 @@
+ import React,{useEffect,useState} from 'react';
+ import {useApp} from '../context/AppContext';
++import {approvedSyntheticContracts,syntheticConnectorRecords,governedDemoCompatibility} from './syntheticDataGovernance';
+ 
+ /** DAT-01/02/03/05: deterministic fake pipeline, deliberately isolated from operational endpoints. */
+ export type DemoInput={eventId:string; entity:string;value:number;unit:string;contract:string;schemaVersion:string};
+-export type DemoBatch={id:string;connector:string;contract:string;startedAt:string;status:'simulated'|'replayed';sourceCutoff:string;accepted:number;duplicate:number;quarantined:number;rows:DemoInput[];replayOf?:string};
++export type DemoBatch={id:string;connector:string;contract:string;startedAt:string;status:'simulated'|'replayed';sourceCutoff:string;accepted:number;duplicate:number;quarantined:number;rows:DemoInput[];replayOf?:string;ingestMode?:'snapshot'|'delta';approvedContractId?:string};
+ export const DEMO_DATA_INPUT:DemoInput[]=[
+  {eventId:'SYN-EVENT-1',entity:'SYN-ICU-1',value:80,unit:'beds',contract:'demo-bed-occupancy',schemaVersion:'1'},
+  {eventId:'SYN-EVENT-1',entity:'SYN-ICU-1',value:80,unit:'beds',contract:'demo-bed-occupancy',schemaVersion:'1'},
+@@ -32,24 +33,38 @@ export function SyntheticDataFlow(){
+  const [batches,setBatches]=useState<DemoBatch[]>(()=>read(key));
+  const [connector,setConnector]=useState('SYN-PACS-READONLY');const [contract,setContract]=useState('demo-bed-occupancy');const [version,setVersion]=useState('1');
+  const [replayId,setReplayId]=useState<string|null>(null);
++ const [governanceMode,setGovernanceMode]=useState<'fixture'|'governed'>('fixture');
++ const [ingestMode,setIngestMode]=useState<'snapshot'|'delta'>('snapshot');
++ const [queryResult,setQueryResult]=useState<{value:number;count:number;contract:string;version:string;at:string}|null>(null);
++ const approved=approvedSyntheticContracts(scope.siteId||'none');
++ const active=syntheticConnectorRecords(scope.siteId||'none').filter(x=>x.status==='active_synthetic');
++ const selectedConnector=active.find(x=>x.key===connector);
++ const selectedContract=approved.find(x=>x.values.contract_id===contract&&x.values.source===connector);
++ const governanceProblems=selectedConnector&&selectedContract?governedDemoCompatibility(selectedConnector,selectedContract):['کانکتور مصنوعی فعال و قرارداد مستقل تأییدشده مطابق موجود نیست'];
+  useEffect(()=>{try{localStorage.setItem(key,JSON.stringify(batches));}catch{}},[key,batches]);
+- const compatible=contract==='demo-bed-occupancy'&&version==='1'&&connector.trim().startsWith('SYN-');
++ const compatible=governanceMode==='governed'?governanceProblems.length===0&&version===selectedContract?.values.schema_version:contract==='demo-bed-occupancy'&&version==='1'&&connector.trim().startsWith('SYN-');
+  const simulate=()=>{
+   if(!compatible)return;
+-  const previous=new Set(batches.flatMap(x=>x.rows.map(r=>r.eventId)));
+-  const result=runDemoBatch(DEMO_DATA_INPUT,contract,previous);
+-  const b:DemoBatch={id:`SYN-JOB-${Date.now()}`,connector,contract,startedAt:new Date().toISOString(),status:replayId?'replayed':'simulated',sourceCutoff:'2026-10-23T23:59:59+03:30',accepted:result.accepted,duplicate:result.duplicate,quarantined:result.quarantined,rows:result.rows,replayOf:replayId||undefined};
+-  setBatches(x=>[b,...x]);setReplayId(null);
++  const previous=new Set(batches.filter(x=>x.contract===contract).flatMap(x=>x.rows.map(r=>r.eventId)));
++  const sample=ingestMode==='snapshot'?DEMO_DATA_INPUT:DEMO_DATA_INPUT.filter(x=>x.eventId==='SYN-EVENT-2'||x.eventId==='SYN-EVENT-3');
++  const result=runDemoBatch(sample.map(row=>({...row,contract,schemaVersion:version})),contract,previous);
++  const b:DemoBatch={id:`SYN-JOB-${Date.now()}`,connector,contract,startedAt:new Date().toISOString(),status:replayId?'replayed':'simulated',sourceCutoff:'2026-10-23T23:59:59+03:30',accepted:result.accepted,duplicate:result.duplicate,quarantined:result.quarantined,rows:result.rows,replayOf:replayId||undefined,ingestMode,approvedContractId:governanceMode==='governed'?selectedContract?.id:undefined};
++  setBatches(x=>[b,...x]);setReplayId(null);setQueryResult(null);
+  };
+  const metric=demoSemanticOccupancy(batches);
++ const query=()=>{if(!compatible||governanceMode!=='governed'||!selectedContract)return;const governedBatches=batches.filter(x=>x.contract===contract&&x.approvedContractId===selectedContract.id);const q=demoSemanticOccupancy(governedBatches);if(!q.valid)return;setQueryResult({value:q.value,count:q.count,contract,version:`${contract}@${version} / demo-bed-occupancy@1`,at:new Date().toISOString()});};
+  return <section data-testid="synthetic-data-flow" className="rounded-xl border p-4 space-y-3 bg-white">
+   <h3 className="font-bold">DAT · تست اتصال، دریافت، بازپخش و پرس‌وجوی صرفاً مصنوعی</h3>
+   <p className="text-xs text-amber-800">این فرایند هیچ fetch، اتصال PACS/HIS، اجرای ETL یا پرس‌وجوی بیمارستانی ندارد. فقط ۴ رخداد بدون داده بیمار را در حافظه مرورگر بررسی می‌کند.</p>
++  <label className="block text-sm">حالت اجرای داده<select aria-label="حالت حاکمیت داده" className="w-full border rounded p-2" value={governanceMode} onChange={e=>{setGovernanceMode(e.target.value as 'fixture'|'governed');setQueryResult(null);}}><option value="fixture">فیکسچر مستقل (بدون قرارداد مصوب)</option><option value="governed">کانکتور فعال و قرارداد بازبینی‌شده صرفاً demo</option></select></label>
++  {governanceMode==='governed'&&<label className="block text-sm">انتخاب اتصال تأییدشده در همین مرورگر<select aria-label="انتخاب کانکتور حاکمیتی" className="w-full border rounded p-2" value={selectedConnector?.id||''} onChange={e=>{const record=active.find(x=>x.id===e.target.value);if(!record)return;setConnector(record.key);setContract(record.contract);const c=approved.find(c=>c.values.contract_id===record.contract&&c.values.source===record.key);setVersion(c?.values.schema_version||'1');setQueryResult(null);}}><option value="">انتخاب کنید</option>{active.map(x=><option key={x.id} value={x.id}>{x.key} / {x.contract}</option>)}</select><p className="text-xs">{governanceProblems.length?`BLOCKED: ${governanceProblems.join('؛ ')}`:'PASS — بازبینی مستقل نسخه قرارداد و اتصال synthetic'}</p></label>}
+   <div className="grid gap-3 sm:grid-cols-3 text-sm"><label>کانکتور نمونه<input className="w-full border rounded p-2" value={connector} onChange={e=>setConnector(e.target.value)}/></label><label>قرارداد نمونه<input className="w-full border rounded p-2" value={contract} onChange={e=>setContract(e.target.value)}/></label><label>نسخه Schema<input className="w-full border rounded p-2" value={version} onChange={e=>setVersion(e.target.value)}/></label></div>
++  <label className="block text-sm">الگوی دریافت فیکسچر<select className="w-full border rounded p-2" aria-label="Snapshot or delta" value={ingestMode} onChange={e=>setIngestMode(e.target.value as 'snapshot'|'delta')}><option value="snapshot">Snapshot — چهار رکورد تمرینی</option><option value="delta">Delta — دو رکورد تمرینی</option></select></label>
+   <p className="text-xs">نتیجه سازگاری قراردادی در فیکسچر: {compatible?'PASS (mock)':'BLOCKED — قرارداد/نسخه/کانکتور ناسازگار'}. قرارداد `demo-bed-occupancy@1` فقط برای نمونه ساخته شده است.</p>
+   <button className={button} disabled={!compatible} onClick={simulate}>{replayId?`بازپخش مجدد ${replayId} (idempotent)`:'اجرای تست دریافت مصنوعی'}</button>
+   <div className="grid sm:grid-cols-3 gap-2 text-sm"><div className="border rounded p-2">پرس‌وجوی معنایی نمونه: {metric.valid?metric.value:'ناموجود'} {metric.unit}</div><div className="border rounded p-2">ردیف‌های یکتا: {metric.count}</div><div className="border rounded p-2">نسخه متریک: {metric.version}</div></div>
++  <section data-testid="governed-semantic-query" className="rounded border p-3 space-y-2 text-sm"><h4 className="font-bold">پرس‌وجوی معنایی با گیت قرارداد و اتصال (فقط فیکسچر)</h4><button className={button} disabled={governanceMode!=='governed'||!compatible||!batches.some(x=>x.contract===contract&&x.approvedContractId===selectedContract?.id&&x.rows.length)} onClick={query}>اجرای پرس‌وجوی فیکسچر با کنترل نسخه</button>{queryResult?<p>نتیجه {queryResult.value} beds / {queryResult.count} event · {queryResult.version} · {queryResult.at} · فاقد مجوز استفاده عملیاتی</p>:<p>تا انتخاب کانکتور فعال، قرارداد بازبینی‌شده و اجرای batch مجاز، پاسخ governed تولید نمی‌شود.</p>}</section>
+   <p className="text-xs">فقط رخدادهای پذیرفته‌شده با eventId یکتا جمع می‌شوند؛ مقدار منفی قرنطینه و duplicate شمارش می‌شود. این «تخت اشغال» آمار مصوب نیست.</p>
+-  {batches.map(x=><details key={x.id} className="rounded border p-2 text-xs"><summary className="cursor-pointer">{x.id} · {x.status} · accepted={x.accepted} duplicate={x.duplicate} quarantine={x.quarantined}</summary><p>connector={x.connector} contract={x.contract} cutoff={x.sourceCutoff} replayOf={x.replayOf||'—'}</p><p>lineage: {x.rows.map(r=>`${r.eventId} / ${r.entity} / ${r.value}`).join(' | ')||'no accepted new events'}</p><button className="mt-2 border rounded p-2" onClick={()=>setReplayId(x.id)}>انتخاب برای Replay (بدون اجرای خارجی)</button></details>)}
++  {batches.map(x=><details key={x.id} className="rounded border p-2 text-xs"><summary className="cursor-pointer">{x.id} · {x.status} · accepted={x.accepted} duplicate={x.duplicate} quarantine={x.quarantined}</summary><p>connector={x.connector} contract={x.contract} cutoff={x.sourceCutoff} mode={x.ingestMode||'legacy'} approvedContract={x.approvedContractId||'none'} replayOf={x.replayOf||'—'}</p><p>lineage: {x.rows.map(r=>`${r.eventId} / ${r.entity} / ${r.value}`).join(' | ')||'no accepted new events'}</p><button className="mt-2 border rounded p-2" onClick={()=>setReplayId(x.id)}>انتخاب برای Replay (بدون اجرای خارجی)</button></details>)}
+  </section>;
+ }
+diff --git a/src/him/components/WorkViews.tsx b/src/him/components/WorkViews.tsx
+index fa8f59c..8af8008 100644
+--- a/src/him/components/WorkViews.tsx
++++ b/src/him/components/WorkViews.tsx
+@@ -13,6 +13,7 @@ import {legacyAsPhase6} from '../phase6/Phase6';
+ import {canonicalTasks,unfinishedTask} from '../executive/taskProjection';
+ import { AlertOperations } from './ControlWorkflows';
+ import {useShellLanguage} from './useShellLanguage';
++import {demoDetectorSummary} from './syntheticDetector';
+ 
+ export const englishTaskStatus:Record<string,string>={open:'Open',assigned:'Assigned',in_progress:'In progress',blocked:'Blocked',submitted_for_review:'Awaiting review',completed:'Completed',canceled:'Canceled',done:'Done'};
+ 
+@@ -295,7 +296,7 @@ export const AlertDetailView: React.FC<{ id: string }> = ({ id }) => {
+           </div>
+           <button type="button" className="rounded-lg border border-teal-300 bg-white p-3 text-sm text-teal-800 w-full text-right" onClick={()=>openWorkView({kind:'spec-page',path:'/executive/investigations'})}>بازکردن میزکار مستقل تحقیق ناهنجاری و شواهد (EXE-05)</button>
+           <div className="bg-white border rounded-xl p-4 space-y-2"><h2 className="font-bold">خط زمانی هشدار</h2><p className="text-xs">ثبت اولیه: {a.raisedAt}</p>{(a.activity||[]).map((entry,i)=><p key={i} className="text-xs border-r-2 pr-2">{entry.text} · {entry.at} · عامل: {entry.actorName || 'نامشخص (ثبت قدیمی)'}{entry.actorId && <span dir="ltr"> ({entry.actorId})</span>}</p>)}{a.resolution&&<p className="text-xs">شاهد رفع: {a.resolution.comment}</p>}</div>
+-          <section className="rounded-xl border bg-white p-4 text-sm space-y-1" data-testid="anomaly-provenance"><h2 className="font-bold">زمینه تشخیص ناهنجاری · EXE-004</h2>{a.id==='ALR-1050'?<><p>نسخه قاعده نمایشی: capacity-threshold@demo-2 (آستانه ثابت، نه مدل آماری)</p><p>خط پایه آماری: ناموجود · بازه مورد انتظار نمونه: ۰ تا ۹۰٪ صرفاً آستانه تمرینی</p><p>بازه مقایسه: ۲۰۲۶-۱۰-۲۳ (فیکسچر تک‌نقطه‌ای) · تاریخچه معتبر: موجود نیست</p><p>برش داده: 2026-10-23T23:59:59+03:30 · کیفیت منبع: synthetic/not-verified</p></>:<><p>نسخه آشکارساز: ثبت نشده / نیازمند تأیید</p><p>خط پایه و بازه مورد انتظار: ثبت نشده</p><p>بازه مقایسه و روند تاریخی: ثبت نشده</p><p>کیفیت داده و تازگی منبع بالادستی: نامشخص</p></>}<p className="text-amber-800">آستانه هشدار جایگزین خط پایه آماری، مقایسه تاریخی یا مدل مصوب نیست.</p></section><EvidencePackage items={alertEvidence(a)} code={a.code} /><AlertOperations alert={a}/>
++          <section className="rounded-xl border bg-white p-4 text-sm space-y-1" data-testid="anomaly-provenance"><h2 className="font-bold">زمینه تشخیص ناهنجاری · EXE-004</h2>{a.id==='ALR-1050'?<><p>نسخه قاعده نمایشی: capacity-threshold@demo-2 (آستانه ثابت، نه مدل آماری)</p>{(()=>{const detector=demoDetectorSummary();return <><p>نسخه خط پایه آزمایشی: {detector.baselineVersion} · میانگین ۷ مقدار تمرینی: {detector.baselineMean.toFixed(2)}٪</p><p>بازه مورد انتظار صرفاً ساختگی: {detector.lower} تا {detector.upper}٪ · داده‌های مرجع: {detector.reference.join('، ')}</p><p>نسخه مقایسه: {detector.comparisonVersion} · مشاهده تمرینی {detector.observed}٪ · اختلاف با سقف: {detector.observed-detector.upper} واحد درصد · نتیجه: {detector.comparison}</p><p>زمان رخداد تمرینی: {detector.observedAt} · cutoff: {detector.cutoff}</p><p>کیفیت: {detector.quality} · تازگی: {detector.freshness} · سیاست {detector.sourceFreshnessPolicyHours} ساعت</p></>})()}</>:<><p>نسخه آشکارساز: ثبت نشده / نیازمند تأیید</p><p>خط پایه و بازه مورد انتظار: ثبت نشده</p><p>بازه مقایسه و روند تاریخی: ثبت نشده</p><p>کیفیت داده و تازگی منبع بالادستی: نامشخص</p></>}<p className="text-amber-800">نسخه قاعده و مقایسه بالا فقط درباره ALR-1050 و فیکسچر تمرینی است؛ خط پایه آماری، تاریخچه معتبر، و تأیید موتور تشخیص موجود نیست. آستانه را با baseline اشتباه نگیرید.</p></section><EvidencePackage items={alertEvidence(a)} code={a.code} /><AlertOperations alert={a}/>
+         </div>
+         <div className="space-y-4">
+           <div className="bg-white border border-slate-200 rounded-2xl p-5 grid gap-3">
+diff --git a/src/him/components/datePreferences.ts b/src/him/components/datePreferences.ts
+new file mode 100644
+index 0000000..6916b00
+--- /dev/null
++++ b/src/him/components/datePreferences.ts
+@@ -0,0 +1,32 @@
++import {useEffect,useState} from 'react';
++/** Presentation only. Unknown/partial timestamps are not silently reinterpreted. */
++const normalizeDigits=(v:string)=>v.replace(/[۰-۹٠-٩]/g,c=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(c)>=0?'۰۱۲۳۴۵۶۷۸۹'.indexOf(c):'٠١٢٣٤٥٦٧٨٩'.indexOf(c)));
++export function parseDemoDate(input:string):Date|null {
++ const text=normalizeDigits(input.trim());
++ const match=/^(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\s*[-–]\s*\d{1,2}:\d{2})?$/.exec(text);
++ if(match){
++  const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]);
++  if(year<1300||year>1500||month<1||month>12||day<1||day>31)return null;
++  const fmt=new Intl.DateTimeFormat('en-US-u-ca-persian',{year:'numeric',month:'numeric',day:'numeric',timeZone:'UTC'});
++  const start=Date.UTC(year+621,2,18);
++  for(let i=0;i<370;i++){
++   const date=new Date(start+i*86400000),parts=fmt.formatToParts(date);
++   const num=(type:string)=>Number(parts.find(x=>x.type===type)?.value||'-1');
++   if(num('year')===year&&num('month')===month&&num('day')===day)return date;
++  }
++  return null;
++ }
++ const parsed=Date.parse(text);return Number.isFinite(parsed)?new Date(parsed):null;
++}
++export function formatPreferredDate(input:string,language:'fa'|'en'){
++ const parsed=parseDemoDate(input);if(!parsed)return input;
++ let cal='persian',zone='Asia/Tehran';
++ try{if(localStorage.getItem('him.ui.calendar')==='gregory')cal='gregory';if(localStorage.getItem('him.ui.timeZone')==='UTC')zone='UTC';}catch{}
++ return new Intl.DateTimeFormat(language==='en'?'en-US':'fa-IR',{calendar:cal,timeZone:zone,year:'numeric',month:'short',day:'numeric',...(input.includes('T')?{hour:'2-digit',minute:'2-digit'}:{})}).format(parsed);
++}
++
++/** Re-render open detail screens immediately when the header preferences change. */
++export function useDisplayPreferencesRevision(){
++ const [,setVersion]=useState(0);
++ useEffect(()=>{const changed=()=>setVersion(x=>x+1);window.addEventListener('him:preferences',changed);window.addEventListener('storage',changed);return()=>{window.removeEventListener('him:preferences',changed);window.removeEventListener('storage',changed);};},[]);
++}
+diff --git a/src/him/components/knowledgeRetrievalEvaluation.ts b/src/him/components/knowledgeRetrievalEvaluation.ts
+new file mode 100644
+index 0000000..c64073e
+--- /dev/null
++++ b/src/him/components/knowledgeRetrievalEvaluation.ts
+@@ -0,0 +1,29 @@
++import {normalizeFaSearch} from './faSearch';
++
++/** A local test harness for the *demo* retrieval policy. No claims about production search quality. */
++export interface RetrievalEvalDocument {
++  id:string; title:string; abstract?:string; category:string; state:string; version:number;
++  siteId:string; accessClass?:string; effectiveFrom:string; effectiveTo:string; parentId?:string;
++}
++export interface RetrievalEvalCase {name:string;query:string;asOf:string;expected:string|null;actual:string|null;passed:boolean;reason:string}
++export function evaluateMockRetrieval(items:RetrievalEvalDocument[],siteId:string) {
++ const current=items.filter(x=>x.siteId===siteId);
++ const usable=(date:string)=>current.filter(d=>d.state==='published_synthetic'&&d.accessClass!=='synthetic_restricted' && d.abstract?.trim() && (!date||(d.effectiveFrom<=date&&d.effectiveTo>=date)) && !current.some(v=>v.parentId===d.id&&v.state==='published_synthetic'));
++ const candidates=usable('');
++ const cases:Array<{name:string;doc:RetrievalEvalDocument;asOf:string;expected:string|null;reason:string}>=[];
++ for(const doc of candidates.slice(0,3))cases.push({name:'ارجاع سند منتشرشده',doc,asOf:doc.effectiveFrom,expected:doc.id,reason:'وجود ارجاع نسخه/صفحه در فیکسچر منتشرشده'});
++ const nonpublic=current.filter(d=>d.state!=='published_synthetic'||d.accessClass==='synthetic_restricted');
++ for(const doc of nonpublic.slice(0,3))if(!candidates.some(u=>normalizeFaSearch(u.title)===normalizeFaSearch(doc.title)))cases.push({name:'امتناع از پاسخ برای سند فاقد مجوز',doc,asOf:'',expected:null,reason:'نسخه منتشرنشده یا رده restricted نباید به پاسخ برسد'});
++ if(candidates.length)cases.push({name:'کنترل تاریخ خارج از اعتبار',doc:candidates[0],asOf:'2100-01-01',expected:null,reason:'جستجوی تاریخ آینده برای مجموعه نمونه باید امتناع کند'});
++ const results:RetrievalEvalCase[]=cases.map(x=>{
++  const matches=usable(x.asOf).filter(d=>normalizeFaSearch(d.title+' '+d.category+' '+(d.abstract||'')).includes(normalizeFaSearch(x.doc.title)));
++  const actual=matches[0]?.id||null;
++  return {name:x.name,query:x.doc.title,asOf:x.asOf,expected:x.expected,actual,passed:actual===x.expected,reason:x.reason};
++ });
++ const positive=results.filter(x=>x.expected!==null);
++ const negative=results.filter(x=>x.expected===null);
++ return {results,total:results.length,passed:results.filter(x=>x.passed).length,
++   recallAt1:positive.length?positive.filter(x=>x.passed).length/positive.length:null,
++   abstentionAccuracy:negative.length?negative.filter(x=>x.passed).length/negative.length:null,
++   citationCoverage:positive.length?positive.filter(x=>x.actual!==null).length/positive.length:null};
++}
+diff --git a/src/him/components/syntheticDataGovernance.ts b/src/him/components/syntheticDataGovernance.ts
+new file mode 100644
+index 0000000..3fe0ff8
+--- /dev/null
++++ b/src/him/components/syntheticDataGovernance.ts
+@@ -0,0 +1,22 @@
++/** All data here are browser-local, self-declared demo records. Never authenticated operational configuration. */
++export type LocalContract={id:string;state:string;values:Record<string,string>;reviewedBy?:string};
++export type LocalConnector={id:string;key:string;contract:string;status:string;mode:string;reviewerId?:string;createdBy?:string;reviewedBy?:string;freshnessSeconds:string;kind:string;testResult?:string};
++function readArray<T>(key:string):T[]{try{const parsed=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(parsed)?parsed:[];}catch{return [];}}
++export function approvedSyntheticContracts(siteId:string):LocalContract[]{
++ return readArray<LocalContract>(`him.synthetic.domain.v2:/data/contracts:${siteId}:shared-demo`).filter(x=>x.state==='review_approved_synthetic'&&x.reviewedBy&&x.values.contract_id&&x.values.schema_version);
++}
++export function syntheticConnectorRecords(siteId:string):LocalConnector[]{
++ return readArray<LocalConnector>(`him.synthetic.connectors.v2:${siteId}:shared-demo`);
++}
++export function governedDemoCompatibility(connector:LocalConnector,contract:LocalContract):string[]{
++ const v=contract.values,problems:string[]=[];
++ if(connector.status!=='active_synthetic')problems.push('کانکتور در شبیه‌سازی فعال نیست');
++ if(connector.mode!=='read_only')problems.push('حالت فقط خواندنی لازم است');
++ if(connector.contract!==v.contract_id||connector.key!==v.source)problems.push('قرارداد و شناسه منبع تطابق ندارند');
++ if(v.schema_version!=='1')problems.push('نسخه schema در فیکسچر قابل اجرا نیست');
++ const fields=(v.required_fields||'').split(',').map(x=>x.trim());
++ if(!['synthetic_id','event_time'].every(x=>fields.includes(x)))problems.push('قرارداد فاقد فیلدهای لازم برای نمونه است');
++ if(!Number.isInteger(Number(connector.freshnessSeconds))||Number(connector.freshnessSeconds)<=0)problems.push('سیاست تازگی نامعتبر است');
++ if(!contract.reviewedBy||contract.state!=='review_approved_synthetic')problems.push('قرارداد بازبینی مستقل نشده است');
++ return problems;
++}
+diff --git a/src/him/components/syntheticDetector.ts b/src/him/components/syntheticDetector.ts
+new file mode 100644
+index 0000000..6eb86bc
+--- /dev/null
++++ b/src/him/components/syntheticDetector.ts
+@@ -0,0 +1,15 @@
++/** Versioned, deliberately fabricated detector exercise. Not a hospital measurement/model. */
++export const DEMO_DETECTOR={
++ id:'ALR-1050',ruleVersion:'capacity-threshold@demo-2',baselineVersion:'synthetic-reference-window@demo-1',
++ comparisonVersion:'single-point-vs-seven-demo-days@1',
++ observed:96,upper:90,lower:82,reference:[84,87,85,88,86,87,85],
++ observedAt:'2026-10-23T23:58:00+03:30',cutoff:'2026-10-23T23:59:59+03:30',
++ quality:'synthetic-not-verified',sourceFreshnessPolicyHours:24,
++};
++export function demoDetectorSummary(at:Date=new Date()){
++ const f=DEMO_DETECTOR,baselineMean=f.reference.reduce((a,b)=>a+b,0)/f.reference.length;
++ const ageHours=(at.getTime()-Date.parse(f.cutoff))/3600000;
++ return {...f,baselineMean:Math.round(baselineMean*100)/100,
++  comparison:f.observed>f.upper?'ABOVE_DEMO_UPPER_BOUND':f.observed<f.lower?'BELOW_DEMO_LOWER_BOUND':'WITHIN_DEMO_RANGE',
++  freshness:Number.isFinite(ageHours)&&ageHours>=0&&ageHours<=f.sourceFreshnessPolicyHours?'within-demo-window':'stale-or-unverified',ageHours};
++}
+diff --git a/src/him/data/evidenceData.ts b/src/him/data/evidenceData.ts
+index dc76a9c..71b37f6 100644
+--- a/src/him/data/evidenceData.ts
++++ b/src/him/data/evidenceData.ts
+@@ -40,8 +40,14 @@ export function alertEvidence(a: WorkAlert): EvidenceItem[] {
+     sourceVersion:'fixture-contract-bed-v1 [SYNTHETIC]',metricVersion:'bed-capacity-count@demo-1',
+     ruleVersion:'capacity-threshold@demo-2',snapshotCutoff:'2026-10-23T23:59:59+03:30',
+     sourceEventAt:'2026-10-23T23:58:00+03:30',ingestedAt:'2026-10-23T23:58:09+03:30',
+-    assumptions:'فیکسچر آزمایشی: همه مقادیر و زمان‌ها غیرعملیاتی هستند.',
++    assumptions:'فیکسچر آزمایشی: همه مقادیر و زمان‌ها غیرعملیاتی هستند؛ خط پایه ۷ مقدار مرجع ساختگی در synthetic-reference-window@demo-1 است. نه مدل مصوب.',
+     limitations:'فقط آزمایش رابط؛ شناسه قرارداد و زمان‌ها از منبع واقعی دریافت نشده‌اند.'
++  }:a.code==='ALR-1001'?{
++    sourceVersion:'inventory-connector-mock@1 (فیکسچر، نه قرارداد مصوب)',
++    metricVersion:'inventory-on-hand-demo@1',ruleVersion:'stock-threshold-demo@1',
++    snapshotCutoff:'2026-10-14T07:35:00+03:30 [SYNTHETIC ONLY]',sourceEventAt:'2026-10-14T07:30:00+03:30 [SYNTHETIC ONLY]',ingestedAt:'2026-10-14T07:32:00+03:30 [SYNTHETIC ONLY]',
++    assumptions:'آستانه ۳۰۰ ویال و موجودی ۱۲۰ ویال داده نمایشی هستند؛ این مقادیر از انبار واقعی خوانده نشده‌اند.',
++    limitations:'زمان‌های cutoff/رخداد/دریافت فقط سناریوی ساختگی جدیدند و در داده اولیه گزارش نشده‌اند. نسخه‌ها شناسه فیکسچر هستند، نه منشأ واقعی یا رکورد ممیزی.'
+   }:{};
+   return items.map(i => ({ ...i,...sample, hash: hashOf(i.id + i.detail) }));
+ }
+diff --git a/src/him/executive/dashboardStore.ts b/src/him/executive/dashboardStore.ts
+index 8312d3c..f14ff6a 100644
+--- a/src/him/executive/dashboardStore.ts
++++ b/src/him/executive/dashboardStore.ts
+@@ -10,10 +10,10 @@ export type MetricQuality='fresh'|'stale'|'unavailable'|'not_computable';
+ export interface MetricEvidence {id:string;title:string;source:string;snapshot:string;metricVersion:string;asOf:string;sourceEventAt?:string|null;ingestedAt?:string|null;scope:string;excerpt:string;limitations:string;}
+ export interface DashboardMetric {key:DashboardMetricKey;title:string;value:number|null;unit:string;quality:MetricQuality;description:string;formula?:string;numerator?:number;denominator?:number;version:string;asOf:string;evidence:MetricEvidence[];target:string;}
+ export interface DashboardSnapshot {siteId:string;siteName:string;period:Period;cutoff:string;refreshedAt:string;metrics:DashboardMetric[];alerts:WorkAlert[];tasks:ReturnType<typeof canonicalTasks>;issues:ReturnType<typeof listQualityIssues>;risks:typeof supplyRisks;}
+-const OCCUPANCY_FIXTURE:Record<string,{occupied:number;staffed:number;snapshot:string}>= {
+- [SITES_DATA[0]?.id||'none']:{occupied:80,staffed:100,snapshot:'SYN-OPS-TAL-20261023-v1'},
+- [SITES_DATA[1]?.id||'none']:{occupied:85,staffed:110,snapshot:'SYN-OPS-IMAM-20261023-v1'},
+- [SITES_DATA[2]?.id||'none']:{occupied:0,staffed:0,snapshot:'SYN-OPS-SHO-EMPTY-v1'},
++const OCCUPANCY_FIXTURE:Record<string,{occupied:number;staffed:number;snapshot:string;syntheticSourceEventAt:string;syntheticIngestedAt:string}>= {
++ [SITES_DATA[0]?.id||'none']:{occupied:80,staffed:100,snapshot:'SYN-OPS-TAL-20261023-v1',syntheticSourceEventAt:'2026-10-23T23:48:00+03:30',syntheticIngestedAt:'2026-10-23T23:50:00+03:30'},
++ [SITES_DATA[1]?.id||'none']:{occupied:85,staffed:110,snapshot:'SYN-OPS-IMAM-20261023-v1',syntheticSourceEventAt:'2026-10-23T23:42:00+03:30',syntheticIngestedAt:'2026-10-23T23:44:00+03:30'},
++ [SITES_DATA[2]?.id||'none']:{occupied:0,staffed:0,snapshot:'SYN-OPS-SHO-EMPTY-v1',syntheticSourceEventAt:'2026-10-23T23:10:00+03:30',syntheticIngestedAt:'2026-10-23T23:12:00+03:30'},
+ };
+ /** Comparison is explicitly restricted to authorized synthetic fixtures; not approved cross-site analytics. */
+ export function compareOccupancyFixtures(siteIds:string[],period:Period){
+@@ -46,7 +46,7 @@ export function getExecutiveDashboard(siteId:string,period:Period,alerts:WorkAle
+  const occupancy=OCCUPANCY_FIXTURE[siteId];
+  const cutoff='2026-10-23T23:59:59+03:30';
+  const sourceTime='2026-10-23T23:59:59+03:30';
+- const evidence:MetricEvidence[]=occupancy?[{id:`EVD-${occupancy.snapshot}`,title:'شواهد ظرفیت و اشغال نمونه',source:'فیکسچر مصنوعی عملیات',snapshot:occupancy.snapshot,metricVersion:'available_staffed_bed_occupancy@1',asOf:sourceTime,sourceEventAt:null,ingestedAt:null,scope:siteId,excerpt:`${occupancy.occupied} تخت اشغال‌شده / ${occupancy.staffed} تخت فعال دارای نیروی انسانی`,limitations:'ارقام ساختگی برای آزمون رابط؛ داده بیمارستانی یا HIS نیست.'}]:[];
++ const evidence:MetricEvidence[]=occupancy?[{id:`EVD-${occupancy.snapshot}`,title:'شواهد ظرفیت و اشغال نمونه',source:'فیکسچر مصنوعی عملیات',snapshot:occupancy.snapshot,metricVersion:'available_staffed_bed_occupancy@1',asOf:sourceTime,sourceEventAt:occupancy.syntheticSourceEventAt,ingestedAt:occupancy.syntheticIngestedAt,scope:siteId,excerpt:`${occupancy.occupied} تخت اشغال‌شده / ${occupancy.staffed} تخت فعال دارای نیروی انسانی`,limitations:'ارقام و هر دو timestamp صرفاً فیکسچر ساختگی مستقل از as-of هستند؛ این زمان‌ها از HIS/سامانه واقعی دریافت یا راستی‌آزمایی نشده‌اند.'}]:[];
+  const definitions:[DashboardMetricKey,string,number|null,string,string,string,string][]=[
+   ['occupancy','نرخ اشغال تخت',occupancy?calculateOccupancy(occupancy.occupied,occupancy.staffed):null,'٪','نسبت تخت اشغال‌شده به تخت فعال دارای نیروی انسانی','/operations','available_staffed_bed_occupancy@1'],
+   ['alerts','هشدارهای فعال',scopedAlerts.filter(activeAlert).length,'مورد','هشدارهای حل‌نشده در محدوده جاری','/alerts','alert-lifecycle@1'],
+diff --git a/src/him/phase6/Phase6.tsx b/src/him/phase6/Phase6.tsx
+index 39e955b..178a737 100644
+--- a/src/him/phase6/Phase6.tsx
++++ b/src/him/phase6/Phase6.tsx
+@@ -8,8 +8,12 @@ import {demoStore,freshMemo,newTask,uid,type Memo,type DemoTask} from './store';
+ import {supplyRisks} from '../supply/store';
+ import {DEMO_USERS} from '../data/mockData';
+ import {MemoActionHandoff} from './MemoActionHandoff';
++import {useShellLanguage} from '../components/useShellLanguage';
++import {formatPreferredDate,useDisplayPreferencesRevision} from '../components/datePreferences';
+ const field='w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900';
+ const labels:Record<DemoTask['status'],string>={open:'باز',assigned:'تخصیص‌یافته',in_progress:'در حال انجام',blocked:'مسدود',submitted_for_review:'در انتظار بررسی',completed:'تکمیل‌شده',canceled:'لغوشده'};
++const englishTaskLabels:Record<DemoTask['status'],string>={open:'Open',assigned:'Assigned',in_progress:'In progress',blocked:'Blocked',submitted_for_review:'Awaiting review',completed:'Completed',canceled:'Canceled'};
++const englishPriorities:Record<DemoTask['priority'],string>={low:'Low',normal:'Normal',high:'High',urgent:'Urgent'};
+ const priorities:Record<DemoTask['priority'],string>={low:'کم',normal:'عادی',high:'بالا',urgent:'فوری'};
+ function Field({label,value,change,multi=false,required=false}:{label:string;value:string;change:(s:string)=>void;multi?:boolean;required?:boolean}){return <label className="block space-y-1 text-sm font-medium"><span>{label}{required?' *':''}</span>{multi?<textarea className={field+' min-h-24'} value={value} onChange={e=>change(e.target.value)}/>:<input className={field} value={value} onChange={e=>change(e.target.value)} required={required}/>}</label>}
+ const Panel=({title,children}:{title:string;children:React.ReactNode})=><section className="rounded-xl border border-slate-200 bg-white p-5 space-y-4"><h2 className="font-bold text-base border-b pb-3">{title}</h2>{children}</section>;
+@@ -29,7 +33,7 @@ export function TaskDrawer({source,defaults,close,created}:{source:{memo?:Memo;a
+  return <Dialog open={!!source} onOpenChange={o=>{if(!o)close()}}><DialogContent dir="rtl" className="sm:max-w-xl max-h-[90vh] overflow-y-auto text-right"><DialogHeader><DialogTitle>ایجاد وظیفه</DialogTitle></DialogHeader><div className="space-y-4"><p className="rounded bg-slate-50 p-3 text-xs">ایجادشده از {source?.supplyCaseId?'پرونده کمبود':source?.alertId?'هشدار':source?.memo?'یادداشت تصمیم':'پاسخ کوپایلت'} · فقط داده نمایشی</p><Field label="عنوان" required value={task.title} change={title=>patch({title})}/><Field label="شرح" multi value={task.description} change={description=>patch({description})}/><Field label="نوع وظیفه" value={task.kind} change={kind=>patch({kind})}/><label className="block text-sm">مسئول مجاز<select className={field} value={task.owner} onChange={e=>patch({owner:e.target.value,queue:e.target.value?'':task.queue})}><option value="">بدون مسئول؛ ارجاع به صف</option>{eligibleOwners(task.siteId).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label><Field label="صف واگذاری (به جای مسئول)" value={task.queue} change={queue=>patch({queue,owner:queue?'':task.owner})}/><label className="block text-sm">اولویت<select className={field} value={task.priority} onChange={e=>patch({priority:e.target.value as DemoTask['priority']})}>{Object.entries(priorities).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label><label className="block text-sm">موعد<input type="date" className={field} value={task.dueDate} onChange={e=>patch({dueDate:e.target.value})}/></label><p className="text-xs text-slate-500">شواهد مرتبط: {task.evidenceIds.join('، ')||'ندارد'}</p>{error&&<p role="alert" className="text-red-700">{error}</p>}<div className="flex gap-2"><Button variant="outline" onClick={close}>انصراف</Button><Button disabled={busy} onClick={submit}>{busy?'در حال ذخیره…':'ایجاد وظیفه'}</Button></div></div></DialogContent></Dialog>
+ }
+ export function Phase6View({mode,id}:{mode:'list'|'new'|'edit'|'detail'|'task';id?:string}){
+- const {scope,user,tasks:legacyTasks,openWorkView,switchSite,showNotification}=useApp();const [tick,setTick]=useState(0);const refresh=()=>setTick(t=>t+1);const [search,setSearch]=useState('');const [filter,setFilter]=useState('all');const [source,setSource]=useState<{memo?:Memo;answer?:AnswerArtifact}|null>(null);const [memo,setMemo]=useState<Memo>(()=>id?demoStore.memos().find(m=>m.id===id)||freshMemo(scope.siteId||'',scope.siteName,user?.name||'کاربر'):freshMemo(scope.siteId||'',scope.siteName,user?.name||'کاربر'));const [dirty,setDirty]=useState(false);const [error,setError]=useState('');const [showHistory,setShowHistory]=useState(false);const [saving,setSaving]=useState(false);const bypassSaveNavigationGuard=useRef(false);
++ const {scope,user,tasks:legacyTasks,openWorkView,switchSite,showNotification}=useApp();const [language]=useShellLanguage();useDisplayPreferencesRevision();const en=language==='en';const [tick,setTick]=useState(0);const refresh=()=>setTick(t=>t+1);const [search,setSearch]=useState('');const [filter,setFilter]=useState('all');const [source,setSource]=useState<{memo?:Memo;answer?:AnswerArtifact}|null>(null);const [memo,setMemo]=useState<Memo>(()=>id?demoStore.memos().find(m=>m.id===id)||freshMemo(scope.siteId||'',scope.siteName,user?.name||'کاربر'):freshMemo(scope.siteId||'',scope.siteName,user?.name||'کاربر'));const [dirty,setDirty]=useState(false);const [error,setError]=useState('');const [showHistory,setShowHistory]=useState(false);const [saving,setSaving]=useState(false);const bypassSaveNavigationGuard=useRef(false);
+  const go=(v:Parameters<typeof openWorkView>[0])=>openWorkView(v);
+  useEffect(()=>{if(!dirty || (mode!=='edit' && mode!=='new'))return;const guard=(e:Event)=>{if(bypassSaveNavigationGuard.current)return;if(!window.confirm('تغییرات ذخیره‌نشده دارید. خارج می‌شوید؟'))e.preventDefault()};window.addEventListener('him:before-navigation',guard);return()=>window.removeEventListener('him:before-navigation',guard)},[dirty,mode]);
+  useEffect(()=>{const fn=(e:BeforeUnloadEvent)=>{if(dirty){e.preventDefault();e.returnValue=''}};window.addEventListener('beforeunload',fn);return()=>window.removeEventListener('beforeunload',fn)},[dirty]);
+@@ -55,23 +59,23 @@ export function Phase6View({mode,id}:{mode:'list'|'new'|'edit'|'detail'|'task';i
+  };
+  const updateTask=(p:Partial<DemoTask>,event:string)=>{if(!taskForm)return;setError('');if(task?.status==='completed'&&(p.status??taskForm.status)!=='completed'&&!reopenReason.trim()){setError('بازگشایی وظیفه تکمیل‌شده به دلیل ثبت‌شده نیاز دارد.');return}if(p.owner && !eligibleOwners(taskForm.siteId).some(u=>u.id===p.owner)){setError('شناسه مسئول معتبر یا در محدوده بیمارستان مجاز نیست.');return}if(p.status==='blocked' && (!(p.blocker??taskForm.blocker).trim() || !(p.nextReview??taskForm.nextReview) || (p.nextReview??taskForm.nextReview)<today())){setError('برای وضعیت مسدود، دلیل مانع و تاریخ بازبینی امروز یا آینده الزامی است.');return}try{const ownershipNote=p.owner && p.owner!==task?.owner ? ` · مسئول قبلی: ${ownerLabel(task?.owner||'',taskForm.siteId)} → مسئول جدید: ${ownerLabel(p.owner,taskForm.siteId)}` : '';
+  const result={...taskForm,...p,history:[...taskForm.history,{at:new Date().toISOString(),text:(task?.status==='completed'&&(p.status??taskForm.status)!=='completed'?`${event} · دلیل بازگشایی: ${reopenReason.trim()}`:event)+ownershipNote}]};demoStore.saveTask(result);setTaskForm(result);if(task?.status==='completed'&&(p.status??taskForm.status)!=='completed')setReopenReason('');refresh();showNotification('تغییرات وظیفه ذخیره شد')}catch{setError('ذخیره تغییرات ناموفق بود')}};
+- if(mode==='task')return !task?<p role="alert">وظیفه یافت نشد یا به این بیمارستان تعلق ندارد.</p>:<div className="space-y-5 w-full min-w-0 max-w-full overflow-x-hidden"><Button variant="outline" onClick={()=>go({kind:'tasks'})}>بازگشت به وظایف</Button><Panel title={task.title}>
+- <p className="text-xs text-slate-500">مدیریت وظیفه · ذخیره‌سازی نمایشی محلی</p>
+- <Field label="ویرایش عنوان" required value={taskForm?.title||''} change={title=>setTaskForm(x=>x?{...x,title}:x)}/><p className="text-xs" aria-live="polite">{(taskForm?.title||'').length} / ۲۰۰ نویسه</p>{(taskForm?.title||'').length>200&&<p role="alert" className="text-red-700">عنوان بیش از ۲۰۰ نویسه است؛ ذخیره مجاز نیست و عنوان فعلی تغییر نکرده است.</p>}
+- <Field label="ویرایش شرح" multi value={taskForm?.description||''} change={description=>setTaskForm(x=>x?{...x,description}:x)}/>
+- <Button onClick={()=>{if(!taskForm?.title.trim()||taskForm.title.length>200||taskForm.description.length>5000){setError('عنوان الزامی و حداکثر ۲۰۰ حرف است؛ شرح حداکثر ۵۰۰۰ حرف.');return}setError('');updateTask({title:taskForm.title,description:taskForm.description},'ویرایش عنوان و شرح')}}>ذخیره عنوان و شرح</Button>
+- <p>وضعیت: {labels[taskForm?.status||task.status]} · اولویت: {priorities[taskForm?.priority||task.priority]} · مسئول: {taskForm?.owner?ownerLabel(taskForm.owner,task.siteId):task.queue||'نامشخص'}</p>
+- <p>موعد: {task.dueDate||'نامشخص'}</p><p>مرجع پیوند: {task.supplyCaseId?<a href={`/supply/cases/${encodeURIComponent(task.supplyCaseId)}`} className="inline-flex rounded text-teal-700 underline underline-offset-2 hover:text-teal-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600" onClick={e=>{e.preventDefault();openLinkedSupplyCase(task.supplyCaseId!)}} aria-label={`باز کردن پرونده ${task.supplyCaseId}`}><bdi dir="ltr">{task.supplyCaseId}</bdi></a>:task.memoId||task.answerId||'ندارد'}</p><p className="text-xs">مراجع شواهد: {task.evidenceIds.join('، ')||'ندارد'}</p>
+- {task.memoId&&<Button variant="outline" onClick={()=>go({kind:'memo',id:task.memoId!})}>یادداشت مرتبط</Button>}{task.answerId&&<Button variant="outline" onClick={()=>go({kind:'copilot',answerId:task.answerId})}>پاسخ کوپایلت</Button>}
+- <label className="block">تغییر وضعیت<select className={field} value={taskForm?.status||task.status} onChange={e=>{const status=e.target.value as DemoTask['status'];if(task.status==='completed'&&status!=='completed'){setTaskForm(x=>x?{...x,status}:x);setError('برای بازگشایی، دلیل را ثبت کنید؛ تغییر وضعیت هنوز ذخیره نشده است.');return}if(status==='blocked'){setTaskForm(x=>x?{...x,status}:x);setError('برای ثبت وضعیت مسدود، دلیل مانع و تاریخ بازبینی را وارد و سپس ثبت کنید.');return}if(status==='completed'&&task.reviewRequired){setError('تکمیل فقط با تأیید نتیجه در مرحله بررسی انجام می‌شود.');return}if(taskForm?.status==='submitted_for_review'){setError('ابتدا نتیجه را تأیید یا رد کنید.');return}setError('');updateTask({status},`تغییر وضعیت به ${labels[status]}`)}}>{Object.entries(labels).filter(([k])=>k!=='completed'||!task.reviewRequired).map(([k,v])=><option key={k} value={k}>{v}</option>)}{taskForm?.status==='completed'&&<option value="completed">تکمیل‌شده</option>}</select></label>
+- {task.status==='completed'&&taskForm?.status!=='completed'&&<div className="rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2"><Field label="دلیل الزامی بازگشایی" multi value={reopenReason} change={setReopenReason}/><p className="text-xs">این عملیات فقط در محیط نمایشی است؛ دلیل در تاریخچه ذخیره می‌شود.</p><Button disabled={!reopenReason.trim()} onClick={()=>updateTask({status:taskForm!.status},`بازگشایی وظیفه به ${labels[taskForm!.status]}`)}>ثبت بازگشایی با دلیل</Button></div>}
+- <label className="block text-sm">واگذاری به کاربر مجاز<select className={field} value={eligibleOwners(taskForm?.siteId||'').some(u=>u.id===taskForm?.owner)?taskForm?.owner:''} onChange={e=>setTaskForm(x=>x?{...x,owner:e.target.value}:x)}><option value="">انتخاب کاربر معتبر</option>{eligibleOwners(taskForm?.siteId||'').map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label><Button variant="outline" disabled={!taskForm?.owner||!eligibleOwners(taskForm.siteId).some(u=>u.id===taskForm.owner)} onClick={()=>updateTask({owner:taskForm!.owner,queue:'',status:'assigned'},'واگذاری مجدد')}>ثبت مسئول</Button>
+- {taskForm?.status==='blocked'&&<><Field label="دلیل انسداد" value={taskForm.blocker} change={blocker=>setTaskForm(x=>x?{...x,blocker}:x)}/><label>تاریخ بررسی مجدد<input type="date" className={field} value={taskForm.nextReview} onChange={e=>setTaskForm(x=>x?{...x,nextReview:e.target.value}:x)}/></label><Button disabled={!taskForm.blocker.trim()||!taskForm.nextReview||taskForm.nextReview<today()} onClick={()=>updateTask({status:'blocked',blocker:taskForm.blocker,nextReview:taskForm.nextReview},'ثبت مانع')}>ثبت مانع</Button></>}
+- <Field label="نتیجه" value={taskForm?.outcome||''} multi change={outcome=>setTaskForm(x=>x?{...x,outcome}:x)}/>
+- <Button disabled={!taskForm?.outcome.trim()||taskForm.status==='submitted_for_review'||taskForm.status==='completed'} onClick={()=>updateTask({outcome:taskForm?.outcome||'',status:'submitted_for_review'},'ثبت نتیجه و ارسال برای بررسی')}>ثبت نتیجه و ارسال برای بررسی</Button>
+- {taskForm?.status==='submitted_for_review'&&<div className="rounded border border-amber-300 bg-amber-50 p-4 space-y-3"><p className="font-bold">بررسی نتیجه (نمایشی)</p><p className="text-sm">تأیید و رد صرفاً در مرورگر ثبت می‌شود و تأیید واقعی سازمانی نیست.</p><div className="flex gap-2"><Button onClick={()=>{setError('');updateTask({status:'completed'},'نتیجه توسط بازبین نمایشی تأیید شد')}}>تأیید نتیجه</Button><Button variant="outline" onClick={()=>{setError('');updateTask({status:'in_progress'},'نتیجه توسط بازبین نمایشی رد و برای اصلاح بازگردانده شد')}}>رد و بازگشت برای اصلاح</Button></div></div>}
+- <Field label="نظر جدید" value={search} change={setSearch}/><Button variant="outline" disabled={!search.trim()} onClick={()=>{updateTask({comments:[...(taskForm?.comments||[]),{at:new Date().toISOString(),text:search}]},'نظر جدید');setSearch('')}}>افزودن نظر</Button>
+- {error&&<p role="alert" className="text-red-700">{error}</p>}<h3 className="font-bold">نظرات</h3>{taskForm?.comments.map((c,i)=><p key={i} className="rounded bg-slate-50 p-2">{c.text}</p>)}<h3 className="font-bold">تاریخچه فعالیت</h3>{taskForm?.history.map((h,i)=><p key={i} className="text-sm border-r-2 border-teal-500 pr-3">{h.text} · {h.at}</p>)}
++ if(mode==='task')return !task?<p role="alert">{en?'Task not found or not available in this hospital.':'وظیفه یافت نشد یا به این بیمارستان تعلق ندارد.'}</p>:<div className="space-y-5 w-full min-w-0 max-w-full overflow-x-hidden"><Button variant="outline" onClick={()=>go({kind:'tasks'})}>{en?'Back to tasks':'بازگشت به وظایف'}</Button><Panel title={task.title}>
++ <p className="text-xs text-slate-500">{en?'Task management · local demo storage':'مدیریت وظیفه · ذخیره‌سازی نمایشی محلی'}</p>
++ <Field label={en?'Edit title':'ویرایش عنوان'} required value={taskForm?.title||''} change={title=>setTaskForm(x=>x?{...x,title}:x)}/><p className="text-xs" aria-live="polite">{(taskForm?.title||'').length} / {en?'200 characters':'۲۰۰ نویسه'}</p>{(taskForm?.title||'').length>200&&<p role="alert" className="text-red-700">عنوان بیش از ۲۰۰ نویسه است؛ ذخیره مجاز نیست و عنوان فعلی تغییر نکرده است.</p>}
++ <Field label={en?'Edit description':'ویرایش شرح'} multi value={taskForm?.description||''} change={description=>setTaskForm(x=>x?{...x,description}:x)}/>
++ <Button onClick={()=>{if(!taskForm?.title.trim()||taskForm.title.length>200||taskForm.description.length>5000){setError('عنوان الزامی و حداکثر ۲۰۰ حرف است؛ شرح حداکثر ۵۰۰۰ حرف.');return}setError('');updateTask({title:taskForm.title,description:taskForm.description},'ویرایش عنوان و شرح')}}>{en?'Save title and description':'ذخیره عنوان و شرح'}</Button>
++ <p>{en?'Status:':'وضعیت:'} {(en?englishTaskLabels:labels)[taskForm?.status||task.status]} · {en?'Priority:':'اولویت:'} {(en?englishPriorities:priorities)[taskForm?.priority||task.priority]} · {en?'Owner:':'مسئول:'} {taskForm?.owner?ownerLabel(taskForm.owner,task.siteId):task.queue||'نامشخص'}</p>
++ <p>{en?'Due date:':'موعد:'} {task.dueDate?formatPreferredDate(task.dueDate,language):(en?'Unknown':'نامشخص')}</p><p>{en?'Linked reference:':'مرجع پیوند:'} {task.supplyCaseId?<a href={`/supply/cases/${encodeURIComponent(task.supplyCaseId)}`} className="inline-flex rounded text-teal-700 underline underline-offset-2 hover:text-teal-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600" onClick={e=>{e.preventDefault();openLinkedSupplyCase(task.supplyCaseId!)}} aria-label={`باز کردن پرونده ${task.supplyCaseId}`}><bdi dir="ltr">{task.supplyCaseId}</bdi></a>:task.memoId||task.answerId||'ندارد'}</p><p className="text-xs">{en?'Evidence refs:':'مراجع شواهد:'} {task.evidenceIds.join('، ')||'ندارد'}</p>
++ {task.memoId&&<Button variant="outline" onClick={()=>go({kind:'memo',id:task.memoId!})}>{en?'Linked memo':'یادداشت مرتبط'}</Button>}{task.answerId&&<Button variant="outline" onClick={()=>go({kind:'copilot',answerId:task.answerId})}>{en?'Copilot answer':'پاسخ کوپایلت'}</Button>}
++ <label className="block">{en?'Change status':'تغییر وضعیت'}<select className={field} value={taskForm?.status||task.status} onChange={e=>{const status=e.target.value as DemoTask['status'];if(task.status==='completed'&&status!=='completed'){setTaskForm(x=>x?{...x,status}:x);setError('برای بازگشایی، دلیل را ثبت کنید؛ تغییر وضعیت هنوز ذخیره نشده است.');return}if(status==='blocked'){setTaskForm(x=>x?{...x,status}:x);setError('برای ثبت وضعیت مسدود، دلیل مانع و تاریخ بازبینی را وارد و سپس ثبت کنید.');return}if(status==='completed'&&task.reviewRequired){setError('تکمیل فقط با تأیید نتیجه در مرحله بررسی انجام می‌شود.');return}if(taskForm?.status==='submitted_for_review'){setError('ابتدا نتیجه را تأیید یا رد کنید.');return}setError('');updateTask({status},`تغییر وضعیت به ${labels[status]}`)}}>{Object.entries(labels).filter(([k])=>k!=='completed'||!task.reviewRequired).map(([k,v])=><option key={k} value={k}>{en?englishTaskLabels[k as DemoTask['status']]:v}</option>)}{taskForm?.status==='completed'&&<option value="completed">{en?'Completed':'تکمیل‌شده'}</option>}</select></label>
++ {task.status==='completed'&&taskForm?.status!=='completed'&&<div className="rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2"><Field label={en?'Required reopening reason':'دلیل الزامی بازگشایی'} multi value={reopenReason} change={setReopenReason}/><p className="text-xs">{en?'Demo only: reason is stored in local activity history.':'این عملیات فقط در محیط نمایشی است؛ دلیل در تاریخچه ذخیره می‌شود.'}</p><Button disabled={!reopenReason.trim()} onClick={()=>updateTask({status:taskForm!.status},`بازگشایی وظیفه به ${labels[taskForm!.status]}`)}>{en?'Save reopening with reason':'ثبت بازگشایی با دلیل'}</Button></div>}
++ <label className="block text-sm">{en?'Assign to authorized user':'واگذاری به کاربر مجاز'}<select className={field} value={eligibleOwners(taskForm?.siteId||'').some(u=>u.id===taskForm?.owner)?taskForm?.owner:''} onChange={e=>setTaskForm(x=>x?{...x,owner:e.target.value}:x)}><option value="">{en?'Select authorized user':'انتخاب کاربر معتبر'}</option>{eligibleOwners(taskForm?.siteId||'').map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label><Button variant="outline" disabled={!taskForm?.owner||!eligibleOwners(taskForm.siteId).some(u=>u.id===taskForm.owner)} onClick={()=>updateTask({owner:taskForm!.owner,queue:'',status:'assigned'},'واگذاری مجدد')}>{en?'Save assignee':'ثبت مسئول'}</Button>
++ {taskForm?.status==='blocked'&&<><Field label={en?'Blocker reason':'دلیل انسداد'} value={taskForm.blocker} change={blocker=>setTaskForm(x=>x?{...x,blocker}:x)}/><label>{en?'Next review date':'تاریخ بررسی مجدد'}<input type="date" className={field} value={taskForm.nextReview} onChange={e=>setTaskForm(x=>x?{...x,nextReview:e.target.value}:x)}/></label><Button disabled={!taskForm.blocker.trim()||!taskForm.nextReview||taskForm.nextReview<today()} onClick={()=>updateTask({status:'blocked',blocker:taskForm.blocker,nextReview:taskForm.nextReview},'ثبت مانع')}>{en?'Save blocker':'ثبت مانع'}</Button></>}
++ <Field label={en?'Outcome':'نتیجه'} value={taskForm?.outcome||''} multi change={outcome=>setTaskForm(x=>x?{...x,outcome}:x)}/>
++ <Button disabled={!taskForm?.outcome.trim()||taskForm.status==='submitted_for_review'||taskForm.status==='completed'} onClick={()=>updateTask({outcome:taskForm?.outcome||'',status:'submitted_for_review'},'ثبت نتیجه و ارسال برای بررسی')}>{en?'Submit outcome for review':'ثبت نتیجه و ارسال برای بررسی'}</Button>
++ {taskForm?.status==='submitted_for_review'&&<div className="rounded border border-amber-300 bg-amber-50 p-4 space-y-3"><p className="font-bold">{en?'Outcome review (demo)':'بررسی نتیجه (نمایشی)'}</p><p className="text-sm">{en?'Approval and rejection are browser-local only, not organizational authorization.':'تأیید و رد صرفاً در مرورگر ثبت می‌شود و تأیید واقعی سازمانی نیست.'}</p><div className="flex gap-2"><Button onClick={()=>{setError('');updateTask({status:'completed'},'نتیجه توسط بازبین نمایشی تأیید شد')}}>{en?'Approve outcome':'تأیید نتیجه'}</Button><Button variant="outline" onClick={()=>{setError('');updateTask({status:'in_progress'},'نتیجه توسط بازبین نمایشی رد و برای اصلاح بازگردانده شد')}}>{en?'Reject and return for revision':'رد و بازگشت برای اصلاح'}</Button></div></div>}
++ <Field label={en?'New comment':'نظر جدید'} value={search} change={setSearch}/><Button variant="outline" disabled={!search.trim()} onClick={()=>{updateTask({comments:[...(taskForm?.comments||[]),{at:new Date().toISOString(),text:search}]},'نظر جدید');setSearch('')}}>{en?'Add comment':'افزودن نظر'}</Button>
++ {error&&<p role="alert" className="text-red-700">{error}</p>}<h3 className="font-bold">{en?'Comments':'نظرات'}</h3>{taskForm?.comments.map((c,i)=><p key={i} className="rounded bg-slate-50 p-2">{c.text}</p>)}<h3 className="font-bold">{en?'Activity history':'تاریخچه فعالیت'}</h3>{taskForm?.history.map((h,i)=><p key={i} className="text-sm border-r-2 border-teal-500 pr-3">{h.text} · {formatPreferredDate(h.at,language)}</p>)}
+  </Panel></div>;
+  if(mode==='list')return <div className="space-y-5"><div className="flex justify-between gap-3 flex-wrap"><h1 className="text-xl font-bold">یادداشت‌های تصمیم</h1><Button onClick={()=>go({kind:'memo-new'})}>ساخت یادداشت تصمیم</Button></div><p className="text-xs text-slate-500">ذخیره‌سازی فقط در این مرورگر و مخصوص نمایش آزمایشی است.</p><div className="flex flex-wrap gap-3"><input aria-label="جستجو" placeholder="جستجوی یادداشت" className={field+' max-w-xs'} value={search} onChange={e=>setSearch(e.target.value)}/><select aria-label="فیلتر وضعیت" className={field+' max-w-40'} value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">همه وضعیت‌ها</option><option value="draft">پیش‌نویس</option></select></div>{demoStore.memos().filter(m=>m.siteId===scope.siteId&&m.title.includes(search)&&(filter==='all'||m.status===filter)).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).map(m=><div key={m.id} className="rounded-xl border bg-white p-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold">{m.title}</h2><p className="text-xs text-slate-500">پیش‌نویس · {m.siteName} · {m.owner||'نامشخص'} · نسخه {m.revision} · {new Date(m.updatedAt).toLocaleString('fa-IR')} · {demoStore.tasks().filter(t=>t.memoId===m.id).length} وظیفه</p></div><div className="flex gap-2"><Button variant="outline" onClick={()=>go({kind:'memo',id:m.id})}>مشاهده</Button><Button variant="outline" onClick={()=>go({kind:'memo-edit',id:m.id})}>ویرایش</Button></div></div>)}{!demoStore.memos().some(m=>m.siteId===scope.siteId)&&<p className="rounded-xl border bg-white p-7 text-slate-500">هنوز هیچ یادداشت تصمیمی ثبت نشده است.</p>}</div>;
+  if((mode==='detail'||mode==='edit')&&!saved)return <p role="alert">یادداشت یافت نشد یا در محدوده این بیمارستان نیست.</p>;

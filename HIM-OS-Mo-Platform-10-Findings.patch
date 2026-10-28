@@ -1,0 +1,351 @@
+--- a/src/him/components/DomainWorkspaces.tsx
++++ b/src/him/components/DomainWorkspaces.tsx
+@@ -8,6 +8,16 @@
+ type Definition={title:string;tabs:Array<{name:string;fields:Field[];help:string}>;warning:string};
+ const f=(key:string,label:string,kind:Kind='text',required=true,options?:string[]):Field=>({key,label,kind,required,options});
+ const definitions:Record<string,Definition>={
++ '/settings/governance':{title:'حاکمیت، گیت‌ها و تصمیم‌های سکو · PLT-05',warning:'سوابق صرفاً پیشنهادهای ساختگی در مرورگر هستند؛ سیاست واقعی، دوره نگهداری یا گیت انتشار تأیید یا اعمال نمی‌شود.',tabs:[
++  {name:'ثبت تصمیم',help:'DEC و مبنای انتخاب پیشنهادی برای بازبینی مالک؛ تصویب تنها پس از امضای صاحب اختیار واقعی.',fields:[f('decision_id','شناسه تصمیم'),f('topic','موضوع'),f('owner','مالک تصمیم'),f('state','وضعیت','select',true,['discovery_required','provisional_default','environment_gate','intended_use_gate','deferred_activation']),f('rationale','منطق و گزینه‌ها','textarea'),f('evidence','مرجع شواهد','textarea'),f('gate','گیت مربوط'),f('due','موعد','date')]},
++  {name:'گیت‌های انتشار',help:'مرور وابستگی و نتیجه کنترل‌ها؛ هیچ گیتی بدون شاهد معتبر Passed نمی‌شود.',fields:[f('gate_id','شناسه گیت'),f('module','ماژول'),f('version','نسخه'),f('check','کنترل/قرارداد'),f('evidence','شواهد','textarea'),f('reviewer','بازبین مستقل'),f('status','وضعیت','select',true,['unverified','blocked','awaiting_review'])]},
++  {name:'نگهداری و حذف',help:'پیشنهاد سیاست retention و legal hold؛ هیچ حذف یا نگهداری واقعی اجرا نمی‌شود.',fields:[f('record_type','نوع رکورد'),f('owner','مالک'),f('retention','مدت/سیاست نگهداری'),f('legal_hold','وضعیت منع حذف','select',true,['unknown','proposed','requires_approval']),f('evidence','مبنای تصمیم','textarea'),f('reviewer','بازبین')]},
++  {name:'بازبینی و ارتقا',help:'فقط ثبت درخواست بازبینی مستقل، بدون فعال‌سازی سیاست.',fields:[f('version_ref','مرجع نسخه'),f('change','خلاصه تغییر','textarea'),f('risk','ریسک/بازگشت','textarea'),f('reviewer','شناسه بازبین')]}]},
++ '/executive/briefs':{title:'Brief Builder · گزارش مدیریتی نسخه‌دار · EXE-03',warning:'زمان‌بندی و ارسال واقعی غیرفعال است؛ منابع سنجه/شواهد زنده و اجازه گیرندگان موجود نیست.',tabs:[
++  {name:'قالب و دامنه',help:'ثبت پیش‌نویس دوره‌ای با بازه و مبنای زمانی؛ بدون ساخت گزارش خودکار.',fields:[f('title','عنوان گزارش'),f('template','قالب','select',true,['daily','weekly','custom']),f('scope','دامنه بیمارستان'),f('cadence','تناوب','select',true,['once','daily','weekly']),f('boundary','مرز دوره','select',true,['last_complete_day','last_complete_week','custom']),f('generate_at','زمان تولید پیشنهادی','datetime-local'),f('stale_policy','سیاست منبع قدیمی','select',true,['block','warn','omit']),f('editor','ویرایشگر'),f('reviewer','بازبین مستقل'),f('recipients','گیرندگان پیشنهادی')]},
++  {name:'شواهد و برش داده',help:'ثبت نسخه منبع و محدودیت، بدون تأیید آمار.',fields:[f('brief','شناسه پیش‌نویس'),f('metric','متریک و نسخه'),f('cutoff','قطع داده','datetime-local'),f('evidence','ارجاع شواهد','textarea'),f('limitations','محدودیت‌ها','textarea')]},
++  {name:'بازبینی',help:'ارسال برای بررسی نمایشی؛ هر نسخه باید شواهد و گیرندگان مجاز داشته باشد.',fields:[f('brief','شناسه پیش‌نویس'),f('editor','ویراستار'),f('reviewer','بازبین'),f('comment','نتیجه یا درخواست اصلاح','textarea')]},
++  {name:'انتشار',help:'ارسال و زمان‌بندی واقعی در این نمونه غیرفعال است؛ درخواست مجوز انتشار ثبت می‌شود.',fields:[f('brief','شناسه پیش‌نویس'),f('recipients','گیرندگان مجاز پیشنهادی'),f('publication_cutoff','زمان مبنا','datetime-local'),f('reviewer','بازبین تأییدکننده'),f('reason','دلیل درخواست','textarea')]}]},
+  '/data/datasets':{title:'مدیریت متریک و مجموعه‌داده · DAT-05',warning:'فرمول‌های ثبت‌شده اجرا یا منتشر نمی‌شوند. نسخه مصوب و مجموعه‌داده واقعی متصل نیستند.',tabs:[
+  {name:'فهرست مجموعه‌داده‌ها',help:'موجودی مرجع مجموعه‌داده‌ها دریافت نشده؛ فقط درخواست بررسی داده نگهداری می‌شود.',fields:[f('dataset','شناسه مجموعه‌داده'),f('owner','مسئول داده'),f('classification','طبقه‌بندی','select',true,['synthetic','internal','restricted']),f('freshness','حد تازگی (ثانیه)','number')]},
+  {name:'تعریف متریک',help:'تعریف پیش‌نویس، کنترل نحوی فرمول، نسخه‌بندی و درخواست بازبینی مستقل؛ انتشار اجرایی مسدود است.',fields:[f('metric_key','metric_key'),f('name','نام متریک'),f('owner_id','owner_id'),f('unit','واحد UCUM'),f('grain','grain'),f('numerator','فرمول صورت'),f('denominator','فرمول مخرج'),f('aggregation','aggregation','select',true,['sum','ratio','avg','count']),f('allowed_dimensions','ابعاد مجاز (با ویرگول)'),f('required_datasets','شناسه مجموعه‌داده‌های لازم'),f('exclusions','استثناها','textarea'),f('timezone_policy','سیاست منطقه زمانی','select',true,['Asia/Tehran','UTC']),f('freshness_limit_seconds','حد تازگی (ثانیه)','number'),f('quality_policy_id','شناسه سیاست کیفیت'),f('effective_from','تاریخ مؤثر','date'),f('version','نسخه')]},
+--- a/src/him/components/Header.tsx
++++ b/src/him/components/Header.tsx
+@@ -13,7 +13,6 @@
+ import { useApp } from '../context/AppContext';
+ import { DEMO_USERS } from '../data/mockData';
+ import {useShellLanguage} from './useShellLanguage';
+-import {formatTehranPersianDate} from './persianCalendar';
+ 
+ export const Header: React.FC = () => {
+   const { 
+@@ -32,12 +31,16 @@
+     readNotificationIds
+   } = useApp();
+   const [lang,setLang] = useShellLanguage();
++  const [calendar,setCalendar] = useState<'persian'|'gregory'>(()=>{try{return localStorage.getItem('him.ui.calendar')==='gregory'?'gregory':'persian';}catch{return 'persian';}});
++  const [timeZone,setTimeZone] = useState<'Asia/Tehran'|'UTC'>(()=>{try{return localStorage.getItem('him.ui.timeZone')==='UTC'?'UTC':'Asia/Tehran';}catch{return 'Asia/Tehran';}});
++  const updateCalendar=(v:'persian'|'gregory')=>{setCalendar(v);try{localStorage.setItem('him.ui.calendar',v);}catch{/* optional */}};
++  const updateTimeZone=(v:'Asia/Tehran'|'UTC')=>{setTimeZone(v);try{localStorage.setItem('him.ui.timeZone',v);}catch{/* optional */}};
++  const displayDate=new Intl.DateTimeFormat(lang==='en'?'en-US':'fa-IR',{calendar,weekday:'long',year:'numeric',month:'long',day:'numeric',timeZone}).format(new Date());
+   const unreadCount = notifications.filter(n => !readNotificationIds.includes(n.id)).length;
+ 
+   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+   const [isStateMenuOpen, setIsStateMenuOpen] = useState(false);
+ 
+-  const currentPersianDate = formatTehranPersianDate(new Date());
+ 
+   return (
+     <header className="h-16 bg-white border-b border-slate-200/80 px-4 md:px-6 flex items-center justify-between gap-4 sticky top-0 z-30 select-none">
+@@ -102,7 +105,7 @@
+         {/* Persian Calendar */}
+         <div className="hidden lg:flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 font-mono">
+           <Calendar className="w-3.5 h-3.5 text-slate-400" />
+-          <span className="font-sans">{lang==='en'?new Date().toLocaleDateString('en-GB'):currentPersianDate}</span>
++          <span className="font-sans">{displayDate}</span>
+         </div>
+ 
+         {/* View State Switcher for User to test normal, loading, empty, error */}
+@@ -192,6 +195,12 @@
+             <option value="fa">فارسی · RTL</option><option value="en">English · LTR</option>
+           </select>
+         </label>
++        <label className="hidden md:flex items-center gap-1 text-xs text-slate-600">{lang==='en'?'Calendar':'تقویم'}
++          <select aria-label="Calendar system / نوع تقویم" value={calendar} onChange={e=>updateCalendar(e.target.value as 'persian'|'gregory')} className="rounded-lg border p-1.5 bg-white"><option value="persian">Jalali</option><option value="gregory">Gregorian</option></select>
++        </label>
++        <label className="hidden xl:flex items-center gap-1 text-xs text-slate-600">{lang==='en'?'Timezone':'منطقه زمانی'}
++          <select aria-label="Display timezone / منطقه زمانی" value={timeZone} onChange={e=>updateTimeZone(e.target.value as 'Asia/Tehran'|'UTC')} className="rounded-lg border p-1.5 bg-white"><option value="Asia/Tehran">Asia/Tehran</option><option value="UTC">UTC</option></select>
++        </label>
+         {/* Notifications Icon */}
+         <button
+           type="button"
+@@ -235,6 +244,12 @@
+                 <div className="text-[10px] text-slate-400 font-mono">شناسه: {user?.personnelId} · {user?.email}</div>
+               </div>
+ 
++              <div className="px-2 pt-2 space-y-2 border-t" aria-label="تنظیمات نمایش">
++                <label className="block">{lang==='en'?'Language':'زبان'}<select aria-label="Profile language" className="mt-1 w-full rounded-lg border p-2" value={lang} onChange={e=>setLang(e.target.value as 'fa'|'en')}><option value="fa">فارسی (RTL)</option><option value="en">English (LTR)</option></select></label>
++                <label className="block">{lang==='en'?'Calendar':'تقویم'}<select aria-label="Profile calendar" className="mt-1 w-full rounded-lg border p-2" value={calendar} onChange={e=>updateCalendar(e.target.value as 'persian'|'gregory')}><option value="persian">Jalali</option><option value="gregory">Gregorian</option></select></label>
++                <label className="block">{lang==='en'?'Timezone':'منطقه زمانی'}<select aria-label="Profile timezone" className="mt-1 w-full rounded-lg border p-2" value={timeZone} onChange={e=>updateTimeZone(e.target.value as 'Asia/Tehran'|'UTC')}><option value="Asia/Tehran">Asia/Tehran</option><option value="UTC">UTC</option></select></label>
++                <p className="text-amber-800 text-[10px]">این تنظیمات فقط نحوه نمایش تاریخ را تغییر می‌دهد؛ مبنای ذخیره داده ثابت است.</p>
++              </div>
+               <div className="px-2 pt-1">
+                 <span className="text-[10px] font-bold text-slate-400">تغییر سریع کاربر برای تست نقش‌ها:</span>
+                 <div className="mt-1 space-y-1">
+--- a/src/him/components/MainContent.tsx
++++ b/src/him/components/MainContent.tsx
+@@ -129,7 +129,7 @@
+       case 'SUP':
+         return <SupplyViews view={{kind:'supply'}} open={openWorkView} siteName={scope.siteName} siteId={scope.siteId || ""} notify={showNotification}/>;
+       case 'QLT':
+-        return <>{renderQltContent()}<SpecificationWorkspace path='/quality/workflows' siteName={scope.siteName}/></>;
++        return <>{renderQltContent()}<SpecificationWorkspace key={`${scope.siteId}:quality`} path='/quality/workflows' siteName={scope.siteName}/></>;
+       case 'AST':
+         return <>{renderAstContent()}<SpecificationWorkspace path='/assets/workflows' siteName={scope.siteName}/></>;
+       case 'FIN':
+@@ -164,26 +164,30 @@
+ 
+           <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100 shrink-0">
+             <ShieldCheck className="w-4 h-4" />
+-            <span>پایلوت امنیتی فعال (RLS Enforcement)</span>
+-          </div>
+-        </div>
+-
++            <span>نمای آزمایشی کنترل‌های امنیتی (بدون RLS تأییدشده)</span>
++          </div>
++        </div>
++
++        <div className="flex flex-wrap gap-2" aria-label="میزکارهای پلتفرم">
++          {([['/settings/access','مدیریت دسترسی'],['/settings/modules','فعال‌سازی ماژول'],['/settings/governance','حاکمیت و تصمیم‌ها'],['/audit','ممیزی']] as const).map(([path,title])=><button key={path} type="button" className="rounded-lg border border-teal-200 px-3 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-50" onClick={()=>openWorkView({kind:'spec-page',path})}>{title}</button>)}
++        </div>
++        <p className="text-xs text-amber-700">وضعیت‌های امنیتی و نشست‌ها در این صفحه داده نمایشی هستند و اثبات کنترل RLS یا مهر ممیزی واقعی نیستند.</p>
+         {/* PLT Metric Counters */}
+         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+           <div className="p-3.5 sm:p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
+             <span className="text-[11px] sm:text-xs text-slate-500 block">نشست‌های فعال سازمانی</span>
+             <div className="text-xl sm:text-2xl font-black text-slate-900 tabular-nums">
+-              ۱۴ نشست
++              نامشخص
+             </div>
+             <span className="text-[10px] sm:text-[11px] text-teal-700 font-medium block">
+-              احراز هویت OIDC / SSO
++              OIDC / SSO واقعی متصل نیست
+             </span>
+           </div>
+ 
+           <div className="p-3.5 sm:p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
+             <span className="text-[11px] sm:text-xs text-slate-500 block">سطح ایزولاسیون داده‌ها</span>
+             <div className="text-xl sm:text-2xl font-black text-slate-900">
+-              سطح ۳ (Site-RLS)
++              نمایش دامنه در رابط
+             </div>
+             <span className="text-[10px] sm:text-[11px] text-emerald-700 font-medium block">
+               محدود به «{scope.siteCode}»
+@@ -193,10 +197,10 @@
+           <div className="p-3.5 sm:p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
+             <span className="text-[11px] sm:text-xs text-slate-500 block">مهروموم لاگ ممیزی</span>
+             <div className="text-xl sm:text-2xl font-black text-slate-900 tabular-nums font-mono">
+-              Batch #1048
++              سند معتبر موجود نیست
+             </div>
+             <span className="text-[10px] sm:text-[11px] text-emerald-700 font-medium block">
+-              امضاشده و غیرقابل‌تغییر
++              وضعیت امضا: نامشخص
+             </span>
+           </div>
+ 
+@@ -204,10 +208,10 @@
+             <span className="text-[11px] sm:text-xs text-slate-500 block">وضعیت کلید قطع اضطراری</span>
+             <div className="text-base sm:text-lg font-bold text-slate-900 pt-1 flex items-center gap-1.5">
+               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+-              <span>سالم و آماده</span>
++              <span>وضعیت واقعی: نامشخص</span>
+             </div>
+             <span className="text-[10px] sm:text-[11px] text-slate-400 block">
+-              Kill-Switch غیرفعال است
++              کلید قطع واقعی متصل نیست
+             </span>
+           </div>
+         </div>
+--- a/src/him/components/Sidebar.tsx
++++ b/src/him/components/Sidebar.tsx
+@@ -175,6 +175,7 @@
+               })}
+             </nav>
+             <nav className="space-y-1 mt-1">
++              <button type="button" data-testid="sidebar-brief-builder" onClick={()=>openWorkView({kind:'spec-page',path:'/executive/briefs'})} className="w-full rounded-lg px-3 py-2 text-right text-xs font-semibold text-teal-800 hover:bg-teal-50">{!sidebarCollapsed?(lang==='en'?'Executive briefs':'گزارش‌های مدیریتی'):'EXE'}</button>
+               {([
+                 { kind: 'proposals', label: 'پیشنهادهای اقدام', Icon: ClipboardCheck },
+                 { kind: 'approvals', label: 'صف تأییدهای من', Icon: ShieldCheck },
+--- a/src/him/components/SpecializedWorkspaces.tsx
++++ b/src/him/components/SpecializedWorkspaces.tsx
+@@ -58,13 +58,14 @@
+ 
+ function Assets({save,entries}:{save:ReturnType<typeof useLocalDrafts>['save'];entries:Draft[]}) {
+  const tabs=['فهرست دارایی','تاریخچه منبع','تله‌متری','نگهداری','قطعات یدکی','پیشنهادها','شواهد','ناهنجاری کنتور'];
+- const [tab,setTab]=useState(3);
++ const [tab,setTab]=useState(0);
+  const [asset,setAsset]=useState(''); const [recommendation,setRecommendation]=useState('');
+  const [reason,setReason]=useState(''); const [start,setStart]=useState(''); const [end,setEnd]=useState('');
+  const [urgency,setUrgency]=useState('normal'); const [queue,setQueue]=useState('');
+  const [estimate,setEstimate]=useState(''); const [currency,setCurrency]=useState('IRR'); const [assumption,setAssumption]=useState('');
+  const [prepared,setPrepared]=useState(false);
+  const [selectedAsset,setSelectedAsset]=useState('');
++ const [historyAsset,setHistoryAsset]=useState(''),[historyFrom,setHistoryFrom]=useState(''),[historyTo,setHistoryTo]=useState(''),[telemetryUnit,setTelemetryUnit]=useState(''),[telemetryMetric,setTelemetryMetric]=useState('');
+  const errors = [!str(asset||selectedAsset)?'شناسه دارایی الزامی است.':'',!str(recommendation)?'مرجع پیشنهاد نگهداشت الزامی است.':'',!validMaintenanceReason(reason)?'شرح دلیل باید بین ۲۰ تا ۲۰۰۰ نویسه باشد.':'',!validTimeWindow(start,end)?'پایان بازه باید پس از شروع بازه باشد.':'',!queue?'صف نگهداشت الزامی است.':'',estimate!==''&&(!Number.isFinite(Number(estimate))||Number(estimate)<0)?'برآورد هزینه معتبر نیست.':'',estimate!==''&&!str(assumption)?'برای برآورد هزینه، منبع فرض الزامی است.':''].filter(Boolean);
+  const values={'شناسه دارایی':asset||selectedAsset,'پیشنهاد مرجع':recommendation,'دلیل':reason,'شروع':start,'پایان':end,'فوریت':urgency,'صف':queue,'برآورد':estimate?`${estimate} ${currency}`:'ثبت نشده','مبنای برآورد':assumption};
+  const prepare=(e:React.FormEvent)=>{e.preventDefault();if(errors.length)return;setPrepared(true);};
+@@ -85,7 +86,18 @@
+   </form>
+   {prepared&&<section className="space-y-3 rounded-xl border border-teal-300 p-4" role="region" aria-label="مقایسه با سفارش‌های فعال"><h3 className="font-semibold">پیش‌نمایش و مقایسه با سفارش‌های منبع</h3><p className="text-sm">دارایی {asset||selectedAsset}، پیشنهاد {recommendation}، بازه {start} تا {end}، صف {queue}.</p><Blocked>مقایسه با سفارش‌های فعال: نامشخص — اتصال خواندنی CMMS وجود ندارد. نبود تداخل یا امکان اجرا تأیید نشده است؛ تأیید/ارسال غیرفعال است.</Blocked><button className={btnClass} type="button" onClick={()=>{save('maintenance',`نگهداشت ${asset||selectedAsset}`,values,'پیش‌نویس داخلی؛ تطبیق CMMS و بازبینی مستقل انجام نشده است.');setPrepared(false)}}>ذخیره پیش‌نویس نمایشی</button></section>}
+   <DraftHistory entries={entries} category="maintenance"/>
+- </>:<><h2 className="font-bold">{tabs[tab]}</h2><Blocked>این بخش به داده مرجع، مجوز و قرارداد مربوط به CMMS نیاز دارد و هنوز گردش‌کار کاملش پیاده نشده است. داده خیالی به‌عنوان تاریخچه/شاهد تجهیزات نمایش داده نمی‌شود.</Blocked></>}</Panel></>;
++ </>:tab===1||tab===2?<section className="space-y-3" data-testid={tab===1?'asset-source-history':'asset-telemetry'}>
++  <h2 className="font-bold">{tab===1?'AST-02 · تاریخچه همگام‌سازی منبع':'AST-02 · مرور تله‌متری تجهیزات'}</h2>
++  <div className="grid sm:grid-cols-2 gap-3">
++   {field('شناسه دارایی / منبع',<input className={inputClass} value={historyAsset||selectedAsset} onChange={e=>{setHistoryAsset(e.target.value);setSelectedAsset('');}} placeholder="شناسه دارایی"/>)}
++   {tab===2?field('اندازه‌گیری / شاخص',<select className={inputClass} value={telemetryMetric} onChange={e=>setTelemetryMetric(e.target.value)}><option value="">انتخاب شاخص</option><option value="temperature">دما</option><option value="runtime">ساعات کارکرد</option><option value="energy">مصرف انرژی</option></select>):field('مرجع تغییر / نوع رخداد',<select className={inputClass} value={telemetryUnit} onChange={e=>setTelemetryUnit(e.target.value)}><option value="">همه رخدادها</option><option value="maintenance">نگهداشت</option><option value="status">وضعیت منبع</option><option value="sync">همگام‌سازی</option></select>)}
++   {field('از تاریخ',<input type="date" className={inputClass} value={historyFrom} onChange={e=>setHistoryFrom(e.target.value)}/>)}
++   {field('تا تاریخ',<input type="date" className={inputClass} value={historyTo} onChange={e=>setHistoryTo(e.target.value)}/>)}
++  </div>
++  {historyFrom&&historyTo&&historyTo<historyFrom&&<p role="alert" className="text-rose-700 text-xs">پایان دوره قبل از شروع آن است.</p>}
++  <Blocked>{tab===1?'رویدادهای ثبت‌شده در منبع و وضعیت همگام‌سازی تأیید نشده‌اند. سابقه‌ای جعل نمی‌شود.':'خوانش خام، واحد UCUM، کیفیت سنسور و زمان دریافت موجود نیست. روند و هشدار بدون داده معتبر محاسبه نمی‌شود.'}</Blocked>
++  <p className="rounded-lg bg-slate-50 p-3 text-sm">هیچ رخداد یا خوانش معتبر برای این فیلترها ثبت نشده است.</p>
++ </section>:<><h2 className="font-bold">{tabs[tab]}</h2><Blocked>این بخش به داده مرجع، مجوز و قرارداد مربوط به CMMS نیاز دارد و هنوز گردش‌کار کاملش پیاده نشده است. داده خیالی به‌عنوان تاریخچه/شاهد تجهیزات نمایش داده نمی‌شود.</Blocked></>}</Panel></>;
+ }
+ 
+ function Workforce({save,entries}:{save:ReturnType<typeof useLocalDrafts>['save'];entries:Draft[]}){
+--- a/src/him/components/SpecificationWorkspaces.tsx
++++ b/src/him/components/SpecificationWorkspaces.tsx
+@@ -43,7 +43,7 @@
+ export function SpecificationWorkspace({path,siteName}:{path:string;siteName:string}) {
+  if(path==='/data/connectors')return <ConnectorWorkspace/>;
+  if(['/assets/workflows','/workforce','/settings/access'].includes(path))return <SpecializedWorkspace path={path} siteName={siteName}/>;
+- if(domainPaths.includes(path))return <DomainWorkspace path={path} siteName={siteName}/>;
++ if(domainPaths.includes(path)||path==='/settings/governance'||path==='/executive/briefs')return <DomainWorkspace path={path} siteName={siteName}/>;
+  return <GenericSpecificationWorkspace key={`${path}:${siteName}`} path={path} siteName={siteName}/>;
+ }
+ function GenericSpecificationWorkspace({path,siteName}:{path:string;siteName:string}) {
+--- a/src/him/components/states/ErrorState.tsx
++++ b/src/him/components/states/ErrorState.tsx
+@@ -19,7 +19,7 @@
+   requestId = 'req-sbmu-8201bfad-4200',
+   onRetry,
+ }) => {
+-  const { setViewState } = useApp();
++  const { setViewState, setActiveModule } = useApp();
+   const [retrying, setRetrying] = useState(false);
+ 
+   const handleRetry = () => {
+@@ -81,7 +81,7 @@
+         <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
+           <button
+             type="button"
+-            onClick={() => setViewState('normal')}
++            onClick={() => setActiveModule('EXE')}
+             className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 sm:bg-transparent rounded-xl sm:rounded-none flex items-center justify-center gap-1.5 transition-colors"
+           >
+             <ArrowRight className="w-3.5 h-3.5" />
+--- a/src/him/context/AppContext.tsx
++++ b/src/him/context/AppContext.tsx
+@@ -4,6 +4,10 @@
+ import { TASKS_DATA, ALERTS_DATA, type WorkTask, type WorkAlert, type TaskStatus, type AlertStatus } from '../data/workData';
+ import { ACTIONS_DATA, applyActionCommand, type ActionProposal, type ActionCommand } from '../data/actionData';
+ import { useCopilotState } from './useCopilotState';
++
++export const MODULE_ROUTES: Record<ModuleKey, string> = { EXE: '/', PLT: '/platform', OPS: '/operations', SUP: '/supply', QLT: '/quality', AST: '/assets', FIN: '/finance', DAT: '/data' };
++export function moduleForPath(path: string): ModuleKey | null { return (Object.keys(MODULE_ROUTES) as ModuleKey[]).find(key => MODULE_ROUTES[key] === (path.replace(/\/+$/, '') || '/')) ?? null; }
++export function modulePath(module: ModuleKey): string { return MODULE_ROUTES[module]; }
+ 
+ export type WorkView = { kind: 'copilot'; answerId?: string } | { kind: 'tasks'; filter?: 'unfinished' } | { kind: 'task'; id: string } | { kind: 'alerts'; filter?: 'active' } | { kind: 'alert'; id: string } | { kind: 'notifications' } | { kind: 'proposals' } | { kind: 'approvals' } | { kind: 'proposal'; id: string } | { kind: 'journal' } | {kind:'memos'} | {kind:'memo-new'} | {kind:'memo';id:string} | {kind:'memo-edit';id:string} | {kind:'stewardship'} | {kind:'stewardship-issues'} | {kind:'stewardship-issue';id:string} | {kind:'supply'} | {kind:'supply-risk';id:string} | {kind:'supply-proposals'} | {kind:'supply-proposal';id:string} | {kind:'supply-cases'} | {kind:'supply-case';id:string} | {kind:'supply-new';riskId:string;type:'replenishment'|'transfer';proposalId?:string} | {kind:'spec-page';path:string} | {kind:'manual-list'} | {kind:'manual-new'} | {kind:'manual-detail';id:string};
+ 
+@@ -49,7 +53,7 @@
+   if(p==='/knowledge/stewardship/issues')return {kind:'stewardship-issues'};
+   const qualityIssue=/^\/knowledge\/stewardship\/issues\/([^/]+)$/.exec(p);if(qualityIssue)return {kind:'stewardship-issue',id:decodeURIComponent(qualityIssue[1]!)};
+   if(['/settings/access','/settings/modules','/settings/agents','/clinical/capabilities','/clinical/review','/models/use-cases','/models/datasets','/models/evaluations','/models/annotations','/models/jobs-and-releases','/workforce','/quality/workflows','/assets/workflows','/finance/workflows','/executive/investigations','/operations/forecasts','/operations/scenarios','/work-queues','/knowledge/documents','/knowledge/search','/executive/briefs','/assistant/runs'].includes(p))return {kind:'spec-page',path:p};
+-  if(['/settings/alert-rules','/settings/source-actions','/audit','/data/connectors','/data/datasets','/data/identity','/data/ingestion','/data/calendars','/data/lineage/demo'].includes(p) || /^\/data\/lineage\/[^/]+$/.test(p)) return {kind:'spec-page',path:p.startsWith('/data/lineage/')?'/data/lineage/demo':p};
++  if(['/settings/governance','/settings/alert-rules','/settings/source-actions','/audit','/data/connectors','/data/datasets','/data/identity','/data/ingestion','/data/calendars','/data/lineage/demo'].includes(p) || /^\/data\/lineage\/[^/]+$/.test(p)) return {kind:'spec-page',path:p.startsWith('/data/lineage/')?'/data/lineage/demo':p};
+   if(p==='/manual-executions')return {kind:'manual-list'};
+   if(p==='/manual-executions/new')return {kind:'manual-new'};
+   const manualId=/^\/manual-executions\/([^/]+)$/.exec(p);if(manualId)return {kind:'manual-detail',id:decodeURIComponent(manualId[1]!)};
+@@ -173,21 +177,21 @@
+   });
+ 
+   useEffect(() => { saveStored2(SESSION_KEY, { userId: user?.id ?? null, siteId: scope.siteId }); }, [user, scope.siteId]);
+-  const [activeModule, setActiveModuleRaw] = useState<ModuleKey>('EXE');
++  const [activeModule, setActiveModuleRaw] = useState<ModuleKey>(() => typeof window === 'undefined' ? 'EXE' : moduleForPath(window.location.pathname) ?? 'EXE');
+   const [workView, setWorkView] = useState<WorkView | null>(() => (typeof window === 'undefined' ? initialWorkView : workViewForPath(window.location.pathname) ?? initialWorkView));
+   const copilot = useCopilotState(user, scope.siteId);
+   useEffect(() => {
+     if (typeof window === 'undefined') return;
+-    const path = pathForWorkView(workView);
++    const path = workView ? pathForWorkView(workView) : modulePath(activeModule);
+     const current = (window.location.pathname.replace(/\/+$/, '') || '/') + window.location.search;
+     if (current !== path) window.history.pushState(null, '', path);
+-  }, [workView]);
++  }, [workView, activeModule]);
+   // Back/forward changes the path; follow it without remounting the provider.
+   useEffect(() => {
+-    const onPop = () => { if (!window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) { window.history.pushState(null, '', pathForWorkView(workView)); return; } setWorkView(workViewForPath(window.location.pathname)); };
++    const onPop = () => { if (!window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) { window.history.pushState(null, '', workView ? pathForWorkView(workView) : modulePath(activeModule)); return; } const target = moduleForPath(window.location.pathname); if (target) setActiveModuleRaw(target); setWorkView(target ? null : workViewForPath(window.location.pathname)); setViewState('normal'); };
+     window.addEventListener('popstate', onPop);
+     return () => window.removeEventListener('popstate', onPop);
+-  }, [workView]);
++  }, [workView, activeModule]);
+   // Sample actions are kept in this browser only so a refresh does not undo a recorded approval;
+   // no command is ever dispatched to a real hospital system.
+   const [actions, setActions] = useState<ActionProposal[]>(() =>
+@@ -240,7 +244,7 @@
+     }));
+     return [...fromAlerts, ...fromTasks];
+   }, [alerts, tasks, scope.siteId]);
+-  const setActiveModule = (m: ModuleKey) => { if (typeof window !== 'undefined' && !window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) return; setActiveModuleRaw(m); setWorkView(null); };
++  const setActiveModule = (m: ModuleKey) => { if (typeof window !== 'undefined' && !window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) return; setActiveModuleRaw(m); setWorkView(null); setViewState('normal'); };
+   const openWorkView = (v: WorkView | null) => { if (typeof window !== 'undefined' && !window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) return; setWorkView(v); setViewState('normal'); };
+   const updateTaskStatus = (id: string, status: TaskStatus) => {
+     setTasks(prev => prev.map(t => t.id === id ? { ...t, status, history: [...t.history, { at: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }), text: `وضعیت توسط ${user?.name ?? 'کاربر'} تغییر کرد.` }] } : t));
+--- a/src/him/data/copilotData.ts
++++ b/src/him/data/copilotData.ts
+@@ -139,7 +139,7 @@
+     if (hospMatch && hospMatch[1]) {
+       const target = normalizeQuestion(hospMatch[1]);
+       const isCurrent = currentAliases.some(alias => alias.includes(target) || target.includes(alias));
+-      if (!isCurrent && target !== 'فعلی' && target !== 'ها' && target !== 'های') {
++      if (!isCurrent && !['فعلی','ها','های','چیست','ما','شما','خود','این','موردنظر','موردنظرمان'].includes(target)) {
+         return true;
+       }
+     }
+--- a/src/him/executive/ExecutiveDashboard.tsx
++++ b/src/him/executive/ExecutiveDashboard.tsx
+@@ -41,7 +41,7 @@
+    <p className="text-xs text-amber-800 bg-amber-50 rounded-lg p-2">توجه: بازخوانی فقط داده‌های mock محلی را می‌خواند؛ زمان snapshot منبع را تغییر نمی‌دهد. بعضی شاخص‌ها فاقد داده سازگار با بازه انتخابی‌اند.</p>
+   </div>
+   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">{snapshot.metrics.map((m,i)=>{const Icon=icons[i]!;return <button key={m.key} onClick={()=>{setSelected(m.key);setTab('summary')}} className="text-right rounded-2xl bg-white p-5 border border-slate-200 hover:border-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-600 shadow-sm space-y-2"><div className="flex justify-between items-center"><span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Icon className="h-4 w-4 text-teal-700"/>{m.title}</span><ChevronLeft className="w-4 h-4 text-slate-400"/></div><div className="text-3xl font-black text-slate-900" dir="ltr">{nf(m.value,m.unit)}{m.unit!=='٪'&&m.value!==null?<span className="text-sm mr-2 font-normal">{m.unit}</span>:null}</div><p className="text-xs text-slate-600">{qualityLabels[m.quality]}</p><p className="text-[11px] text-slate-500">{periodLabels[period]} · مبنا: {m.asOf.split('T')[0]}</p></button>})}</div>
+-  <div className="grid lg:grid-cols-2 gap-4"><section className="bg-white border rounded-2xl p-5 space-y-3"><h3 className="font-bold text-slate-900">موارد نیازمند توجه</h3>{snapshot.alerts.filter(a=>a.severity==='critical'||a.severity==='high').slice(0,3).map(a=><button key={a.id} className="block w-full text-right border-b py-2 text-sm hover:text-teal-700" onClick={()=>openWorkView({kind:'alert',id:a.id})}>{a.title} <span className="text-xs text-slate-500">· {a.code}</span></button>)}{snapshot.issues.filter(i=>i.severity==='critical').slice(0,2).map(i=><button key={i.id} className="block w-full text-right border-b py-2 text-sm hover:text-teal-700" onClick={()=>openWorkView({kind:'stewardship-issue',id:i.id})}>{i.title} <span className="text-xs text-slate-500" dir="ltr">{i.id}</span></button>)}{snapshot.alerts.length===0&&snapshot.issues.length===0&&<p className="text-sm text-slate-500">موردی در داده نمایشی این مرکز یافت نشد.</p>}</section><section className="bg-white border rounded-2xl p-5 space-y-3"><h3 className="font-bold text-slate-900">ورود به گردش کارهای مرتبط</h3><div className="grid grid-cols-2 gap-2"><button className={button} onClick={()=>openWorkView({kind:'alerts'})}>هشدارها</button><button className={button} onClick={()=>openWorkView({kind:'supply'})}>زنجیره تأمین</button><button className={button} onClick={()=>openWorkView({kind:'stewardship-issues'})}>کیفیت داده</button><button className={button} onClick={()=>openWorkView({kind:'tasks'})}>وظایف</button><button className={button} onClick={()=>openWorkView({kind:'copilot'})}><Bot className="inline h-4 w-4"/> دستیار هوشمند</button></div></section></div>
++  <div className="grid lg:grid-cols-2 gap-4"><section className="bg-white border rounded-2xl p-5 space-y-3"><h3 className="font-bold text-slate-900">موارد نیازمند توجه</h3>{snapshot.alerts.filter(a=>a.severity==='critical'||a.severity==='high').slice(0,3).map(a=><button key={a.id} className="block w-full text-right border-b py-2 text-sm hover:text-teal-700" onClick={()=>openWorkView({kind:'alert',id:a.id})}>{a.title} <span className="text-xs text-slate-500">· {a.code}</span></button>)}{snapshot.issues.filter(i=>i.severity==='critical').slice(0,2).map(i=><button key={i.id} className="block w-full text-right border-b py-2 text-sm hover:text-teal-700" onClick={()=>openWorkView({kind:'stewardship-issue',id:i.id})}>{i.title} <span className="text-xs text-slate-500" dir="ltr">{i.id}</span></button>)}{snapshot.alerts.length===0&&snapshot.issues.length===0&&<p className="text-sm text-slate-500">موردی در داده نمایشی این مرکز یافت نشد.</p>}</section><section className="bg-white border rounded-2xl p-5 space-y-3"><h3 className="font-bold text-slate-900">ورود به گردش کارهای مرتبط</h3><div className="grid grid-cols-2 gap-2"><button className={button} onClick={()=>openWorkView({kind:'alerts'})}>هشدارها</button><button className={button} onClick={()=>openWorkView({kind:'supply'})}>زنجیره تأمین</button><button className={button} onClick={()=>openWorkView({kind:'stewardship-issues'})}>کیفیت داده</button><button className={button} onClick={()=>openWorkView({kind:'tasks'})}>وظایف</button><button className={button} onClick={()=>openWorkView({kind:'copilot'})}><Bot className="inline h-4 w-4"/> دستیار هوشمند</button><button data-testid="open-executive-brief-builder" className={button} onClick={()=>openWorkView({kind:'spec-page',path:'/executive/briefs'})}>ساخت گزارش مدیریتی (Brief Builder)</button></div></section></div>
+   {metric&&<div role="dialog" aria-modal="true" aria-label={`جزئیات ${metric.title}`} className="fixed inset-0 z-50 bg-black/40 flex justify-end"><div className="bg-white w-full max-w-xl h-full overflow-y-auto p-5 space-y-4 shadow-xl"><div className="flex items-start justify-between"><div><h2 className="font-black text-lg">{metric.title}</h2><p className="text-xs text-slate-500">{snapshot.siteName} · {periodLabels[period]} · {qualityLabels[metric.quality]}</p></div><button aria-label="بستن جزئیات" className={button} onClick={()=>setSelected(null)}><X className="w-4 h-4"/></button></div><div className="text-3xl font-bold">{nf(metric.value,metric.unit)} {metric.value!==null&&metric.unit!=='٪'?metric.unit:''}</div><div className="flex flex-wrap gap-1">{([['summary','نمای کلی'],['trend','روند'],['calculation','محاسبه'],['evidence','شواهد'],['quality','کیفیت داده']] as const).map(([key,label])=><button key={key} className={`${button} ${tab===key?'!bg-teal-700 !text-white':''}`} onClick={()=>setTab(key)}>{label}</button>)}</div>
+     {tab==='summary'&&<p className="text-sm text-slate-700">{metric.description} · تعریف {metric.version}</p>}
+     {tab==='calculation'&&<div className="text-sm space-y-2"><p>فرمول: {metric.formula??'شمارش رکوردهای واجد شرایط در داده مشترک'}</p><p>صورت: {metric.numerator===undefined?'قابل‌اعمال نیست':nf(metric.numerator)}</p><p>مخرج: {metric.denominator===undefined?'قابل‌اعمال نیست':nf(metric.denominator)}</p><p>نسخه: <span dir="ltr">{metric.version}</span></p>{metric.quality==='not_computable'&&<p className="text-rose-700">قابل محاسبه نیست — مخرج صفر است (DENOMINATOR_ZERO)</p>}</div>}
+--- a/src/test/copilot.test.ts
++++ b/src/test/copilot.test.ts
+@@ -49,6 +49,12 @@
+     expect(a.blocks).toHaveLength(0);
+     for (const o of a.clarification!.options) expect(ask(o).status).not.toBe('clarification_required');
+     expect(ask('نرخ رضایت از غذا چقدر است؟').reasonCodes).toContain('unsupported_task');
++  });
++  it('uses selected site for an unqualified hospital policy question', () => {
++    const result = ask('سیاست اضافه‌کار بیمارستان چیست؟');
++    expect(result.reasonCodes).toContain('conflicting_evidence');
++    expect(result.reasonCodes).not.toContain('scope_not_authorized');
++    expect(result.evidence).toHaveLength(2);
+   });
+   it('discloses conflicting policies and links both without a merged policy', () => {
+     const a = ask('سیاست اضافه‌کار چیست؟');
+--- a/src/test/module-navigation.test.ts
++++ b/src/test/module-navigation.test.ts
+@@ -0,0 +1,17 @@
++import { describe, it, expect } from 'vitest';
++import { MODULE_ROUTES, moduleForPath, modulePath, workViewForPath } from '../him/context/AppContext';
++
++describe('Top-level module history routes', () => {
++ it('assigns a distinct URL to each module rather than falling back to /', () => {
++  expect(new Set(Object.values(MODULE_ROUTES)).size).toBe(Object.keys(MODULE_ROUTES).length);
++  expect(moduleForPath('/platform')).toBe('PLT');
++  expect(moduleForPath('/operations')).toBe('OPS');
++  expect(moduleForPath('/quality')).toBe('QLT');
++  expect(moduleForPath('/')).toBe('EXE');
++  expect(modulePath('PLT')).not.toBe(modulePath('OPS'));
++ });
++ it('preserves independent work-view routing and a governance path', () => {
++  expect(workViewForPath('/tasks')).toMatchObject({kind:'tasks'});
++  expect(workViewForPath('/settings/governance')).toEqual({kind:'spec-page',path:'/settings/governance'});
++ });
++});

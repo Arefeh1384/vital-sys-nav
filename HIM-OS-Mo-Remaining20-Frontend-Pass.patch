@@ -1,0 +1,704 @@
+diff --git a/src/him/components/DomainWorkspaces.tsx b/src/him/components/DomainWorkspaces.tsx
+index fda2fac..a27b315 100644
+--- a/src/him/components/DomainWorkspaces.tsx
++++ b/src/him/components/DomainWorkspaces.tsx
+@@ -18,6 +18,11 @@ const definitions:Record<string,Definition>={
+   {name:'شواهد و برش داده',help:'ثبت نسخه منبع و محدودیت، بدون تأیید آمار.',fields:[f('brief','شناسه پیش‌نویس'),f('metric','متریک و نسخه'),f('cutoff','قطع داده','datetime-local'),f('evidence','ارجاع شواهد','textarea'),f('limitations','محدودیت‌ها','textarea')]},
+   {name:'بازبینی',help:'ارسال برای بررسی نمایشی؛ هر نسخه باید شواهد و گیرندگان مجاز داشته باشد.',fields:[f('brief','شناسه پیش‌نویس'),f('editor','ویراستار'),f('reviewer','بازبین'),f('comment','نتیجه یا درخواست اصلاح','textarea')]},
+   {name:'انتشار',help:'ارسال و زمان‌بندی واقعی در این نمونه غیرفعال است؛ درخواست مجوز انتشار ثبت می‌شود.',fields:[f('brief','شناسه پیش‌نویس'),f('recipients','گیرندگان مجاز پیشنهادی'),f('publication_cutoff','زمان مبنا','datetime-local'),f('reviewer','بازبین تأییدکننده'),f('reason','دلیل درخواست','textarea')]}]},
++ '/data/contracts':{title:'DAT-02 · ثبت و بازبینی قرارداد نسخه‌دار منبع',warning:'این فرم فقط درخواست قرارداد مصنوعی ایجاد می‌کند؛ قرارداد اجرایی، داده واقعی یا اعتماد به اتصال منبع برقرار نمی‌کند.',tabs:[
++  {name:'تعریف قرارداد',help:'محدوده، طرح نسخه‌دار، مرجع داده و قواعد کیفیت پیشنهادی؛ هیچ schema از سامانه منبع واکشی نشده است.',fields:[f('contract_id','شناسه قرارداد'),f('source','شناسه سامانه و کانکتور'),f('dataset','دامنه مجموعه‌داده'),f('schema_version','نسخه Schema'),f('owner','مالک منبع'),f('grain','دانه‌بندی داده'),f('timezone','منطقه زمانی','select',true,['Asia/Tehran','UTC']),f('required_fields','فیلدهای اجباری (با ویرگول)'),f('quality_rules','قواعد قرنطینه / کیفیت','textarea'),f('freshness_seconds','سقف تازگی به ثانیه','number'),f('effective_from','شروع اعتبار','date'),f('effective_to','پایان اعتبار','date')]},
++  {name:'تغییر نسخه و بررسی',help:'نسخه جانشین و بازبین مستقل؛ نسخه قبل پاک نمی‌شود و انتشار اجرایی غیرفعال است.',fields:[f('contract_id','شناسه قرارداد'),f('prior_version','نسخه مبدأ'),f('next_version','نسخه پیشنهادی'),f('change','تفاوت schema و قرارداد','textarea'),f('impact','اثر بر مصرف‌کنندگان پایین‌دست','textarea'),f('reviewer','شناسه بازبین مستقل')]},
++  {name:'گیت‌ها و وضعیت',help:'قراردادهای ثبت‌شده و نتیجه بازبینی داخلی فقط محلّی‌اند. کنترل‌های منبع، سازگاری عقب‌رو و IAM نامشخص‌اند.',fields:[]}
++ ]},
+  '/data/datasets':{title:'مدیریت متریک و مجموعه‌داده · DAT-05',warning:'فرمول‌های ثبت‌شده اجرا یا منتشر نمی‌شوند. نسخه مصوب و مجموعه‌داده واقعی متصل نیستند.',tabs:[
+  {name:'فهرست مجموعه‌داده‌ها',help:'موجودی مرجع مجموعه‌داده‌ها دریافت نشده؛ فقط درخواست بررسی داده نگهداری می‌شود.',fields:[f('dataset','شناسه مجموعه‌داده'),f('owner','مسئول داده'),f('classification','طبقه‌بندی','select',true,['synthetic','internal','restricted']),f('freshness','حد تازگی (ثانیه)','number')]},
+  {name:'تعریف متریک',help:'تعریف پیش‌نویس، کنترل نحوی فرمول، نسخه‌بندی و درخواست بازبینی مستقل؛ انتشار اجرایی مسدود است.',fields:[f('metric_key','metric_key'),f('name','نام متریک'),f('owner_id','owner_id'),f('unit','واحد UCUM'),f('grain','grain'),f('numerator','فرمول صورت'),f('denominator','فرمول مخرج'),f('aggregation','aggregation','select',true,['sum','ratio','avg','count']),f('allowed_dimensions','ابعاد مجاز (با ویرگول)'),f('required_datasets','شناسه مجموعه‌داده‌های لازم'),f('exclusions','استثناها','textarea'),f('timezone_policy','سیاست منطقه زمانی','select',true,['Asia/Tehran','UTC']),f('freshness_limit_seconds','حد تازگی (ثانیه)','number'),f('quality_policy_id','شناسه سیاست کیفیت'),f('effective_from','تاریخ مؤثر','date'),f('version','نسخه')]},
+@@ -71,6 +76,21 @@ export function validateDomain(path:string,tab:number,v:Record<string,string>,it
+  if(path==='/data/datasets'&&tab===1){if(!/^[\w.()+\-*/\s]+$/.test((v.numerator||'')+(v.denominator||'')))errors.push('فرمول شامل نویسه غیرمجاز است؛ فرمول هرگز به‌عنوان کد اجرا نمی‌شود.');if((v.numerator||'').length>300||(v.denominator||'').length>300)errors.push('فرمول بیش از حد طولانی است.');if(Number(v.freshness_limit_seconds)<=0)errors.push('حد تازگی باید مثبت باشد.');if(items.some(x=>x.tab===1&&x.values.metric_key===v.metric_key&&x.values.version===v.version))errors.push('این نسخه متریک قبلاً ثبت شده است.');}
+  if(path==='/data/identity'&&tab===1&&from&&to){if(items.some(x=>x.tab===1&&['authority','source_id','entity_type','source_key'].every(k=>x.values[k]===v[k])&&new Date(x.values.effective_from).getTime()<new Date(to).getTime()&&new Date(from).getTime()<new Date(x.values.effective_to).getTime()))errors.push('بازه مؤثر برای این کلید منبع همپوشانی دارد.');}
+  if(path==='/data/calendars'&&tab===2&&from&&to){if(items.some(x=>x.tab===2&&x.values.calendar===v.calendar&&new Date(x.values.effective_from).getTime()<new Date(to).getTime()&&new Date(from).getTime()<new Date(x.values.effective_to).getTime()))errors.push('نسخه‌های مؤثر تقویم همپوشانی دارند.');}
++ if(path==='/executive/briefs'&&tab>0){
++  const root=items.find(x=>x.tab===0&&x.id===v.brief);
++  if(!root)errors.push('این مرحله باید به شناسه یک پیش‌نویس گزارش در همین دامنه متصل باشد.');
++  if(tab===2&&root&&v.reviewer===root.values.editor)errors.push('بازبین نباید همان ویرایشگر گزارش باشد.');
++  if(tab===3){
++    if(!items.some(x=>x.tab===2&&x.values.brief===v.brief&&x.state==='awaiting_independent_review'))errors.push('درخواست انتشار فقط پس از ثبت پرونده بازبینی مستقل مجاز است؛ انتشار واقعی همچنان مسدود است.');
++    if(root&&v.reviewer===root.values.editor)errors.push('بازبین انتشار باید از ویرایشگر مستقل باشد.');
++  }
++ }
++ if(path==='/data/contracts'&&tab===0){
++  if(!/^[a-z][a-z0-9_-]{2,70}$/i.test(v.contract_id||''))errors.push('شناسه قرارداد باید شناسه ثابت و استاندارد باشد.');
++  if(Number(v.freshness_seconds)<=0||!Number.isInteger(Number(v.freshness_seconds)))errors.push('حد تازگی باید عدد صحیح مثبت باشد.');
++  if(items.some(x=>x.tab===0&&x.values.contract_id===v.contract_id&&x.values.schema_version===v.schema_version))errors.push('این نسخه قرارداد قبلاً ثبت شده است.');
++ }
++ if(path==='/data/contracts'&&tab===1&&v.prior_version===v.next_version)errors.push('نسخه جانشین باید متفاوت از نسخه قبلی باشد.');
+  if(path==='/data/ingestion'&&tab===2&&Number(v.checkpoint)>100)errors.push('پیشرفت از ۱۰۰ درصد بیشتر نیست.');
+  if(path==='/operations/forecasts'&&tab===0&&Number(v.horizon)<=0)errors.push('افق باید مثبت باشد.');
+  if(path==='/quality/workflows'&&tab===3&&!v.review_end)errors.push('پایان پنجره بررسی الزامی است.');
+@@ -102,7 +122,7 @@ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteI
+  const fields=def?.tabs[tab]?.fields||[];
+  const errors=useMemo(()=>validateDomain(path,tab,values,items),[path,tab,values,items]);
+  const update=(k:string,v:string)=>setValues(old=>({...old,[k]:v}));
+- const save=()=>{if(!fields.length||errors.length)return;const record:RecordItem={id:`SYN-${Math.random().toString(36).slice(2,9)}`,tab,values:{...values},at:iso(),state:path==='/operations/forecasts'?'awaiting_source':'draft',note:'فقط پیش‌نویس در مرورگر؛ شواهد و تأیید واقعی موجود نیست.'};setItems(old=>[record,...old]);setValues({});};
++ const save=()=>{if(!fields.length||errors.length)return;const record:RecordItem={id:`SYN-${Math.random().toString(36).slice(2,9)}`,tab,values:{...values},at:iso(),state:path==='/operations/forecasts'?'awaiting_source':path==='/executive/briefs'&&tab===3?'publication_request_unapproved':'draft',note:'فقط پیش‌نویس در مرورگر؛ شواهد و تأیید واقعی موجود نیست.'};setItems(old=>[record,...old]);setValues({});};
+  const transition=(record:RecordItem,action:'validate'|'review'|'cancel'|'retry'|'successor')=>{
+   let state=record.state,note=record.note;
+   if(action==='validate'){state='validated_synthetic';note='اعتبارسنجی فرم فقط با قواعد محلی؛ قرارداد و مرجع داده تأیید نشده‌اند.';}
+@@ -126,6 +146,7 @@ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteI
+   </div>}
+   {path==='/operations/forecasts'&&tab===1&&<div className="rounded-lg bg-slate-50 p-3 text-sm" data-testid="forecast-results"><strong>نتیجه: unavailable</strong><p>point: ناموجود · p10: ناموجود · p50: ناموجود · p90: ناموجود</p><p>علت: مدل/نسخه و snapshot ورودی در دسترس نیست. عدد جایگزین تولید نمی‌شود.</p></div>}
+   {path==='/data/ingestion'&&tab===2&&<p className="text-xs text-slate-600">نمایش Job شامل وضعیت اجرا، accepted/duplicate/quarantined، cutoff، consistency و checkpoint از داده واردشده مصنوعی است. هیچ پردازشی آغاز نمی‌شود.</p>}
++  {path==='/settings/modules'&&<div data-testid="module-activation-gates" className="border rounded-lg p-3 space-y-2 text-sm"><h3 className="font-semibold">نتیجه گیت‌های لازم برای فعال‌سازی سایت / نسخه</h3><div className="grid sm:grid-cols-3 gap-2">{['وابستگی‌ها و نسخه قرارداد','سیاست و دسترسی سازمانی','ارزیابی، بازگشت و تأیید مستقل'].map(x=><div className="rounded border p-2" key={x}><b>{x}</b><p className="text-amber-800">تأیید نشده — BLOCKED</p></div>)}</div><p className="text-xs">این جدول نشان‌دهنده عبور واقعی از گیت نیست؛ Promote و فعال‌سازی بدون اثبات کنترل‌ها مجاز نیست.</p></div>}
+   {path==='/settings/modules'&&tab===2&&<p className="text-xs text-rose-800">در این محیط Promote to active ممنوع است؛ درخواست Suspend صرفاً یک پیش‌نویس است و اجرای جاری را متوقف نمی‌کند.</p>}
+   <div className="space-y-2"><h3 className="font-semibold">سوابق محلی همین سایت و کاربر</h3><input aria-label="جستجوی سوابق" className={cls} value={q} onChange={e=>setQ(e.target.value)} placeholder="جستجو بر اساس شناسه یا اطلاعات"/>
+    {!visible.length?<p className="p-3 text-sm bg-slate-50">رکوردی برای این سایت ذخیره نشده است.</p>:visible.map(item=><details key={item.id} className="rounded-lg border p-3 text-sm"><summary className="cursor-pointer"><bdi dir="ltr">{item.id}</bdi> · {def.tabs[item.tab]?.name} · <bdi>{item.state}</bdi></summary><div className="mt-2 space-y-2"><p className="text-xs">{item.at} · {item.note}</p>{item.originId&&<p className="text-xs">مرجع نسخه پیشین: {item.originId}</p>}<dl className="grid sm:grid-cols-2 gap-1 text-xs">{Object.entries(item.values).map(([k,v])=><div key={k} className="break-words"><dt className="font-bold inline">{k}: </dt><dd className="inline">{v}</dd></div>)}</dl><div className="flex flex-wrap gap-2">
+diff --git a/src/him/components/InvestigationWorkspace.tsx b/src/him/components/InvestigationWorkspace.tsx
+new file mode 100644
+index 0000000..70d82a6
+--- /dev/null
++++ b/src/him/components/InvestigationWorkspace.tsx
+@@ -0,0 +1,50 @@
++import React,{useState} from 'react';
++import {useApp} from '../context/AppContext';
++import {DEMO_USERS} from '../data/mockData';
++
++type Case={id:string;siteId:string;alertId:string;playbook:string;hypothesis:string;support:string;against:string;missing:string;createdBy:string;createdByName:string;reviewerId:string;createdAt:string;state:'awaiting_review'|'reviewed';reviewConclusion?:string;reviewedAt?:string;reviewedBy?:string};
++const input='mt-1 w-full rounded border border-slate-300 p-2 text-sm bg-white';
++const button='rounded bg-teal-800 px-3 py-2 text-white text-sm disabled:opacity-40';
++export const canReviewInvestigation=(c:Pick<Case,'createdBy'|'reviewerId'|'state'>,actorId:string)=>c.state==='awaiting_review'&&c.reviewerId===actorId&&c.createdBy!==actorId;
++const fromStorage=(key:string):Case[]=>{try{const rows=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(rows)?rows:[]}catch{return []}};
++/** A two-person synthetic investigation, deliberately separated from alert status and source effects. */
++export function InvestigationWorkspace(){
++ const {scope,user,alerts,openWorkView}=useApp();const siteId=scope.siteId||'none';
++ return <ScopedInvestigationWorkspace key={siteId} siteId={siteId} actorId={user?.id||'guest'} actorName={user?.name||'کاربر نمایشی'} alerts={alerts.filter(a=>a.siteId===siteId)} openAlert={id=>openWorkView({kind:'alert',id})}/>;
++}
++function ScopedInvestigationWorkspace({siteId,actorId,actorName,alerts,openAlert}:{siteId:string;actorId:string;actorName:string;alerts:Array<{id:string;code:string;title:string}>;openAlert:(id:string)=>void}){
++ const key=`him.synthetic.investigations.v1:${siteId}`;
++ const [cases,setCases]=useState<Case[]>(()=>fromStorage(key));const [alertId,setAlertId]=useState('');const [playbook,setPlaybook]=useState('capacity_review');
++ const [hypothesis,setHypothesis]=useState(''),[support,setSupport]=useState(''),[against,setAgainst]=useState(''),[missing,setMissing]=useState('');
++ const [reviewerId,setReviewerId]=useState(''),[conclusions,setConclusions]=useState<Record<string,string>>({});const [error,setError]=useState('');
++ const eligible=DEMO_USERS.filter(u=>u.id!==actorId&&u.permittedSiteIds.includes(siteId));
++ const persist=(next:Case[])=>{try{localStorage.setItem(key,JSON.stringify(next));setCases(next);setError('');return true}catch{setError('ذخیره پیش‌نویس در مرورگر امکان‌پذیر نبود.');return false}};
++ const valid=Boolean(alertId&&playbook&&hypothesis.trim().length>=15&&support.trim()&&against.trim()&&missing.trim()&&reviewerId);
++ const create=()=>{if(!valid||!alerts.some(a=>a.id===alertId)||!eligible.some(x=>x.id===reviewerId))return;
++  const item:Case={id:`INV-SYN-${Date.now()}`,siteId,alertId,playbook,hypothesis:hypothesis.trim(),support:support.trim(),against:against.trim(),missing:missing.trim(),createdBy:actorId,createdByName:actorName,reviewerId,createdAt:new Date().toISOString(),state:'awaiting_review'};
++  if(persist([item,...cases])){setHypothesis('');setSupport('');setAgainst('');setMissing('');setReviewerId('')}
++ };
++ return <section dir="rtl" data-testid="executive-investigations" className="space-y-4">
++  <h1 className="text-xl font-bold">EXE-05 · پرونده تحقیق ناهنجاری مبتنی بر شواهد</h1>
++  <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm">این پرونده فقط در مرورگر ذخیره می‌شود. فهرست Playbookها مثال طراحی است، نه نسخه مصوب. درستی فرضیه، شواهد، هویت بازبین و نتیجه تغییر وضعیت هشدار به‌صورت عملیاتی تأیید نشده‌اند.</p>
++  <div className="rounded-xl border bg-white p-4 space-y-3"><h2 className="font-semibold">ثبت پرونده برای بازبینی مستقل</h2>
++   <div className="grid sm:grid-cols-2 gap-3"><label className="text-sm">هشدار در دامنه سایت<select className={input} value={alertId} onChange={e=>setAlertId(e.target.value)}><option value="">انتخاب هشدار</option>{alerts.map(a=><option key={a.id} value={a.id}>{a.code} · {a.title}</option>)}</select></label>
++   <label className="text-sm">Playbook پیشنهادی<select className={input} value={playbook} onChange={e=>setPlaybook(e.target.value)}><option value="capacity_review">بررسی ظرفیت (غیرمصوب)</option><option value="data_freshness">بررسی کیفیت منبع (غیرمصوب)</option><option value="supply_constraints">بررسی کمبود منابع (غیرمصوب)</option></select></label>
++   <label className="text-sm">فرضیه قابل رد<textarea className={input} value={hypothesis} onChange={e=>setHypothesis(e.target.value)}/></label>
++   <label className="text-sm">مراجع شواهد موافق<textarea className={input} value={support} onChange={e=>setSupport(e.target.value)}/></label>
++   <label className="text-sm">مراجع شواهد مخالف<textarea className={input} value={against} onChange={e=>setAgainst(e.target.value)}/></label>
++   <label className="text-sm">شواهد ناموجود یا محدودیت‌ها<textarea className={input} value={missing} onChange={e=>setMissing(e.target.value)}/></label>
++   <label className="text-sm">بازبین پیشنهادی مستقل<select className={input} value={reviewerId} onChange={e=>setReviewerId(e.target.value)}><option value="">انتخاب بازبین متفاوت</option>{eligible.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label></div>
++   <button className={button} disabled={!valid} onClick={create}>ثبت درخواست تحقیق و بازبینی</button>
++   {error&&<p role="alert" className="text-rose-700">{error}</p>}
++  </div>
++  <div className="rounded-xl border bg-white p-4 space-y-3"><h2 className="font-semibold">پرونده‌های تحقیق این سایت</h2>{cases.length===0&&<p className="text-sm text-slate-500">پرونده نمایشی ایجاد نشده است.</p>}
++   {cases.map(c=><details key={c.id} className="rounded border p-3 text-sm"><summary className="cursor-pointer font-medium">{c.id} · {alerts.find(a=>a.id===c.alertId)?.code||c.alertId} · {c.state==='reviewed'?'نظر بازبین ثبت‌شده (نمایشی)':'در انتظار بازبین'}</summary>
++    <div className="mt-2 space-y-2"><p>Playbook پیشنهادی: {c.playbook} · ایجادکننده: {c.createdByName} · {c.createdAt}</p><p>فرضیه: {c.hypothesis}</p><p>موافق: {c.support}</p><p>مخالف: {c.against}</p><p>ناموجود: {c.missing}</p><p>بازبین: {DEMO_USERS.find(u=>u.id===c.reviewerId)?.name||'نامشخص'}</p><button className="underline text-teal-800" onClick={()=>openAlert(c.alertId)}>بازکردن هشدار و بسته شواهد</button>
++     {canReviewInvestigation(c,actorId)?<div><label className="block">جمع‌بندی مستقل بازبین (حداقل ۲۰ نویسه)<textarea className={input} value={conclusions[c.id]||''} onChange={e=>setConclusions(v=>({...v,[c.id]:e.target.value}))}/></label><button className={button} disabled={(conclusions[c.id]||'').trim().length<20} onClick={()=>persist(cases.map(x=>x.id===c.id?{...x,state:'reviewed',reviewConclusion:conclusions[c.id].trim(),reviewedAt:new Date().toISOString(),reviewedBy:actorId}:x))}>ثبت نظر بازبین بدون تأیید اجرایی</button></div>:<p className="text-xs text-amber-800">جمع‌بندی فقط برای حساب بازبین مستقل پیشنهادی امکان‌پذیر است؛ تغییر نقش نمایشی مجوز واقعی نیست.</p>}
++     {c.reviewConclusion&&<p className="rounded bg-slate-50 p-2">نظر بازبین {c.reviewedBy} در {c.reviewedAt}: {c.reviewConclusion}</p>}
++    </div>
++   </details>)}
++  </div>
++ </section>;
++}
+diff --git a/src/him/components/KnowledgeWorkspace.tsx b/src/him/components/KnowledgeWorkspace.tsx
+index 113c90b..53bc52e 100644
+--- a/src/him/components/KnowledgeWorkspace.tsx
++++ b/src/him/components/KnowledgeWorkspace.tsx
+@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
+ import { useApp } from '../context/AppContext';
+ import { normalizeFaSearch } from './faSearch';
+ import { scopedDraftKey } from './scopedDraftKey';
++import {DEMO_USERS} from '../data/mockData';
+ 
+ type Document = {
+   id: string;
+@@ -18,6 +19,8 @@ type Document = {
+   createdAt: string;
+   parentId?: string;
+   reason?: string;
++  abstract?: string;
++  reviewerId?: string;
+ };
+ const field = 'block w-full rounded-lg border border-slate-300 bg-white p-2 text-sm mt-1';
+ const btn = 'rounded-lg bg-teal-800 px-3 py-2 text-sm text-white disabled:opacity-40';
+@@ -47,7 +50,9 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+     [effectiveTo, setTo] = useState(''),
+     [retention, setRetention] = useState(''),
+     [fileLabel, setFileLabel] = useState(''),
+-    [reason, setReason] = useState('');
++    [reason, setReason] = useState(''),
++    [abstract, setAbstract] = useState(''),
++    [reviewerId, setReviewerId] = useState('');
+   const [selected, setSelected] = useState<string | null>(null);
+   const [q, setQ] = useState(''),
+     [purpose, setPurpose] = useState('review'),
+@@ -83,6 +88,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+       effectiveFrom,
+       effectiveTo,
+       retention: retention.trim(),
++      abstract: abstract.trim(),
+       fileLabel,
+       siteId: scope.siteId || '',
+       state: 'draft',
+@@ -91,10 +97,12 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+     if (saveItems([d, ...items])) {
+       setSelected(d.id);
+       setTitle('');
++      setAbstract('');
+     }
+   };
+   const change = (action: 'review_requested' | 'publication_requested' | 'successor') => {
+     if (!selectedDoc || reason.trim().length < 10) return;
++    if (action !== 'successor' && (!reviewerId.trim() || reviewerId.trim() === user?.id)) return;
+     const d: Document =
+       action === 'successor'
+         ? {
+@@ -104,13 +112,15 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+             parentId: selectedDoc.id,
+             state: 'draft',
+             reason: reason.trim(),
++            reviewerId: undefined,
+             createdAt: new Date().toISOString(),
+           }
+-        : { ...selectedDoc, state: action, reason: reason.trim() };
++        : { ...selectedDoc, state: action, reviewerId: reviewerId.trim(), reason: reason.trim() };
+     const next = action === 'successor' ? [d, ...items] : items.map((x) => (x.id === d.id ? d : x));
+     if (saveItems(next)) {
+       setSelected(d.id);
+       setReason('');
++      setReviewerId('');
+     }
+   };
+   const matched = useMemo(
+@@ -120,7 +130,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+           d.siteId === scope.siteId &&
+           (categoryFilter === 'all' || d.category === categoryFilter) &&
+           (!asOf || (d.effectiveFrom <= asOf && d.effectiveTo >= asOf)) &&
+-          normalizeFaSearch(d.title + ' ' + d.category).includes(normalizeFaSearch(q)),
++          normalizeFaSearch(d.title + ' ' + d.category + ' ' + (d.abstract||'')).includes(normalizeFaSearch(q)),
+       ),
+     [items, q, categoryFilter, asOf, scope.siteId],
+   );
+@@ -219,7 +229,8 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+                   <div key={d.id} className="border p-2 text-xs">
+                     <b>{d.title}</b> · {d.id} · نسخه {d.version} · {d.state} · مالک {d.owner} · دوره{' '}
+                     {d.effectiveFrom} تا {d.effectiveTo}
+-                    <p>استناد معتبر/بخش متن: ناموجود؛ فایل واقعی ذخیره نشده است.</p>
++                    {d.abstract?<blockquote className="mt-1 rounded bg-slate-50 p-2">گزیده متن آزمایشی و تأییدنشده: {d.abstract.slice(0,450)}{d.abstract.length>450?'…':''}</blockquote>:<p>متن قابل بازیابی ثبت نشده است.</p>}
++                    <p>شناسه ارجاع محلی: <bdi dir="ltr">{d.id}@{d.version}</bdi> · وضعیت استناد معتبر: ناموجود (سند منتشر یا مجوز ارزیابی نشده)</p>
+                   </div>
+                 ))}
+               </>
+@@ -238,7 +249,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+     <section dir="rtl" className="space-y-4" data-testid="knowledge-documents">
+       <h1 className="text-xl font-bold">KNO-01 · مخزن سند و چرخه نسخه</h1>
+       <p className={info}>
+-        اسناد محلی صرفاً metadata و نام فایل‌اند؛ محتوای فایل به سرور یا مخزن رسمی ارسال نمی‌شود.
++        اسناد محلی فقط metadata و گزیده متن مصنوعی دارند؛ فایل انتخاب‌شده به سرور یا مخزن رسمی ارسال نمی‌شود.
+         درخواست بررسی/انتشار، تصویب یا انتشار واقعی نیست.
+       </p>
+       <div role="tablist" className="flex flex-wrap gap-2">
+@@ -285,6 +296,9 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+               onChange={(e) => setFileLabel(e.target.files?.[0]?.name || '')}
+             />
+           </label>
++          <label className="text-sm sm:col-span-2">گزیده متن آزمایشی برای جستجوی محلی (حداکثر ۲۰۰۰ نویسه، بدون اطلاعات شخصی)
++            <textarea className={field} rows={3} maxLength={2000} value={abstract} onChange={e=>setAbstract(e.target.value)} placeholder="فقط متن ساختگی؛ این متن سیاست مصوب نیست"/>
++          </label>
+           <label className="text-sm">
+             شروع اعتبار *
+             <input
+@@ -361,6 +375,8 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+           <p className="text-sm">
+             Retention پیشنهادی: {selectedDoc.retention} · حذف واقعی/Legal hold: متصل نیست
+           </p>
++          {selectedDoc.abstract&&<p className="rounded bg-slate-50 p-3 text-sm">گزیده متن نمایشی: {selectedDoc.abstract}</p>}
++          {selectedDoc.reviewerId&&<p className="text-xs">بازبین پیشنهادی ثبت‌شده: {selectedDoc.reviewerId} · امضا/تأیید واقعی وجود ندارد</p>}
+           <div className="text-xs">
+             {items
+               .filter(
+@@ -383,6 +399,12 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+               onChange={(e) => setReason(e.target.value)}
+             />
+           </label>
++          <label className="block text-sm">شناسه بازبین مستقل پیشنهادی (برای درخواست بازبینی/انتشار)
++            <select className={field} value={reviewerId} onChange={e=>setReviewerId(e.target.value)}>
++              <option value="">انتخاب بازبین متفاوت از فهرست نمایشی مجاز</option>
++              {DEMO_USERS.filter(x=>x.id!==user?.id&&x.permittedSiteIds.includes(scope.siteId||'')).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
++            </select>
++          </label>
+           <div className="flex gap-2 flex-wrap">
+             <button
+               className={btn}
+@@ -393,14 +415,14 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+             </button>
+             <button
+               className={btn}
+-              disabled={reason.trim().length < 10}
++              disabled={reason.trim().length < 10 || !reviewerId.trim() || reviewerId.trim() === user?.id}
+               onClick={() => change('review_requested')}
+             >
+               درخواست بازبینی مستقل
+             </button>
+             <button
+               className={btn}
+-              disabled={reason.trim().length < 10 || selectedDoc.state !== 'review_requested'}
++              disabled={reason.trim().length < 10 || selectedDoc.state !== 'review_requested' || !reviewerId.trim() || reviewerId.trim() === user?.id}
+               onClick={() => change('publication_requested')}
+             >
+               درخواست انتشار
+diff --git a/src/him/components/MainContent.tsx b/src/him/components/MainContent.tsx
+index 881762f..1f0950f 100644
+--- a/src/him/components/MainContent.tsx
++++ b/src/him/components/MainContent.tsx
+@@ -678,7 +678,7 @@ export const MainContent: React.FC = () => {
+           </div>
+         </div>
+         <div className="flex flex-wrap gap-2 border-t pt-4">
+-          {([['/data/connectors','ثبت و جزئیات کانکتور'],['/data/ingestion','کارهای دریافت / replay'],['/data/identity','نگاشت شناسه'],['/data/datasets','کاتالوگ داده و تعریف متریک'],['/data/calendars','تقویم‌های نسخه‌دار'],['/data/lineage/demo','منشأ و تبار داده']] as const).map(([path,title])=><button key={path} type="button" className="rounded-lg border px-3 py-2 text-sm text-teal-800 hover:bg-teal-50" onClick={()=>openWorkView({kind:'spec-page',path})}>{title}</button>)}
++          {([['/data/connectors','ثبت و جزئیات کانکتور'],['/data/contracts','تعریف و بازبینی قرارداد داده'],['/data/ingestion','کارهای دریافت / replay'],['/data/identity','نگاشت شناسه'],['/data/datasets','کاتالوگ داده و تعریف متریک'],['/data/calendars','تقویم‌های نسخه‌دار'],['/data/lineage/demo','منشأ و تبار داده']] as const).map(([path,title])=><button key={path} type="button" className="rounded-lg border px-3 py-2 text-sm text-teal-800 hover:bg-teal-50" onClick={()=>openWorkView({kind:'spec-page',path})}>{title}</button>)}
+         </div>
+       </div>
+     </div>
+diff --git a/src/him/components/SpecializedWorkspaces.tsx b/src/him/components/SpecializedWorkspaces.tsx
+index 759b770..6d1348a 100644
+--- a/src/him/components/SpecializedWorkspaces.tsx
++++ b/src/him/components/SpecializedWorkspaces.tsx
+@@ -1,6 +1,7 @@
+ import React, { useEffect, useState } from 'react';
+ import { useApp } from '../context/AppContext';
+ import { validTimeWindow, validMaintenanceReason, normalizeWeights } from './domainDraftRules';
++import {DEMO_AST_EVENTS,DEMO_AST_READINGS,inDateRange} from './assetSourceFixtures';
+ 
+ /** Synthetic-only planning and request drafts: never grants permissions or dispatches source actions. */
+ type Draft = { id: string; category: string; title: string; createdAt: string; values: Record<string,string>; assessment: string };
+@@ -97,7 +98,8 @@ function Assets({save,entries}:{save:ReturnType<typeof useLocalDrafts>['save'];e
+   </div>
+   {historyFrom&&historyTo&&historyTo<historyFrom&&<p role="alert" className="text-rose-700 text-xs">پایان دوره قبل از شروع آن است.</p>}
+   <Blocked>{tab===1?'رویدادهای ثبت‌شده در منبع و وضعیت همگام‌سازی تأیید نشده‌اند. سابقه‌ای جعل نمی‌شود.':'خوانش خام، واحد UCUM، کیفیت سنسور و زمان دریافت موجود نیست. روند و هشدار بدون داده معتبر محاسبه نمی‌شود.'}</Blocked>
+-  <p className="rounded-lg bg-slate-50 p-3 text-sm">هیچ رخداد یا خوانش معتبر برای این فیلترها ثبت نشده است.</p>
++  {tab===1?(()=>{const matched=DEMO_AST_EVENTS.filter(e=>e.assetId===(historyAsset||selectedAsset)&&(!telemetryUnit||e.kind===telemetryUnit)&&inDateRange(e.eventAt,historyFrom,historyTo));return matched.length?<div className="space-y-2"><h3 className="font-semibold text-sm">رخدادهای کاملاً مصنوعی برای کنترل نمای UI</h3>{matched.map(e=><details key={e.eventAt+e.kind} className="rounded border p-3 text-xs"><summary>{e.kind} · {e.status} · {e.eventAt}</summary><p>منبع نمایشی: {e.source} · نسخه: {e.version}</p><p>زمان رخداد: {e.eventAt} · زمان دریافت: {e.ingestedAt}</p><p>{e.detail}</p></details>)}</div>:<p className="rounded-lg bg-slate-50 p-3 text-sm">برای شناسه و بازه انتخاب‌شده رخداد مصنوعی موجود نیست. رخداد واقعی هم متصل نشده است.</p>})():(()=>{const matched=DEMO_AST_READINGS.filter(e=>e.assetId===(historyAsset||selectedAsset)&&(!telemetryMetric||e.metric===telemetryMetric)&&inDateRange(e.sourceAt,historyFrom,historyTo));return matched.length?<div className="space-y-2"><h3 className="font-semibold text-sm">خوانش‌های صرفاً نمایشی (بدون تشخیص ناهنجاری)</h3><div className="overflow-x-auto"><table className="min-w-[570px] w-full text-xs text-right"><thead><tr className="border-b">{['سنجش','مقدار','واحد UCUM','زمان منبع','زمان دریافت','کیفیت'].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead><tbody>{matched.map(e=><tr key={e.metric+e.sourceAt} className="border-b"><td className="p-2">{e.metric}</td><td className="p-2">{e.value}</td><td className="p-2">{e.unit}</td><td className="p-2">{e.sourceAt}</td><td className="p-2">{e.ingestedAt}</td><td className="p-2">{e.quality}</td></tr>)}</tbody></table></div></div>:<p className="rounded-lg bg-slate-50 p-3 text-sm">برای فیلتر فعلی خوانش ساختگی تعریف نشده است؛ داده معتبر واقعی هم وجود ندارد.</p>})()}
++
+  </section>:<><h2 className="font-bold">{tabs[tab]}</h2><Blocked>این بخش به داده مرجع، مجوز و قرارداد مربوط به CMMS نیاز دارد و هنوز گردش‌کار کاملش پیاده نشده است. داده خیالی به‌عنوان تاریخچه/شاهد تجهیزات نمایش داده نمی‌شود.</Blocked></>}</Panel></>;
+ }
+ 
+diff --git a/src/him/components/SpecificationWorkspaces.tsx b/src/him/components/SpecificationWorkspaces.tsx
+index f3cd656..953b7e1 100644
+--- a/src/him/components/SpecificationWorkspaces.tsx
++++ b/src/him/components/SpecificationWorkspaces.tsx
+@@ -1,3 +1,4 @@
++import {InvestigationWorkspace} from './InvestigationWorkspace';
+ import { SpecializedWorkspace } from './SpecializedWorkspaces';
+ import {ConnectorWorkspace} from './ConnectorWorkspace';
+ import {AuditWorkspace, NotificationPolicyWorkspace} from './ControlWorkflows';
+@@ -12,6 +13,7 @@ const SCREENS: Record<string,{title:string;intro:string;tabs:string[];warning:st
+  '/settings/alert-rules':{title:'پیکربندی قواعد هشدار',intro:'پیش‌نویس رابط کاربری؛ فقط داده نمایشی',tabs:['فهرست قواعد', 'نسخه و دامنه', 'شرط و شدت', 'شواهد و تازگی', 'سرکوب و تشدید'],warning:'قواعد معتبر یا فعال نشده‌اند؛ فرم صرفاً پیش‌نویس محلی است.'},
+  '/settings/source-actions':{title:'تنظیمات اقدامات سامانه منبع',intro:'پیش‌نویس رابط کاربری؛ فقط داده نمایشی',tabs:['فهرست مانیفست\u200cها', 'شبیه\u200cساز قرارداد', 'گواهی و مجوزها'],warning:'هیچ مانیفست عملیاتی گواهی نشده و امکان اجرای اقدام منبع وجود ندارد.'},
+  '/audit':{title:'ممیزی و بررسی تمامیت',intro:'پیش‌نویس رابط کاربری؛ فقط داده نمایشی',tabs:['جستجوی محدود به دامنه', 'تمامیت و منشأ', 'بازبینی و خروجی'],warning:'دفتر ممیزی قابل‌اتکا و اثبات تمامیت متصل نشده؛ خروجی رسمی مجاز نیست.'},
++ '/data/contracts':{title:'قراردادهای نسخه‌دار داده',intro:'ثبت و بازبینی Schema و قواعد داده',tabs:['تعریف قرارداد','تغییر نسخه و بررسی','گیت‌ها و وضعیت'],warning:'قرارداد اجرایی متصل نشده و انتشار مسدود است.'},
+  '/data/connectors':{title:'مدیریت کانکتورهای منبع',intro:'ثبت پیکربندی آزمایشی کانکتور',tabs:['کاتالوگ کانکتورها'],warning:'اتصال واقعی و گواهی قرارداد موجود نیست.'},
+  '/data/datasets':{title:'کاتالوگ مجموعه‌داده‌ها',intro:'پیش‌نویس رابط کاربری؛ فقط داده نمایشی',tabs:['فهرست داده\u200cها', 'تعریف متریک', 'نسخه\u200cهای مصوب'],warning:'هیچ متریک اجرایی یا مجموعه‌داده واقعی تأیید نشده است.'},
+  '/data/identity':{title:'همسان‌سازی هویت و Crosswalk',intro:'پیش‌نویس رابط کاربری؛ فقط داده نمایشی',tabs:['مبدأ و شناسه', 'نگاشت بازه\u200cدار', 'تعارض\u200cها'],warning:'نگاشت‌های هویت واقعی و بازه‌های اعتبار موجود نیستند.'},
+@@ -45,6 +47,7 @@ export const specPaths = Object.keys(SCREENS);
+ const STATE_KEY = 'him.spec-workspaces.demo.v2';
+ export function SpecificationWorkspace({path,siteName}:{path:string;siteName:string}) {
+  const {scope,user}=useApp();
++ if(path==='/executive/investigations')return <InvestigationWorkspace/>;
+  if(path==='/audit')return <AuditWorkspace/>;
+  if(path==='/settings/notification-policy')return <NotificationPolicyWorkspace/>;
+  if(path==='/data/connectors')return <ConnectorWorkspace/>;
+diff --git a/src/him/components/WorkViews.tsx b/src/him/components/WorkViews.tsx
+index 90238d4..a2fdb63 100644
+--- a/src/him/components/WorkViews.tsx
++++ b/src/him/components/WorkViews.tsx
+@@ -1,7 +1,7 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { ArrowRight, Bell, ClipboardList, Search, CheckCircle2, Clock, User as UserIcon, Link2, FileCheck2, Inbox } from 'lucide-react';
+ import { useApp } from '../context/AppContext';
+-import { MODULES_CONFIG } from '../data/mockData';
++import { MODULES_CONFIG, DEMO_USERS } from '../data/mockData';
+ import {
+   PRIORITY_CLASS, PRIORITY_LABEL, TASK_STATUS_LABEL, ALERT_STATUS_LABEL,
+   type TaskStatus, type AlertStatus, type Priority,
+@@ -14,6 +14,12 @@ import {canonicalTasks,unfinishedTask} from '../executive/taskProjection';
+ import { AlertOperations } from './ControlWorkflows';
+ 
+ const moduleTitle = (k: string) => MODULES_CONFIG.find(m => m.key === k)?.shortTitle ?? k;
++/** Readable identity for fixture tasks; never presents an unknown ID as an authenticated person. */
++export const displayTaskOwner = (owner: string, siteId: string) => {
++  if (!owner) return 'بدون مسئول';
++  const person = DEMO_USERS.find(u => u.id === owner && u.permittedSiteIds.includes(siteId));
++  return person?.name ?? (owner.startsWith('usr-') ? `شناسه ناشناخته (${owner})` : owner);
++};
+ 
+ const Badge: React.FC<{ className: string; children: React.ReactNode }> = ({ className, children }) => (
+   <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-semibold whitespace-nowrap ${className}`}>{children}</span>
+@@ -81,7 +87,7 @@ export const TaskListView: React.FC = () => {
+  const labels={open:'باز',assigned:'تخصیص‌یافته',in_progress:'در حال انجام',blocked:'مسدود',submitted_for_review:'در انتظار بررسی',completed:'تکمیل‌شده',canceled:'لغوشده'};
+  return <div data-testid="task-list"><Header icon={<ClipboardList className="w-5 h-5"/>} title="فهرست وظایف" subtitle={`وظایف عملیاتی «${scope.siteName}» · داده نمایشی`}/>
+  <div className="flex flex-wrap gap-3 mb-4"><select aria-label="فیلتر وضعیت" className="border rounded-lg p-2 text-sm" value={status} onChange={e=>setStatus(e.target.value)}><option value="all">همه وضعیت‌ها</option><option value="unfinished">انجام‌نشده</option>{Object.entries(labels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><SearchBox value={q} onChange={v=>{setQ(v);setPage(1)}}/><select aria-label="تعداد در صفحه" className="border rounded-lg p-2 text-sm" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value) as 25|50|100);setPage(1)}}><option value={25}>۲۵ در صفحه</option><option value={50}>۵۰ در صفحه</option><option value={100}>۱۰۰ در صفحه</option></select><button type="button" className="border rounded-lg p-2 text-sm" onClick={()=>{setQ('');setStatus('all');setPage(1)}}>پاک کردن فیلترها</button></div><p className="mb-2 text-xs text-slate-500">{rows.length} وظیفه · جست‌وجو: {q||'همه'} · وضعیت: {status==='all'?'همه':status}</p>
+- {rows.length===0?<EmptyState title="وظیفه‌ای یافت نشد"/>:<div className="bg-white border rounded-xl divide-y">{rows.slice((page-1)*pageSize,page*pageSize).map(t=><button key={t.id} className="w-full text-right flex justify-between p-4 hover:bg-slate-50 gap-3" onClick={()=>openWorkView({kind:'task',id:t.id})}><span><b>{t.title}</b><span className="block text-xs text-slate-500">{t.id} · {t.owner||t.queue||'بدون مسئول'}</span></span><span className="text-sm">{labels[t.status]}</span></button>)}</div>}{rows.length>pageSize&&<div className="mt-3 flex items-center gap-3 text-sm"><button className="border rounded p-2" disabled={page===1} onClick={()=>setPage(x=>x-1)}>قبلی</button><span>صفحه {page} از {Math.ceil(rows.length/pageSize)}</span><button className="border rounded p-2" disabled={page*pageSize>=rows.length} onClick={()=>setPage(x=>x+1)}>بعدی</button></div>}
++ {rows.length===0?<EmptyState title="وظیفه‌ای یافت نشد"/>:<div className="bg-white border rounded-xl divide-y">{rows.slice((page-1)*pageSize,page*pageSize).map(t=><button key={t.id} className="w-full text-right flex justify-between p-4 hover:bg-slate-50 gap-3" onClick={()=>openWorkView({kind:'task',id:t.id})}><span><b>{t.title}</b><span className="block text-xs text-slate-500">{t.id} · {t.owner?displayTaskOwner(t.owner,t.siteId):t.queue||'بدون مسئول'}</span></span><span className="text-sm">{labels[t.status]}</span></button>)}</div>}{rows.length>pageSize&&<div className="mt-3 flex items-center gap-3 text-sm"><button className="border rounded p-2" disabled={page===1} onClick={()=>setPage(x=>x-1)}>قبلی</button><span>صفحه {page} از {Math.ceil(rows.length/pageSize)}</span><button className="border rounded p-2" disabled={page*pageSize>=rows.length} onClick={()=>setPage(x=>x+1)}>بعدی</button></div>}
+  </div>;
+ };
+ 
+@@ -133,7 +139,7 @@ export const TaskDetailView: React.FC<{ id: string }> = ({ id }) => {
+           <div className="bg-white border border-slate-200 rounded-2xl p-5 grid gap-3">
+             <Field label="وضعیت"><Badge className={TASK_STATUS_CLASS[t.status]}>{TASK_STATUS_LABEL[t.status]}</Badge></Field>
+             <Field label="اولویت"><Badge className={PRIORITY_CLASS[t.priority]}>{PRIORITY_LABEL[t.priority]}</Badge></Field>
+-            <Field label="مسئول"><span className="inline-flex items-center gap-1"><UserIcon className="w-4 h-4 text-slate-400" />{t.assignee}</span></Field>
++            <Field label="مسئول"><span className="inline-flex items-center gap-1"><UserIcon className="w-4 h-4 text-slate-400" />{displayTaskOwner(demoStore.tasks().find(o=>o.id===t.id)?.owner||t.assignee,t.siteId)}</span></Field>
+             <Field label="سررسید">{t.dueDate}</Field>
+             {alert && (
+               <Field label="هشدار مرتبط">
+@@ -256,6 +262,7 @@ export const AlertDetailView: React.FC<{ id: string }> = ({ id }) => {
+               </ul>
+             )}
+           </div>
++          <button type="button" className="rounded-lg border border-teal-300 bg-white p-3 text-sm text-teal-800 w-full text-right" onClick={()=>openWorkView({kind:'spec-page',path:'/executive/investigations'})}>بازکردن میزکار مستقل تحقیق ناهنجاری و شواهد (EXE-05)</button>
+           <div className="bg-white border rounded-xl p-4 space-y-2"><h2 className="font-bold">خط زمانی هشدار</h2><p className="text-xs">ثبت اولیه: {a.raisedAt}</p>{(a.activity||[]).map((entry,i)=><p key={i} className="text-xs border-r-2 pr-2">{entry.text} · {entry.at} · عامل: {entry.actorName || 'نامشخص (ثبت قدیمی)'}{entry.actorId && <span dir="ltr"> ({entry.actorId})</span>}</p>)}{a.resolution&&<p className="text-xs">شاهد رفع: {a.resolution.comment}</p>}</div>
+           <section className="rounded-xl border bg-white p-4 text-sm space-y-1" data-testid="anomaly-provenance"><h2 className="font-bold">زمینه تشخیص ناهنجاری · EXE-004</h2><p>نسخه آشکارساز: ثبت نشده / نیازمند تأیید</p><p>خط پایه و بازه مورد انتظار: ثبت نشده</p><p>بازه مقایسه و روند تاریخی: ثبت نشده</p><p>کیفیت داده و تازگی منبع بالادستی: نامشخص</p><p className="text-amber-800">آستانه هشدار جایگزین خط پایه آماری، مقایسه تاریخی یا مدل مصوب نیست.</p></section><EvidencePackage items={alertEvidence(a)} code={a.code} /><AlertOperations alert={a}/>
+         </div>
+@@ -309,7 +316,15 @@ export const EvidencePackage: React.FC<{ items: EvidenceItem[]; code: string }>
+               {open === e.id && (
+                 <div className="px-3 pb-3 text-xs text-slate-600 leading-6 space-y-1">
+                   <p>{e.detail}</p>
+-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-900" data-testid="alert-evidence-provenance"><p>نسخه منبع/قرارداد: در fixture گزارش نشده</p><p>نسخه تعریف متریک و قاعده: در fixture گزارش نشده</p><p>مرز Snapshot و زمان cutoff: تأیید نشده (زمان ثبت شاهد جایگزین cutoff نیست)</p><p>فرض‌های محاسبه: ثبت نشده</p><p>محدودیت‌ها: منشأ و کامل‌بودن داده احراز نشده؛ فقط برای نمایش فرانت‌اند</p></div>
++                  <dl className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-900 grid grid-cols-1 gap-1" data-testid="alert-evidence-provenance">
++                    {([
++                      ['نسخه منبع/قرارداد',e.sourceVersion],['نسخه تعریف متریک',e.metricVersion],
++                      ['نسخه قاعده هشدار',e.ruleVersion],['مرز Snapshot / cutoff',e.snapshotCutoff],
++                      ['زمان رخداد منبع',e.sourceEventAt],['زمان ورود داده',e.ingestedAt],
++                      ['فرضیات محاسبه',e.assumptions],['محدودیت‌ها',e.limitations],
++                    ] as const).map(([label,value])=><div key={label} className="flex flex-wrap gap-1"><dt className="font-semibold">{label}:</dt><dd>{value||'در داده مرجع گزارش نشده؛ قابل استنتاج از زمان مشاهده نیست'}</dd></div>)}
++                    <p className="text-xs">اثر انگشت محلی صرفاً برای تشخیص تغییر محتوای fixture است؛ امضا، اثبات تمامیت یا پیوند به لاگ معتبر نیست.</p>
++                  </dl>
+                   <p className="text-slate-400">اثر انگشت: <bdi dir="ltr" className="font-mono">{e.hash}</bdi></p>
+                 </div>
+               )}
+diff --git a/src/him/components/assetSourceFixtures.ts b/src/him/components/assetSourceFixtures.ts
+new file mode 100644
+index 0000000..8bb993a
+--- /dev/null
++++ b/src/him/components/assetSourceFixtures.ts
+@@ -0,0 +1,17 @@
++/** Fully labelled AST demonstration fixtures; not linked to CMMS or telemetry services. */
++export type AssetSourceEvent = {
++ assetId:string;kind:'synchronization'|'work_order';source:string;version:string;
++ eventAt:string;ingestedAt:string;status:string;detail:string;
++};
++export type AssetTelemetryReading = {assetId:string;metric:'temperature'|'runtime'|'energy';unit:string;value:number;sourceAt:string;ingestedAt:string;quality:'synthetic'};
++const asset='SYN-AST-SITE-TALEGHANI-001';
++export const DEMO_AST_EVENTS: AssetSourceEvent[]=[
++ {assetId:asset,kind:'synchronization',source:'CMMS-SYN-001',version:'fixture-1',eventAt:'2026-10-20T09:00:00+03:30',ingestedAt:'2026-10-20T09:01:00+03:30',status:'demo-success',detail:'همگام‌سازی نمونه؛ نتیجه عملیاتی قابل استناد نیست'},
++ {assetId:asset,kind:'work_order',source:'CMMS-SYN-001',version:'fixture-1',eventAt:'2026-10-21T11:00:00+03:30',ingestedAt:'2026-10-21T11:02:00+03:30',status:'demo-open',detail:'درخواست نگهداشت نمونه، نه سفارش کاری واقعی'},
++];
++export const DEMO_AST_READINGS:AssetTelemetryReading[]=[
++ {assetId:asset,metric:'temperature',unit:'Cel',value:22.1,sourceAt:'2026-10-19T08:00:00+03:30',ingestedAt:'2026-10-19T08:02:00+03:30',quality:'synthetic'},
++ {assetId:asset,metric:'temperature',unit:'Cel',value:22.4,sourceAt:'2026-10-20T08:00:00+03:30',ingestedAt:'2026-10-20T08:02:00+03:30',quality:'synthetic'},
++ {assetId:asset,metric:'runtime',unit:'h',value:134,sourceAt:'2026-10-20T08:00:00+03:30',ingestedAt:'2026-10-20T08:02:00+03:30',quality:'synthetic'},
++];
++export const inDateRange=(iso:string,from:string,to:string)=>(!from||iso.slice(0,10)>=from)&&(!to||iso.slice(0,10)<=to);
+diff --git a/src/him/context/AppContext.tsx b/src/him/context/AppContext.tsx
+index 0907664..6e06761 100644
+--- a/src/him/context/AppContext.tsx
++++ b/src/him/context/AppContext.tsx
+@@ -53,7 +53,7 @@ export function workViewForPath(path: string): WorkView | null {
+   if(p==='/knowledge/stewardship/issues')return {kind:'stewardship-issues'};
+   const qualityIssue=/^\/knowledge\/stewardship\/issues\/([^/]+)$/.exec(p);if(qualityIssue)return {kind:'stewardship-issue',id:decodeURIComponent(qualityIssue[1]!)};
+   if(['/settings/access','/settings/modules','/settings/agents','/clinical/capabilities','/clinical/review','/models/use-cases','/models/datasets','/models/evaluations','/models/annotations','/models/jobs-and-releases','/workforce','/quality/workflows','/assets/workflows','/finance/workflows','/executive/investigations','/operations/forecasts','/operations/scenarios','/work-queues','/knowledge/documents','/knowledge/search','/executive/briefs','/assistant/runs'].includes(p))return {kind:'spec-page',path:p};
+-  if(['/settings/notification-policy','/settings/governance','/settings/alert-rules','/settings/source-actions','/audit','/data/connectors','/data/datasets','/data/identity','/data/ingestion','/data/calendars','/data/lineage/demo'].includes(p) || /^\/data\/lineage\/[^/]+$/.test(p)) return {kind:'spec-page',path:p.startsWith('/data/lineage/')?'/data/lineage/demo':p};
++  if(['/settings/notification-policy','/settings/governance','/settings/alert-rules','/settings/source-actions','/audit','/data/connectors','/data/contracts','/data/datasets','/data/identity','/data/ingestion','/data/calendars','/data/lineage/demo'].includes(p) || /^\/data\/lineage\/[^/]+$/.test(p)) return {kind:'spec-page',path:p.startsWith('/data/lineage/')?'/data/lineage/demo':p};
+   if(p==='/manual-executions')return {kind:'manual-list'};
+   if(p==='/manual-executions/new')return {kind:'manual-new'};
+   const manualId=/^\/manual-executions\/([^/]+)$/.exec(p);if(manualId)return {kind:'manual-detail',id:decodeURIComponent(manualId[1]!)};
+diff --git a/src/him/data/evidenceData.ts b/src/him/data/evidenceData.ts
+index 188fe00..41872ce 100644
+--- a/src/him/data/evidenceData.ts
++++ b/src/him/data/evidenceData.ts
+@@ -9,6 +9,14 @@ export interface EvidenceItem {
+   capturedAt: string;
+   detail: string;
+   hash: string;
++  sourceVersion?: string | null;
++  metricVersion?: string | null;
++  ruleVersion?: string | null;
++  snapshotCutoff?: string | null;
++  sourceEventAt?: string | null;
++  ingestedAt?: string | null;
++  assumptions?: string | null;
++  limitations?: string | null;
+ }
+ 
+ export const EVIDENCE_KIND_LABEL: Record<EvidenceKind, string> = {
+diff --git a/src/him/executive/ExecutiveDashboard.tsx b/src/him/executive/ExecutiveDashboard.tsx
+index c06f1bb..56e5828 100644
+--- a/src/him/executive/ExecutiveDashboard.tsx
++++ b/src/him/executive/ExecutiveDashboard.tsx
+@@ -1,7 +1,7 @@
+ import React,{useMemo,useState,useEffect} from 'react';
+ import {Activity,AlertTriangle,ClipboardList,Database,Package,RefreshCw,Stethoscope,X,ChevronLeft,FileSearch,Bot} from 'lucide-react';
+ import {useApp} from '../context/AppContext';
+-import {getExecutiveDashboard,type DashboardMetric,type Period,type MetricEvidence} from './dashboardStore';
++import {getExecutiveDashboard,type DashboardMetric,type Period,type MetricEvidence,compareOccupancyFixtures} from './dashboardStore';
+ 
+ const periodLabels:Record<Period,string>={day:'آخرین روز کامل',week:'۷ روز کامل',month:'۳۰ روز کامل'};
+ const qualityLabels={fresh:'نمایشی · داده در دسترس',stale:'نمونه قدیمی · نه داده جاری',unavailable:'داده موجود نیست',not_computable:'قابل محاسبه نیست'};
+@@ -18,6 +18,7 @@ export function ExecutiveDashboard(){
+  const [evidence,setEvidence]=useState<MetricEvidence|null>(null);
+  const [tab,setTab]=useState<'summary'|'trend'|'calculation'|'evidence'|'quality'>('summary');
+  const snapshot=useMemo(()=>getExecutiveDashboard(scope.siteId??'',period,alerts,tasks),[scope.siteId,period,alerts,tasks,revision]);
++ const peerComparison=useMemo(()=>compareOccupancyFixtures(permittedSites.map(s=>s.id),period),[permittedSites,period]);
+  useEffect(()=>{setSelected(null);setEvidence(null);setTab('summary')},[scope.siteId,period]);
+  const metric=snapshot.metrics.find(m=>m.key===selected);
+  const askAboutMetric=(m:DashboardMetric)=>{
+@@ -42,7 +43,7 @@ export function ExecutiveDashboard(){
+    <p className="text-xs text-amber-800 bg-amber-50 rounded-lg p-2">توجه: بازخوانی فقط داده‌های mock محلی را می‌خواند؛ زمان snapshot منبع را تغییر نمی‌دهد. بعضی شاخص‌ها فاقد داده سازگار با بازه انتخابی‌اند.</p>
+   </div>
+   <section className="rounded-xl border bg-white p-3 sm:p-4 space-y-3 min-w-0 max-w-full" data-testid="executive-sites-comparison"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold text-sm">پوشش و مقایسه چندسایتی · EXE-002</h3><label className="text-sm flex items-center gap-2"><input type="checkbox" checked={allSites} onChange={e=>setAllSites(e.target.checked)}/>همه سایت‌های قابل‌دسترسی (مقایسه؛ نه تغییر دامنه مجوز)</label></div>
+- {allSites?<><p className="text-xs text-amber-900">مقایسه با اعداد تجمیعی معتبر قابل انتشار نیست؛ هم‌ارزی تعریف متریک، نسخه‌ها، قطع زمانی، جمعیت و وزن‌ها باید برای هر سایت تأیید شود. انتخاب «همه سایت‌ها» اجازه مشاهده داده غیرمجاز نمی‌دهد.</p><div className="overflow-x-auto"><table className="min-w-[530px] w-full text-right text-xs"><thead><tr className="border-b"><th className="p-2">سایت مجاز</th><th className="p-2">وضعیت داده مقایسه‌ای</th><th className="p-2">شمول/حذف</th><th className="p-2">دلیل</th></tr></thead><tbody>{permittedSites.map(site=><tr key={site.id} className="border-b"><td className="p-2">{site.name}</td><td className="p-2">سازگاری سنجه بررسی نشده</td><td className="p-2">خارج از تجمیع</td><td className="p-2">مخرج، نسخه/تازگی و امکان تجمیع وزنی تأیید نشده</td></tr>)}</tbody></table></div><p className="text-xs">جایگزین: مشاهده یک سایت در دامنه مجاز یا درخواست تهیه snapshot و سیاست مقایسه مصوب.</p></>:<p className="text-xs text-slate-500">حالت تک‌سایتی: {scope.siteName}. برای مشاهده شمول/حذف سایت‌های مجاز، گزینه مقایسه را انتخاب کنید.</p>}
++ {allSites?<><p className="text-xs text-amber-900">مقایسه زیر فقط با فیکسچرهای ساختگی هم‌دوره، تعریف واحد متریک {peerComparison.definition} و cutoff یکسان انجام می‌شود؛ نه گزارش تجمیعی تأییدشده یا داده روز جاری. بدون مجوز و هم‌ارزی واقعی، خروجی عملیاتی مسدود است.</p><div className="overflow-x-auto"><table className="min-w-[610px] w-full text-right text-xs"><thead><tr className="border-b">{['سایت مجاز','نرخ مصنوعی','صورت / مخرج','شمول تمرینی','دلیل/نسخه'].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead><tbody>{peerComparison.rows.map(row=><tr key={row.siteId} className="border-b"><td className="p-2">{row.name}</td><td className="p-2">{row.value===null?'—':nf(row.value,'٪')}</td><td className="p-2">{row.occupied===null?'ناموجود':`${row.occupied} / ${row.staffed}`}</td><td className="p-2">{row.included?'در مقایسه مصنوعی':'خارج از مقایسه'}</td><td className="p-2">{row.reason||`نسخه نمونه ${row.snapshot}؛ منبع stale`}</td></tr>)}</tbody></table></div><p className="text-sm">پوشش تمرینی: {peerComparison.includedCount} سایت در مقایسه، {peerComparison.excludedCount} سایت خارج. نرخ وزنی فیکسچرهای واجدشرایط: <b>{peerComparison.weightedFixture===null?'قابل محاسبه نیست':nf(peerComparison.weightedFixture,'٪')}</b></p><p className="text-xs">زمان snapshot نمونه: {peerComparison.cutoff}. عدم نمایش/حذف یک سایت به دلیل داده نامعتبر، مجوز دسترسی را تغییر نمی‌دهد. برای آمار واقعی به مجوزهای سرویس، cutoff هم‌ارز، کیفیت و تازگی معتبر نیاز است.</p></>:<p className="text-xs text-slate-500">حالت تک‌سایتی: {scope.siteName}. برای مشاهده شمول/حذف سایت‌های مجاز، گزینه مقایسه را انتخاب کنید.</p>}
+   </section>
+   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 min-w-0">{snapshot.metrics.map((m,i)=>{const Icon=icons[i]!;return <button key={m.key} onClick={()=>{setSelected(m.key);setTab('summary')}} className="min-w-0 max-w-full break-words text-right rounded-2xl bg-white p-3 sm:p-5 border border-slate-200 hover:border-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-600 shadow-sm space-y-2"><div className="flex justify-between items-center"><span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Icon className="h-4 w-4 text-teal-700"/>{m.title}</span><ChevronLeft className="w-4 h-4 text-slate-400"/></div><div className="text-3xl font-black text-slate-900" dir="ltr">{nf(m.value,m.unit)}{m.unit!=='٪'&&m.value!==null?<span className="text-sm mr-2 font-normal">{m.unit}</span>:null}</div><p className="text-xs text-slate-600">{qualityLabels[m.quality]}</p><p className="text-[11px] text-slate-500">{periodLabels[period]} · مبنا: {m.asOf.split('T')[0]}</p></button>})}</div>
+   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0"><section className="bg-white border rounded-2xl p-5 space-y-3"><h3 className="font-bold text-slate-900">موارد نیازمند توجه</h3>{snapshot.alerts.filter(a=>a.severity==='critical'||a.severity==='high').slice(0,3).map(a=><button key={a.id} className="block w-full text-right border-b py-2 text-sm hover:text-teal-700" onClick={()=>openWorkView({kind:'alert',id:a.id})}>{a.title} <span className="text-xs text-slate-500">· {a.code}</span></button>)}{snapshot.issues.filter(i=>i.severity==='critical').slice(0,2).map(i=><button key={i.id} className="block w-full text-right border-b py-2 text-sm hover:text-teal-700" onClick={()=>openWorkView({kind:'stewardship-issue',id:i.id})}>{i.title} <span className="text-xs text-slate-500" dir="ltr">{i.id}</span></button>)}{snapshot.alerts.length===0&&snapshot.issues.length===0&&<p className="text-sm text-slate-500">موردی در داده نمایشی این مرکز یافت نشد.</p>}</section><section className="bg-white border rounded-2xl p-5 space-y-3"><h3 className="font-bold text-slate-900">ورود به گردش کارهای مرتبط</h3><div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2 min-w-0"><button className={button} onClick={()=>openWorkView({kind:'alerts'})}>هشدارها</button><button className={button} onClick={()=>openWorkView({kind:'supply'})}>زنجیره تأمین</button><button className={button} onClick={()=>openWorkView({kind:'stewardship-issues'})}>کیفیت داده</button><button className={button} onClick={()=>openWorkView({kind:'tasks'})}>وظایف</button><button className={button} onClick={()=>openWorkView({kind:'copilot'})}><Bot className="inline h-4 w-4"/> دستیار هوشمند</button><button data-testid="open-executive-brief-builder" className={button} onClick={()=>openWorkView({kind:'spec-page',path:'/executive/briefs'})}>ساخت گزارش مدیریتی (Brief Builder)</button></div></section></div>
+diff --git a/src/him/executive/dashboardStore.ts b/src/him/executive/dashboardStore.ts
+index 51b91a1..3274ed4 100644
+--- a/src/him/executive/dashboardStore.ts
++++ b/src/him/executive/dashboardStore.ts
+@@ -15,6 +15,20 @@ const OCCUPANCY_FIXTURE:Record<string,{occupied:number;staffed:number;snapshot:s
+  [SITES_DATA[1]?.id||'none']:{occupied:85,staffed:110,snapshot:'SYN-OPS-IMAM-20261023-v1'},
+  [SITES_DATA[2]?.id||'none']:{occupied:0,staffed:0,snapshot:'SYN-OPS-SHO-EMPTY-v1'},
+ };
++/** Comparison is explicitly restricted to authorized synthetic fixtures; not approved cross-site analytics. */
++export function compareOccupancyFixtures(siteIds:string[],period:Period){
++ const allowed=[...new Set(siteIds)];
++ const rows=allowed.map(siteId=>{
++   const row=OCCUPANCY_FIXTURE[siteId];
++   const site=SITES_DATA.find(x=>x.id===siteId);
++   const reason=period!=='day'?'داده هم‌دوره برای ۷ یا ۳۰ روز کامل در فیکسچر موجود نیست':!row?'Snapshot معتبر برای این سایت وجود ندارد':row.staffed<=0?'مخرج صفر؛ قابل مقایسه نیست':null;
++   return {siteId,name:site?.name||siteId,occupied:row?.occupied??null,staffed:row?.staffed??null,value:row&&row.staffed>0?calculateOccupancy(row.occupied,row.staffed):null,reason,included:reason===null,snapshot:row?.snapshot||null};
++ });
++ const included=rows.filter(x=>x.included);
++ const totalOccupied=included.reduce((v,x)=>v+(x.occupied||0),0);
++ const totalStaffed=included.reduce((v,x)=>v+(x.staffed||0),0);
++ return {rows,weightedFixture:totalStaffed>0?calculateOccupancy(totalOccupied,totalStaffed):null,includedCount:included.length,excludedCount:rows.length-included.length,definition:'available_staffed_bed_occupancy@1',cutoff:'2026-10-23T23:59:59+03:30'};
++}
+ const activeIssue=(state:string)=>!['closed','resolved'].includes(state);
+ const activeAlert=(a:WorkAlert)=>a.status!=='resolved';
+ export function calculateOccupancy(n:number,d:number){return d===0?null:Math.round(n/d*10000)/100;}
+diff --git a/src/him/phase6/MemoActionHandoff.tsx b/src/him/phase6/MemoActionHandoff.tsx
+index 078e5e7..161e2d7 100644
+--- a/src/him/phase6/MemoActionHandoff.tsx
++++ b/src/him/phase6/MemoActionHandoff.tsx
+@@ -2,6 +2,13 @@ import React, { useState } from 'react';
+ import { useApp } from '../context/AppContext';
+ import type { Memo } from './store';
+ 
++/** Only approved-for-demo template identifiers may be proposed; source manifests are not registered. */
++export const MEMO_DEMO_ACTION_TEMPLATES=[
++  {id:'demo-capacity-review',label:'پیشنهاد بررسی ظرفیت (T2 / فقط آزمایشی)'},
++  {id:'demo-supply-replenishment',label:'پیشنهاد تأمین غیرالزام‌آور (T3 / فقط آزمایشی)'},
++  {id:'demo-data-quality-escalation',label:'ارجاع کیفیت داده برای بازبینی (T2 / فقط آزمایشی)'},
++] as const;
++export const validMemoActionTemplate=(id:string)=>MEMO_DEMO_ACTION_TEMPLATES.some(t=>t.id===id);
+ type Request = {
+   id: string;
+   memoId: string;
+@@ -25,7 +32,7 @@ export function MemoActionHandoff({ memo }: { memo: Memo }) {
+   const [template, setTemplate] = useState('');
+   const [reason, setReason] = useState('');
+   const save = () => {
+-    if (!template.trim() || reason.trim().length < 20) return;
++    if (!validMemoActionTemplate(template) || reason.trim().length < 20 || !memo.revision) return;
+     const record: Request = {
+       id: `request-${Date.now()}`,
+       memoId: memo.id,
+@@ -54,12 +61,11 @@ export function MemoActionHandoff({ memo }: { memo: Memo }) {
+         است، نه اجرای آن.
+       </p>
+       <label className="block text-sm">
+-        شناسه قالب اقدام ثبت‌شده (برای بررسی؛ صحت قالب تأیید نمی‌شود)
+-        <input
+-          className="mt-1 w-full rounded-lg border p-2"
+-          value={template}
+-          onChange={(e) => setTemplate(e.target.value)}
+-        />
++        قالب پیشنهاد آزمایشی (برای ایجاد Proposal عملیاتی به ثبت رسمی Manifest نیاز است)
++        <select className="mt-1 w-full rounded-lg border p-2" value={template} onChange={(e)=>setTemplate(e.target.value)}>
++          <option value="">قالب مجاز نمایشی را انتخاب کنید</option>
++          {MEMO_DEMO_ACTION_TEMPLATES.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
++        </select>
+       </label>
+       <label className="block text-sm">
+         دلیل درخواست (حداقل ۲۰ نویسه)
+@@ -71,7 +77,7 @@ export function MemoActionHandoff({ memo }: { memo: Memo }) {
+       </label>
+       <button
+         className="rounded-lg bg-teal-800 px-4 py-2 text-white disabled:opacity-40"
+-        disabled={!template.trim() || reason.trim().length < 20}
++        disabled={!validMemoActionTemplate(template) || reason.trim().length < 20 || !memo.revision}
+         onClick={save}
+       >
+         ثبت درخواست پیشنهاد اقدام T1
+@@ -80,10 +86,11 @@ export function MemoActionHandoff({ memo }: { memo: Memo }) {
+         برای تبدیل درخواست به اقدام قابل تصویب، باید قالب، دامنه، صلاحیت‌ها، نسخه سیاست و گیت Action
+         Gateway جداگانه بررسی شوند. هیچ ارسال یا تصویب واقعی فعال نیست.
+       </p>
++      {items.length>0&&<p className="text-xs">درخواست‌های زیر به نسخه مشخص یادداشت قفل شده‌اند. اگر نسخه یادداشت تغییر کند، باید درخواست جداگانه‌ای ساخته شود.</p>}
+       {items.map((r) => (
+         <div key={r.id} className="rounded-lg border p-3 text-xs">
+           <bdi>{r.id}</bdi> · یادداشت {r.memoId} ویرایش {r.revision} · قالب {r.template} · {r.state}{' '}
+-          · {r.createdAt}
++          · {r.createdAt} · {r.revision===memo.revision?'نسخه جاری یادداشت':'نسخه قبلی یادداشت؛ نیازمند بررسی دوباره'}
+         </div>
+       ))}
+     </section>
+diff --git a/src/him/supply/SupplierPerformancePanel.tsx b/src/him/supply/SupplierPerformancePanel.tsx
+new file mode 100644
+index 0000000..b85d2f2
+--- /dev/null
++++ b/src/him/supply/SupplierPerformancePanel.tsx
+@@ -0,0 +1,24 @@
++import React from 'react';
++import {DEMO_PURCHASE_LINES,inspectSupplier} from './supplierPerformance';
++
++/** Isolated fixture drilldown for SUP-005. Never labels synthetic OTIF as live supplier performance. */
++export function SupplierPerformancePanel({riskId,supplier,item,siteName,leadTime,snapshot}:{riskId:string;supplier:string;item:string;siteName:string;leadTime:number;snapshot:string}) {
++  const available=riskId==='RISK-TAL-0003';
++  const result=inspectSupplier(DEMO_PURCHASE_LINES,'risk-supplier');
++  const rows=DEMO_PURCHASE_LINES.filter(x=>x.supplier==='risk-supplier');
++  return <section className="space-y-4 rounded-xl border bg-white p-4" data-testid="supplier-performance">
++    <h3 className="font-bold">تحلیل عملکرد تأمین‌کننده · SUP.4 / REQ-SUP-005</h3>
++    <p className="text-sm">سایت: {siteName} · قلم: {item} · تأمین‌کننده در ریسک: {supplier} · فرض تأمین: {leadTime} روز · Snapshot ریسک: {snapshot}</p>
++    {!available?<p role="note" className="rounded-lg bg-amber-50 p-3 text-sm">برای این پرونده هیچ فیکسچر خرید و رسید وجود ندارد؛ OTIF، نرخ نقص، تمرکز و رتبه قابل محاسبه نیستند.</p>:<>
++      <p role="note" className="rounded-lg bg-amber-50 p-3 text-sm">جدول زیر فقط مجموعه خطوط خرید ساختگی SYN-PO برای مرور فرمول‌هاست. ارتباط واقعی با تأمین‌کننده فوق یا منبع خرید تأیید نشده؛ رتبه‌بندی و تصمیم خرید از این داده ممنوع است.</p>
++      <div className="grid gap-2 sm:grid-cols-3 text-sm">
++        <div className="rounded-lg border p-3"><b>OTIF آزمایشی</b><p>{result.onTimeInFull} / {result.eligible} = {result.ratio===null?'ناموجود':(result.ratio*100).toFixed(1)+'٪'}</p></div>
++        <div className="rounded-lg border p-3"><b>نمونه واجد شرایط</b><p>{result.eligible} خط · حداقل {result.minSample} خط</p><p className="text-amber-800">{result.insufficient?'نمونه ناکافی؛ رتبه‌بندی ممنوع':'آستانه تعداد نمونه برقرار است'}</p></div>
++        <div className="rounded-lg border p-3"><b>تمرکز مقداری فیکسچر</b><p>{result.concentration===null?'نامعلوم':(result.concentration*100).toFixed(1)+'٪'} از مقدار سفارش خطوط کامل فیکسچر</p></div>
++      </div>
++      <p className="text-xs">پوشش: {result.total} خط منتسب به تأمین‌کننده، {result.eligible} واجد شرایط، {result.missing} با ورودی ناقص. یک خط از تأمین‌کننده دیگر نیز فاقد فیلدهای الزامی است و از مخرج تحلیل کنار گذاشته شده است. بازه فیکسچر: ۱۷ تا ۲۴ اکتبر ۲۰۲۶؛ نسخه قرارداد، ارز و هزینه واقعی: نامعلوم.</p>
++      <div className="overflow-x-auto"><table className="min-w-[640px] w-full text-right text-xs"><thead><tr className="bg-slate-50 border-b">{['شناسه خط آزمایشی','سفارش','تحویل','تاریخ توافق','تاریخ رسید','در موعد و کامل؟'].map(t=><th key={t} className="p-2">{t}</th>)}</tr></thead><tbody>{rows.map(r=><tr key={r.id} className="border-b"><td className="p-2" dir="ltr">{r.id}</td><td className="p-2">{r.ordered??'نامعلوم'}</td><td className="p-2">{r.delivered??'نامعلوم'}</td><td className="p-2">{r.agreedDate??'نامعلوم'}</td><td className="p-2">{r.receivedDate??'نامعلوم'}</td><td className="p-2">{r.delivered!==null&&r.ordered!==null&&r.receivedDate&&r.agreedDate?(r.delivered>=r.ordered&&r.receivedDate<=r.agreedDate?'بله':'خیر'):'غیرقابل محاسبه'}</td></tr>)}</tbody></table></div>
++      <p className="text-xs text-amber-800">برای استفاده عملیاتی باید جمعیت خرید واجد شرایط، قرارداد مؤثر، تاریخ توافق منجمد، رسیدهای نسخه‌دار، استثناها و مجوزهای دسترسی از منبع معتبر دریافت شوند.</p>
++    </>}
++  </section>;
++}
+diff --git a/src/him/supply/SupplyViews.tsx b/src/him/supply/SupplyViews.tsx
+index aa724f3..d2843d7 100644
+--- a/src/him/supply/SupplyViews.tsx
++++ b/src/him/supply/SupplyViews.tsx
+@@ -11,6 +11,7 @@ import {getCases,getProposals,getProposalVersions,proposalStatusLabels,saveCase,
+ import type {WorkView} from '../context/AppContext';
+ import {TaskDrawer} from '../phase6/Phase6';
+ import {demoStore} from '../phase6/store';
++import {SupplierPerformancePanel} from './SupplierPerformancePanel';
+ 
+ type Props={view:Extract<WorkView,{kind:'supply'|'supply-risk'|'supply-proposals'|'supply-proposal'|'supply-cases'|'supply-case'|'supply-new'}>;open:(v:WorkView|null)=>void;siteName:string;siteId:string;notify:(s:string)=>void};
+ const panel='rounded-2xl border border-slate-200 bg-white shadow-sm';
+@@ -41,7 +42,7 @@ export function SupplyViews({view,open,siteName,siteId,notify}:Props){
+  const kpi=(label:string,value:string,sub:string,icon:React.ReactNode)=><Card><CardContent className="p-4"><div className="mb-2 flex items-center justify-between"><span className="text-xs text-slate-500">{label}</span><span className="rounded-lg bg-teal-50 p-2 text-teal-700">{icon}</span></div><div className="text-2xl font-black">{value}</div><div className="mt-1 text-xs text-slate-500">{sub}</div></CardContent></Card>;
+  const statusBadge=(status:string,label:string)=><Badge variant={status==='high'||status==='failed'?'destructive':status==='warning'||status==='medium'?'secondary':'outline'}>{label}</Badge>;
+  if(view.kind==='supply'||view.kind==='supply-risk'){
+-  if(view.kind==='supply-risk'&&risk.siteId!==siteId)return <div dir="rtl" className="flex flex-col items-start gap-4 rounded-xl border bg-amber-50 p-6 text-right"><p className="w-full">داده این ریسک برای {risk.site} ثبت شده و برای بیمارستان انتخابی ({siteName}) داده معتبری وجود ندارد.</p><Button variant="outline" onClick={()=>open({kind:'supply'})}>بازگشت</Button></div>; if(view.kind==='supply-risk') return <div dir="rtl" className="text-right">{head(risk.item,`${risk.code} · داده نمونه متعلق به ${risk.site} · پرونده ${risk.caseId}`,()=>open({kind:'supply'}))}<div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">این داده‌های نمایشی متعلق به {risk.site} هستند و نباید به‌عنوان داده بیمارستان انتخاب‌شده ({siteName}) تفسیر شوند. فیلتر واقعی سایت نیازمند داده تفکیک‌شده هر بیمارستان است.</div><div className="mb-4 flex flex-wrap gap-2"><Button onClick={()=>create('replenishment')}><Plus className="ml-2 size-4"/>پیشنهاد تأمین مجدد</Button><Button variant="outline" onClick={()=>create('transfer')}><Truck className="ml-2 size-4"/>پیشنهاد انتقال موجودی</Button><Button variant="outline" onClick={()=>open({kind:'supply-case',id:risk.caseId})}>مشاهده پرونده کمبود</Button><Button variant="outline" onClick={()=>{setTab('assumptions')}}>بررسی فرضیات</Button></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{kpi('موجودی قابل برنامه‌ریزی',`${fmt(risk.usable)} واحد پایه`,'usable-unreserved',<Warehouse className="size-5"/>)}{kpi('ورودی واجد شرایط',`${fmt(risk.inbound)} واحد`,'دریافت‌های مورد انتظار جدا از موجودی فیزیکی',<Truck className="size-5"/>)}{kpi('موقعیت خالص موجودی',`${fmt(risk.usable+risk.inbound-risk.outbound)} واحد`,'موجودی + ورودی − تعهد خروجی',<Boxes className="size-5"/>)}{kpi('کمبود پیش‌بینی‌شده',risk.stockout,'بازه پیش‌بینی '+risk.horizon+' روز',<CalendarClock className="size-5"/>)}</div><Tabs value={tab} onValueChange={setTab} className="mt-5"><TabsList className="h-auto flex-wrap"><TabsTrigger value="overview">نمای کلی</TabsTrigger><TabsTrigger value="inventory">موجودی و بچ‌ها</TabsTrigger><TabsTrigger value="forecast">پیش‌بینی تقاضا</TabsTrigger><TabsTrigger value="expiry">سن و انقضا</TabsTrigger><TabsTrigger value="assumptions">فرضیات و سناریو</TabsTrigger><TabsTrigger value="proposals">پیشنهادهای مرتبط</TabsTrigger><TabsTrigger value="supplier">عملکرد تأمین‌کننده</TabsTrigger></TabsList><TabsContent value="overview"><div className="grid gap-4 lg:grid-cols-2"><Card><CardHeader><CardTitle>علت ریسک</CardTitle></CardHeader><CardContent className="space-y-2 text-sm"><p>موجودی قابل برنامه‌ریزی در برابر سطح هدف {fmt(risk.targetStock)} واحد بررسی می‌شود.</p><p>مرجع پیش‌بینی: <bdi>{risk.forecastRef}</bdi></p><p>زمان ثبت تصویر موجودی: <bdi>{risk.snapshot}</bdi></p><p>مالک پرونده: {risk.owner}</p>{risk.quality!=='good'&&<div className="rounded-lg bg-amber-50 p-3 text-amber-900"><AlertTriangle className="ml-2 inline size-4"/>کیفیت داده محدود یا نیازمند بررسی است؛ اعتبارسنجی ممکن است مسدود شود.</div>}</CardContent></Card><Card><CardHeader><CardTitle>خط زمانی ریسک</CardTitle></CardHeader><CardContent className="space-y-3">{risk.history.map((h)=><div key={h.label} className="border-r-2 border-teal-200 pr-3"><div className="font-bold">{h.label}</div><div className="text-xs text-slate-500">{h.at} · {h.detail}</div></div>)}</CardContent></Card></div></TabsContent><TabsContent value="supplier"><section className="rounded-xl border bg-white p-4 space-y-3" data-testid="supplier-performance"><h3 className="font-bold">تحلیل عملکرد تأمین‌کننده · SUP.4</h3><p className="text-sm">تأمین‌کننده نمونه: {risk.supplier} · کالای مرتبط: {risk.item} · سایت: {siteName}</p><div className="grid gap-2 sm:grid-cols-3">{['OTIF / تحویل کامل و به‌موقع','تعداد خطوط واجد شرایط / مخرج','نرخ تأخیر / نقص تحویل','پوشش داده و Missingness','تمرکز هزینه یا مقدار','پنجره مقایسه و نسخه قرارداد'].map(label=><div key={label} className="rounded-lg border p-3 text-xs"><b>{label}</b><p className="text-amber-800">ناموجود / قابل محاسبه نیست</p></div>)}</div><p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">فقط نام تأمین‌کننده و مدت تأمین از fixture ریسک موجود است. سفارش‌ها، تاریخ‌های توافق‌شده، رسیدهای واجد شرایط و مبلغ مصوب در دسترس نیستند؛ هیچ OTIF، رتبه‌بندی یا ادعای عملکرد تأمین‌کننده محاسبه نشده است. در صورت کمتر از ۱۰ خط واجد شرایط، وضعیت باید «نمونه ناکافی» باشد؛ در اینجا حتی تعداد نمونه نامشخص است.</p><p className="text-sm">مدت تأمین ثبت‌شده در فرض ریسک: {risk.leadTime} روز · کیفیت تصویر داده: {risk.quality} · مرجع: {risk.snapshot}</p></section></TabsContent><TabsContent value="inventory"><div className="mb-3 grid gap-3 sm:grid-cols-3">{kpi('موجودی کل نمایش‌داده‌شده',fmt(risk.usable+risk.reserved+risk.quarantined+risk.expired+risk.damaged),'تفکیک‌های غیرهم‌پوشان',<Boxes className="size-5"/>)}{kpi('رزروشده قابل استفاده',fmt(risk.reserved),'جدا از usable-unreserved',<Package className="size-5"/>)}{kpi('قرنطینه / منقضی / مسدود',fmt(risk.quarantined+risk.expired+risk.damaged),'در موجودی قابل برنامه‌ریزی منظور نشده',<ShieldAlert className="size-5"/>)}</div><div className={`${panel} overflow-auto`}><table dir="rtl" className="w-full min-w-[850px] text-right text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr>{['بچ','مکان','مقدار اصلی','واحد پایه','تبدیل','وضعیت','انقضا','کیفیت','مرجع'].map(x=><th className="p-3" key={x}>{x}</th>)}</tr></thead><tbody>{risk.lots.map(l=><tr className="border-t" key={l.id}>{[l.id,l.location,`${l.quantity} ${l.unit}`,l.base,l.conversion,l.disposition,l.expiry,l.quality,l.source].map((v,i)=><td className="p-3" key={i}>{v}</td>)}</tr>)}</tbody></table></div><p className="mt-2 text-xs text-slate-500">دریافت‌های مورد انتظار: {risk.inbound} واحد · تعهد خروجی جدا از رزرو: {risk.outbound} واحد</p></TabsContent><TabsContent value="forecast"><Card><CardHeader><CardTitle>پیش‌بینی تقاضا · {risk.forecastRef}</CardTitle><p className="text-xs text-slate-500">افق {risk.horizon} روز · سطل روزانه · تصویر برش {risk.snapshot}</p></CardHeader><CardContent><div className="mb-4 flex h-56 items-end gap-1 border-b border-slate-200 px-2">{risk.forecast.map((f,i)=><div key={f.day} className="group relative flex h-full flex-1 flex-col justify-end"><div title={`${f.day}: پیش‌بینی ${f.expected}; موجودی ${f.balance}`} className={`w-full rounded-t ${f.censored?'bg-amber-400':'bg-teal-500'}`} style={{height:`${Math.max(4,Math.min(95,f.expected*3))}%`}}/><div className="text-center text-[9px] text-slate-400">{i%2===0?i+1:''}</div></div>)}</div><div className="flex flex-wrap gap-4 text-xs"><span>■ تقاضای مورد انتظار</span><span className="text-amber-700">■ روزهای کمبود موجودی/تقاضای سانسورشده</span></div><div className="mt-4 overflow-auto"><table className="w-full text-sm"><thead><tr className="text-xs text-slate-500"><th className="p-2 text-right">روز</th><th className="p-2">مصرف ثبت‌شده</th><th className="p-2">پیش‌بینی</th><th className="p-2">بازه پایین–بالا</th><th className="p-2">تراز تحلیلی</th><th className="p-2">داده</th></tr></thead><tbody>{risk.forecast.map(f=><tr key={f.day} className="border-t"><td className="p-2">{f.day}</td><td className="p-2 text-center">{f.actual??'—'}</td><td className="p-2 text-center">{f.expected}</td><td className="p-2 text-center">{f.low}–{f.high}</td><td className="p-2 text-center">{f.balance}</td><td className="p-2 text-center">{f.censored?'سانسورشده':'عادی'}</td></tr>)}</tbody></table></div>{risk.quality==='limited'&&<p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">شواهد تقاضا محدود است؛ روزهای صفر مصرف در دوره کمبود به‌معنای تقاضای صفر نیست.</p>}</CardContent></Card></TabsContent><TabsContent value="expiry"><Card><CardHeader><CardTitle className="text-right">سن موجودی و مواجهه با انقضا</CardTitle></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-4">{[['۰–۳۰ روز',0],['۳۱–۶۰ روز',1],['۶۱–۹۰ روز',2],['بیش از ۹۰ روز',3]].map(([label,bucket])=>{const snapshot=Date.parse(risk.snapshot);const count=risk.lots.filter(l=>Number.isFinite(Date.parse(l.received))).reduce((sum,l)=>{const age=Math.max(0,Math.floor((snapshot-Date.parse(l.received))/86400000));return sum+(bucket===0&&age<=30||bucket===1&&age>30&&age<=60||bucket===2&&age>60&&age<=90||bucket===3&&age>90?l.base:0)},0);return [label,String(count)]}).map(([a,b])=><div className="rounded-xl bg-slate-50 p-4" key={a}><div className="text-xs text-slate-500">{a}</div><div className="mt-2 text-xl font-black">{b} واحد</div></div>)}</div><div dir="rtl" className="mt-4 space-y-2 text-right">{risk.lots.map(l=><div dir="rtl" className="flex flex-wrap flex-row-reverse items-center justify-between gap-2 rounded-lg border p-3" key={l.id}><div><bdi dir="ltr" className="block font-bold text-right">{l.id}</bdi><div className="text-xs text-slate-500">انقضا: <bdi dir="ltr">{l.expiry}</bdi> · دریافت: <bdi dir="ltr">{l.received}</bdi></div></div>{statusBadge(l.quality,l.quality==='good'?'قابل استفاده':'نیازمند بررسی')}</div>)}</div></CardContent></Card></TabsContent><TabsContent value="assumptions"><Card><CardHeader><CardTitle>مقایسه مقدار اصلی و سناریوی بررسی</CardTitle></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2"><div className="rounded-xl bg-slate-50 p-4"><div className="text-sm font-bold">مقدار اصلی</div><p className="mt-2 text-sm">تقاضای روزانه: {risk.forecast[0]?.expected} واحد</p><p className="text-sm">زمان تأمین: {risk.leadTime} روز</p><p className="text-sm">موجودی قابل برنامه‌ریزی: {risk.usable} واحد</p></div><div className="space-y-3 rounded-xl border p-4"><div className="font-bold">سناریوی بررسی</div><label className="block text-sm">تقاضای روزانه<input className="mt-1 w-full rounded-md border p-2" type="number" min="0" value={scenarioDemand} onChange={e=>setScenarioDemand(e.target.value)}/></label><label className="block text-sm">زمان تأمین (روز)<input className="mt-1 w-full rounded-md border p-2" type="number" min="1" value={scenarioLead} onChange={e=>setScenarioLead(e.target.value)}/></label><div className="rounded-lg bg-teal-50 p-3 text-sm">نیاز طی زمان تأمین: {fmt(Math.max(0,Number(scenarioDemand)||0)*Math.max(0,Number(scenarioLead)||0))} واحد</div><div className="rounded-xl border bg-slate-50 p-3 text-xs"><strong>Override های این ریسک (نمایشی)</strong><div className="mt-2 space-y-1">{(()=>{try{const entries=JSON.parse(localStorage.getItem('him.supply.overrides.v1')||'[]') as {riskId:string;demand:number;leadTime:number;expiresAt:string;supersededAt?:string}[];void overrideRefresh;return entries.filter(x=>x.riskId===risk.id).length?entries.filter(x=>x.riskId===risk.id).map((x,i)=><p key={i}>{x.demand} واحد/روز · {x.leadTime} روز · انقضا: <bdi dir="ltr">{x.expiresAt}</bdi> · {x.supersededAt?'جایگزین‌شده':x.expiresAt<new Date().toISOString().slice(0,10)?'منقضی':'فعال'}</p>):<p>Override ثبت نشده است.</p>}catch{return <p>داده ذخیره‌شده قابل خواندن نیست.</p>}})()}</div></div><div className="rounded-xl border p-3 text-xs space-y-1"><strong>مقایسه سناریو با حالت پایه (تخمینی)</strong><p>کمبود ثبت‌شده در حالت پایه: <bdi dir="ltr">{risk.stockout}</bdi></p><p>مقدار تأمین پایه: {fmt(Math.max(0,Math.ceil(Math.max(0,risk.targetStock-(risk.usable+risk.inbound-risk.outbound))/risk.pack)*risk.pack))} واحد</p><p>مقدار سناریویی: {fmt(Math.max(0,Math.ceil(Math.max(0,(Number(scenarioDemand)||0)*(Number(scenarioLead)||0)+risk.safetyStock-(risk.usable+risk.inbound-risk.outbound))/risk.pack)*risk.pack))} واحد</p><p>زمان رسیدن به کسری در سناریو: {Number(scenarioDemand)>0?`${Math.floor(Math.max(0,risk.usable+risk.inbound-risk.outbound)/Number(scenarioDemand))} روز پس از تصویر موجودی`:'نامشخص'}</p><p className="text-amber-800">تاریخ کمبود پایه داده فیکسچر است؛ برآورد سناریو جایگزین پیش‌بینی معتبر نیست.</p></div><label className="block text-sm">دلیل تغییر سناریو<textarea className="mt-1 w-full rounded-md border p-2" value={overrideReason} onChange={e=>setOverrideReason(e.target.value)}/></label><label className="block text-sm">تاریخ انقضای سناریو<input type="date" className="mt-1 w-full rounded-md border p-2" value={overrideExpiry} onChange={e=>setOverrideExpiry(e.target.value)}/></label><Button onClick={()=>{if(!Number.isFinite(Number(scenarioDemand))||scenarioDemand.trim()===''||Number(scenarioDemand)<0||!Number.isFinite(Number(scenarioLead))||scenarioLead.trim()===''||Number(scenarioLead)<1){notify('تقاضا نباید منفی باشد و زمان تأمین باید دست‌کم یک روز باشد.');return}if(!overrideReason.trim()||!overrideExpiry){notify('برای ثبت سناریو، دلیل و تاریخ انقضا الزامی است.');return} if(overrideExpiry<new Date().toISOString().slice(0,10)){notify('تاریخ انقضای Override باید در آینده باشد.');return}(()=>{const key='him.supply.overrides.v1';const all=JSON.parse(localStorage.getItem(key)||'[]') as {riskId:string;expiresAt:string;supersededAt?:string}[];const conflict=all.some(x=>x.riskId===risk.id&&!x.supersededAt&&x.expiresAt>=new Date().toISOString().slice(0,10));if(conflict&&!window.confirm('Override فعال برای این ریسک وجود دارد. آیا می‌خواهید آن را جایگزین کنید؟')){return;}const now=new Date().toISOString();localStorage.setItem(key,JSON.stringify([...all.map(x=>x.riskId===risk.id&&!x.supersededAt&&x.expiresAt>=now.slice(0,10)?{...x,supersededAt:now}:x),{riskId:risk.id,demand:Number(scenarioDemand),leadTime:Number(scenarioLead),reason:overrideReason,expiresAt:overrideExpiry,createdAt:now}]));setOverrideRefresh(x=>x+1);notify('Override نمایشی ثبت شد؛ داده پایه بدون تغییر باقی ماند.');})()}}>اعمال سناریوی نمایشی</Button></div></CardContent></Card></TabsContent><TabsContent value="proposals"><ProposalTable proposals={proposals.filter(p=>p.caseId===risk.caseId)} open={open}/></TabsContent></Tabs></div>;
++  if(view.kind==='supply-risk'&&risk.siteId!==siteId)return <div dir="rtl" className="flex flex-col items-start gap-4 rounded-xl border bg-amber-50 p-6 text-right"><p className="w-full">داده این ریسک برای {risk.site} ثبت شده و برای بیمارستان انتخابی ({siteName}) داده معتبری وجود ندارد.</p><Button variant="outline" onClick={()=>open({kind:'supply'})}>بازگشت</Button></div>; if(view.kind==='supply-risk') return <div dir="rtl" className="text-right">{head(risk.item,`${risk.code} · داده نمونه متعلق به ${risk.site} · پرونده ${risk.caseId}`,()=>open({kind:'supply'}))}<div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">این داده‌های نمایشی متعلق به {risk.site} هستند و نباید به‌عنوان داده بیمارستان انتخاب‌شده ({siteName}) تفسیر شوند. فیلتر واقعی سایت نیازمند داده تفکیک‌شده هر بیمارستان است.</div><div className="mb-4 flex flex-wrap gap-2"><Button onClick={()=>create('replenishment')}><Plus className="ml-2 size-4"/>پیشنهاد تأمین مجدد</Button><Button variant="outline" onClick={()=>create('transfer')}><Truck className="ml-2 size-4"/>پیشنهاد انتقال موجودی</Button><Button variant="outline" onClick={()=>open({kind:'supply-case',id:risk.caseId})}>مشاهده پرونده کمبود</Button><Button variant="outline" onClick={()=>{setTab('assumptions')}}>بررسی فرضیات</Button></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{kpi('موجودی قابل برنامه‌ریزی',`${fmt(risk.usable)} واحد پایه`,'usable-unreserved',<Warehouse className="size-5"/>)}{kpi('ورودی واجد شرایط',`${fmt(risk.inbound)} واحد`,'دریافت‌های مورد انتظار جدا از موجودی فیزیکی',<Truck className="size-5"/>)}{kpi('موقعیت خالص موجودی',`${fmt(risk.usable+risk.inbound-risk.outbound)} واحد`,'موجودی + ورودی − تعهد خروجی',<Boxes className="size-5"/>)}{kpi('کمبود پیش‌بینی‌شده',risk.stockout,'بازه پیش‌بینی '+risk.horizon+' روز',<CalendarClock className="size-5"/>)}</div><Tabs value={tab} onValueChange={setTab} className="mt-5"><TabsList className="h-auto flex-wrap"><TabsTrigger value="overview">نمای کلی</TabsTrigger><TabsTrigger value="inventory">موجودی و بچ‌ها</TabsTrigger><TabsTrigger value="forecast">پیش‌بینی تقاضا</TabsTrigger><TabsTrigger value="expiry">سن و انقضا</TabsTrigger><TabsTrigger value="assumptions">فرضیات و سناریو</TabsTrigger><TabsTrigger value="proposals">پیشنهادهای مرتبط</TabsTrigger><TabsTrigger value="supplier">عملکرد تأمین‌کننده</TabsTrigger></TabsList><TabsContent value="overview"><div className="grid gap-4 lg:grid-cols-2"><Card><CardHeader><CardTitle>علت ریسک</CardTitle></CardHeader><CardContent className="space-y-2 text-sm"><p>موجودی قابل برنامه‌ریزی در برابر سطح هدف {fmt(risk.targetStock)} واحد بررسی می‌شود.</p><p>مرجع پیش‌بینی: <bdi>{risk.forecastRef}</bdi></p><p>زمان ثبت تصویر موجودی: <bdi>{risk.snapshot}</bdi></p><p>مالک پرونده: {risk.owner}</p>{risk.quality!=='good'&&<div className="rounded-lg bg-amber-50 p-3 text-amber-900"><AlertTriangle className="ml-2 inline size-4"/>کیفیت داده محدود یا نیازمند بررسی است؛ اعتبارسنجی ممکن است مسدود شود.</div>}</CardContent></Card><Card><CardHeader><CardTitle>خط زمانی ریسک</CardTitle></CardHeader><CardContent className="space-y-3">{risk.history.map((h)=><div key={h.label} className="border-r-2 border-teal-200 pr-3"><div className="font-bold">{h.label}</div><div className="text-xs text-slate-500">{h.at} · {h.detail}</div></div>)}</CardContent></Card></div></TabsContent><TabsContent value="supplier"><SupplierPerformancePanel riskId={risk.id} supplier={risk.supplier} item={risk.item} siteName={siteName} leadTime={risk.leadTime} snapshot={risk.snapshot}/></TabsContent><TabsContent value="inventory"><div className="mb-3 grid gap-3 sm:grid-cols-3">{kpi('موجودی کل نمایش‌داده‌شده',fmt(risk.usable+risk.reserved+risk.quarantined+risk.expired+risk.damaged),'تفکیک‌های غیرهم‌پوشان',<Boxes className="size-5"/>)}{kpi('رزروشده قابل استفاده',fmt(risk.reserved),'جدا از usable-unreserved',<Package className="size-5"/>)}{kpi('قرنطینه / منقضی / مسدود',fmt(risk.quarantined+risk.expired+risk.damaged),'در موجودی قابل برنامه‌ریزی منظور نشده',<ShieldAlert className="size-5"/>)}</div><div className={`${panel} overflow-auto`}><table dir="rtl" className="w-full min-w-[850px] text-right text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr>{['بچ','مکان','مقدار اصلی','واحد پایه','تبدیل','وضعیت','انقضا','کیفیت','مرجع'].map(x=><th className="p-3" key={x}>{x}</th>)}</tr></thead><tbody>{risk.lots.map(l=><tr className="border-t" key={l.id}>{[l.id,l.location,`${l.quantity} ${l.unit}`,l.base,l.conversion,l.disposition,l.expiry,l.quality,l.source].map((v,i)=><td className="p-3" key={i}>{v}</td>)}</tr>)}</tbody></table></div><p className="mt-2 text-xs text-slate-500">دریافت‌های مورد انتظار: {risk.inbound} واحد · تعهد خروجی جدا از رزرو: {risk.outbound} واحد</p></TabsContent><TabsContent value="forecast"><Card><CardHeader><CardTitle>پیش‌بینی تقاضا · {risk.forecastRef}</CardTitle><p className="text-xs text-slate-500">افق {risk.horizon} روز · سطل روزانه · تصویر برش {risk.snapshot}</p></CardHeader><CardContent><div className="mb-4 flex h-56 items-end gap-1 border-b border-slate-200 px-2">{risk.forecast.map((f,i)=><div key={f.day} className="group relative flex h-full flex-1 flex-col justify-end"><div title={`${f.day}: پیش‌بینی ${f.expected}; موجودی ${f.balance}`} className={`w-full rounded-t ${f.censored?'bg-amber-400':'bg-teal-500'}`} style={{height:`${Math.max(4,Math.min(95,f.expected*3))}%`}}/><div className="text-center text-[9px] text-slate-400">{i%2===0?i+1:''}</div></div>)}</div><div className="flex flex-wrap gap-4 text-xs"><span>■ تقاضای مورد انتظار</span><span className="text-amber-700">■ روزهای کمبود موجودی/تقاضای سانسورشده</span></div><div className="mt-4 overflow-auto"><table className="w-full text-sm"><thead><tr className="text-xs text-slate-500"><th className="p-2 text-right">روز</th><th className="p-2">مصرف ثبت‌شده</th><th className="p-2">پیش‌بینی</th><th className="p-2">بازه پایین–بالا</th><th className="p-2">تراز تحلیلی</th><th className="p-2">داده</th></tr></thead><tbody>{risk.forecast.map(f=><tr key={f.day} className="border-t"><td className="p-2">{f.day}</td><td className="p-2 text-center">{f.actual??'—'}</td><td className="p-2 text-center">{f.expected}</td><td className="p-2 text-center">{f.low}–{f.high}</td><td className="p-2 text-center">{f.balance}</td><td className="p-2 text-center">{f.censored?'سانسورشده':'عادی'}</td></tr>)}</tbody></table></div>{risk.quality==='limited'&&<p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">شواهد تقاضا محدود است؛ روزهای صفر مصرف در دوره کمبود به‌معنای تقاضای صفر نیست.</p>}</CardContent></Card></TabsContent><TabsContent value="expiry"><Card><CardHeader><CardTitle className="text-right">سن موجودی و مواجهه با انقضا</CardTitle></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-4">{[['۰–۳۰ روز',0],['۳۱–۶۰ روز',1],['۶۱–۹۰ روز',2],['بیش از ۹۰ روز',3]].map(([label,bucket])=>{const snapshot=Date.parse(risk.snapshot);const count=risk.lots.filter(l=>Number.isFinite(Date.parse(l.received))).reduce((sum,l)=>{const age=Math.max(0,Math.floor((snapshot-Date.parse(l.received))/86400000));return sum+(bucket===0&&age<=30||bucket===1&&age>30&&age<=60||bucket===2&&age>60&&age<=90||bucket===3&&age>90?l.base:0)},0);return [label,String(count)]}).map(([a,b])=><div className="rounded-xl bg-slate-50 p-4" key={a}><div className="text-xs text-slate-500">{a}</div><div className="mt-2 text-xl font-black">{b} واحد</div></div>)}</div><div dir="rtl" className="mt-4 space-y-2 text-right">{risk.lots.map(l=><div dir="rtl" className="flex flex-wrap flex-row-reverse items-center justify-between gap-2 rounded-lg border p-3" key={l.id}><div><bdi dir="ltr" className="block font-bold text-right">{l.id}</bdi><div className="text-xs text-slate-500">انقضا: <bdi dir="ltr">{l.expiry}</bdi> · دریافت: <bdi dir="ltr">{l.received}</bdi></div></div>{statusBadge(l.quality,l.quality==='good'?'قابل استفاده':'نیازمند بررسی')}</div>)}</div></CardContent></Card></TabsContent><TabsContent value="assumptions"><Card><CardHeader><CardTitle>مقایسه مقدار اصلی و سناریوی بررسی</CardTitle></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2"><div className="rounded-xl bg-slate-50 p-4"><div className="text-sm font-bold">مقدار اصلی</div><p className="mt-2 text-sm">تقاضای روزانه: {risk.forecast[0]?.expected} واحد</p><p className="text-sm">زمان تأمین: {risk.leadTime} روز</p><p className="text-sm">موجودی قابل برنامه‌ریزی: {risk.usable} واحد</p></div><div className="space-y-3 rounded-xl border p-4"><div className="font-bold">سناریوی بررسی</div><label className="block text-sm">تقاضای روزانه<input className="mt-1 w-full rounded-md border p-2" type="number" min="0" value={scenarioDemand} onChange={e=>setScenarioDemand(e.target.value)}/></label><label className="block text-sm">زمان تأمین (روز)<input className="mt-1 w-full rounded-md border p-2" type="number" min="1" value={scenarioLead} onChange={e=>setScenarioLead(e.target.value)}/></label><div className="rounded-lg bg-teal-50 p-3 text-sm">نیاز طی زمان تأمین: {fmt(Math.max(0,Number(scenarioDemand)||0)*Math.max(0,Number(scenarioLead)||0))} واحد</div><div className="rounded-xl border bg-slate-50 p-3 text-xs"><strong>Override های این ریسک (نمایشی)</strong><div className="mt-2 space-y-1">{(()=>{try{const entries=JSON.parse(localStorage.getItem('him.supply.overrides.v1')||'[]') as {riskId:string;demand:number;leadTime:number;expiresAt:string;supersededAt?:string}[];void overrideRefresh;return entries.filter(x=>x.riskId===risk.id).length?entries.filter(x=>x.riskId===risk.id).map((x,i)=><p key={i}>{x.demand} واحد/روز · {x.leadTime} روز · انقضا: <bdi dir="ltr">{x.expiresAt}</bdi> · {x.supersededAt?'جایگزین‌شده':x.expiresAt<new Date().toISOString().slice(0,10)?'منقضی':'فعال'}</p>):<p>Override ثبت نشده است.</p>}catch{return <p>داده ذخیره‌شده قابل خواندن نیست.</p>}})()}</div></div><div className="rounded-xl border p-3 text-xs space-y-1"><strong>مقایسه سناریو با حالت پایه (تخمینی)</strong><p>کمبود ثبت‌شده در حالت پایه: <bdi dir="ltr">{risk.stockout}</bdi></p><p>مقدار تأمین پایه: {fmt(Math.max(0,Math.ceil(Math.max(0,risk.targetStock-(risk.usable+risk.inbound-risk.outbound))/risk.pack)*risk.pack))} واحد</p><p>مقدار سناریویی: {fmt(Math.max(0,Math.ceil(Math.max(0,(Number(scenarioDemand)||0)*(Number(scenarioLead)||0)+risk.safetyStock-(risk.usable+risk.inbound-risk.outbound))/risk.pack)*risk.pack))} واحد</p><p>زمان رسیدن به کسری در سناریو: {Number(scenarioDemand)>0?`${Math.floor(Math.max(0,risk.usable+risk.inbound-risk.outbound)/Number(scenarioDemand))} روز پس از تصویر موجودی`:'نامشخص'}</p><p className="text-amber-800">تاریخ کمبود پایه داده فیکسچر است؛ برآورد سناریو جایگزین پیش‌بینی معتبر نیست.</p></div><label className="block text-sm">دلیل تغییر سناریو<textarea className="mt-1 w-full rounded-md border p-2" value={overrideReason} onChange={e=>setOverrideReason(e.target.value)}/></label><label className="block text-sm">تاریخ انقضای سناریو<input type="date" className="mt-1 w-full rounded-md border p-2" value={overrideExpiry} onChange={e=>setOverrideExpiry(e.target.value)}/></label><Button onClick={()=>{if(!Number.isFinite(Number(scenarioDemand))||scenarioDemand.trim()===''||Number(scenarioDemand)<0||!Number.isFinite(Number(scenarioLead))||scenarioLead.trim()===''||Number(scenarioLead)<1){notify('تقاضا نباید منفی باشد و زمان تأمین باید دست‌کم یک روز باشد.');return}if(!overrideReason.trim()||!overrideExpiry){notify('برای ثبت سناریو، دلیل و تاریخ انقضا الزامی است.');return} if(overrideExpiry<new Date().toISOString().slice(0,10)){notify('تاریخ انقضای Override باید در آینده باشد.');return}(()=>{const key='him.supply.overrides.v1';const all=JSON.parse(localStorage.getItem(key)||'[]') as {riskId:string;expiresAt:string;supersededAt?:string}[];const conflict=all.some(x=>x.riskId===risk.id&&!x.supersededAt&&x.expiresAt>=new Date().toISOString().slice(0,10));if(conflict&&!window.confirm('Override فعال برای این ریسک وجود دارد. آیا می‌خواهید آن را جایگزین کنید؟')){return;}const now=new Date().toISOString();localStorage.setItem(key,JSON.stringify([...all.map(x=>x.riskId===risk.id&&!x.supersededAt&&x.expiresAt>=now.slice(0,10)?{...x,supersededAt:now}:x),{riskId:risk.id,demand:Number(scenarioDemand),leadTime:Number(scenarioLead),reason:overrideReason,expiresAt:overrideExpiry,createdAt:now}]));setOverrideRefresh(x=>x+1);notify('Override نمایشی ثبت شد؛ داده پایه بدون تغییر باقی ماند.');})()}}>اعمال سناریوی نمایشی</Button></div></CardContent></Card></TabsContent><TabsContent value="proposals"><ProposalTable proposals={proposals.filter(p=>p.caseId===risk.caseId)} open={open}/></TabsContent></Tabs></div>;
+   return <div dir="rtl" className="text-right">{head('ریسک‌های کمبود موجودی',`بیمارستان انتخاب‌شده: ${siteName} · داده‌های ساختگی مستقل برای تست (نه موجودی واقعی)`)}<div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{kpi('پرونده‌های فعال',fmt(siteCases.filter(c=>c.status!=='closed').length),'پرونده‌های نمایشی',<ClipboardList className="size-5"/>)}{kpi('ریسک‌های با اهمیت بالا',fmt(siteRisks.filter(r=>r.criticality==='high').length),'بر اساس سیاست بحرانی بودن نمونه',<ShieldAlert className="size-5"/>)}{kpi('اقلام با کسری پیش‌بینی‌شده',fmt(siteRisks.length),'در افق پیش‌بینی ثبت‌شده',<CalendarClock className="size-5"/>)}{kpi('موجودی در معرض انقضا',fmt(siteRisks.reduce((s,r)=>s+r.expired,0)),'واحد ثبت‌شده در داده نمونه',<AlertTriangle className="size-5"/>)}{kpi('پرونده نیازمند بررسی',fmt(siteCases.filter(c=>c.status==='under_review').length),'بررسی برنامه‌ریز',<FileText className="size-5"/>)}{kpi('پیشنهادهای باز',fmt(siteProposals.filter(p=>p.status==='draft').length),'پیش‌نویس‌های T1',<Truck className="size-5"/> )}</div><div className={`${panel} mb-4 p-4`}><div className="grid gap-3 md:grid-cols-4"><div className="relative"><Search className="absolute right-3 top-3 size-4 text-slate-400"/><Input className="pr-9" placeholder="جست‌وجوی قلم، کد یا مالک" value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}}/></div><select className="rounded-md border bg-white px-3 text-sm" value={criticality} onChange={e=>setCriticality(e.target.value)}><option value="all">همه سطوح بحرانی بودن</option><option value="high">زیاد</option><option value="medium">متوسط</option><option value="low">کم</option></select><select className="rounded-md border bg-white px-3 text-sm" value={quality} onChange={e=>setQuality(e.target.value)}><option value="all">همه کیفیت‌های داده</option><option value="good">مناسب</option><option value="warning">هشدار</option><option value="limited">محدود</option></select><select aria-label="فیلتر مکان" className="rounded-md border bg-white px-3 py-2 text-sm" value={locationFilter} onChange={e=>{setLocationFilter(e.target.value);setPage(1)}}><option value="all">همه مکان‌ها</option>{[...new Set(siteRisks.map(r=>r.location))].map(x=><option key={x} value={x}>{x}</option>)}</select><select aria-label="فیلتر دسته قلم" className="rounded-md border bg-white px-3 py-2 text-sm" value={categoryFilter} onChange={e=>{setCategoryFilter(e.target.value);setPage(1)}}><option value="all">همه دسته‌ها</option>{[...new Set(siteRisks.map(r=>r.category))].map(x=><option key={x} value={x}>{x}</option>)}</select><select aria-label="فیلتر فهرست دارویی" className="rounded-md border bg-white px-3 py-2 text-sm" value={formularyFilter} onChange={e=>{setFormularyFilter(e.target.value);setPage(1)}}><option value="all">همه وضعیت‌های فهرست دارویی</option><option value="unknown">وضعیت ثبت‌نشده / نامشخص</option><option value="yes" disabled>در فهرست دارویی (داده موجود نیست)</option><option value="no" disabled>خارج از فهرست دارویی (داده موجود نیست)</option></select><select aria-label="فیلتر افق ریسک" className="rounded-md border bg-white px-3 py-2 text-sm" value={horizonFilter} onChange={e=>{setHorizonFilter(e.target.value);setPage(1)}}><option value="all">همه افق‌ها</option><option value="7">تا ۷ روز</option><option value="30">تا ۳۰ روز</option><option value="gt30">بیش از ۳۰ روز</option></select><select className="rounded-md border bg-white px-3 text-sm" value={sort} onChange={e=>setSort(e.target.value as 'risk'|'stockout')}><option value="risk">مرتب‌سازی: بحرانی بودن</option><option value="stockout">مرتب‌سازی: نزدیک‌ترین کسری</option></select></div><div className="mt-3 flex justify-between"><span className="text-xs text-slate-500">{filtered.length} ریسک از {siteRisks.length}</span><Button variant="ghost" size="sm" onClick={()=>{setSearch('');setCriticality('all');setQuality('all');setLocationFilter('all');setCategoryFilter('all');setFormularyFilter('all');setHorizonFilter('all');setPage(1);setSort('risk')}}><RefreshCw className="ml-1 size-3"/>پاک‌کردن فیلترها</Button></div></div>{filtered.length===0?<div className={`${panel} p-10 text-center text-slate-500`}>ریسکی با فیلترهای انتخاب‌شده یافت نشد.</div>:<div className={`${panel} overflow-auto`}><table dir="rtl" className="w-full min-w-[1000px] text-right text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr>{['قلم / کد','دسته','مکان','بحرانی بودن','نوع ریسک','موجودی قابل استفاده','کسری پیش‌بینی','کیفیت داده','مالک پرونده','وضعیت پرونده','جزئیات'].map(x=><th className="p-3" key={x}>{x}</th>)}</tr></thead><tbody>{filtered.slice((page-1)*10,page*10).map(r=><tr key={r.id} className="cursor-pointer border-t hover:bg-teal-50/50" onClick={()=>open({kind:'supply-risk',id:r.id})}><td className="p-3"><b>{r.item}</b><div className="text-xs text-slate-500"><bdi>{r.code}</bdi></div></td><td className="p-3">{r.category}</td><td className="p-3">{r.location}</td><td className="p-3">{statusBadge(r.criticality,riskLabel[r.criticality])}</td><td className="p-3">{r.riskType}</td><td className="p-3">{fmt(r.usable)} واحد</td><td className="p-3"><bdi>{r.stockout}</bdi></td><td className="p-3">{statusBadge(r.quality,r.quality==='good'?'مناسب':r.quality==='limited'?'محدود':'هشدار')}</td><td className="p-3">{r.owner}</td><td className="p-3">{statusLabels[cases.find(c=>c.id===r.caseId)!.status]}</td><td className="p-3"><Button size="sm" variant="outline" onClick={e=>{e.stopPropagation();open({kind:'supply-risk',id:r.id})}}>جزئیات</Button></td></tr>)}</tbody></table><div className="flex items-center justify-between border-t p-3 text-xs"><span>صفحه {page} از {Math.max(1,Math.ceil(filtered.length/10))}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={page===1} onClick={()=>setPage(p=>p-1)}>قبلی</Button><Button size="sm" variant="outline" disabled={page>=Math.ceil(filtered.length/10)} onClick={()=>setPage(p=>p+1)}>بعدی</Button></div></div></div>}<div className="mt-4 flex flex-wrap gap-2"><Button variant="outline" onClick={()=>open({kind:'supply-cases'})}>پرونده‌های کمبود</Button><Button variant="outline" onClick={()=>open({kind:'supply-proposals'})}>پیشنهادهای تأمین و انتقال</Button></div></div>;
+  }
+  if(view.kind==='supply-new'){
+diff --git a/src/him/supply/supplierPerformance.ts b/src/him/supply/supplierPerformance.ts
+new file mode 100644
+index 0000000..dbb2563
+--- /dev/null
++++ b/src/him/supply/supplierPerformance.ts
+@@ -0,0 +1,28 @@
++/** Synthetic line-level fixture, not a real purchase/receipt register or supplier rating. */
++export type OrderLine = {
++  id: string;
++  supplier: string;
++  ordered: number | null;
++  delivered: number | null;
++  agreedDate: string | null;
++  receivedDate: string | null;
++};
++export const DEMO_PURCHASE_LINES: OrderLine[] = [
++  {id:'SYN-PO-01',supplier:'risk-supplier',ordered:10,delivered:10,agreedDate:'2026-10-18',receivedDate:'2026-10-17'},
++  {id:'SYN-PO-02',supplier:'risk-supplier',ordered:20,delivered:20,agreedDate:'2026-10-20',receivedDate:'2026-10-20'},
++  {id:'SYN-PO-03',supplier:'risk-supplier',ordered:30,delivered:10,agreedDate:'2026-10-22',receivedDate:'2026-10-24'},
++  {id:'SYN-PO-04',supplier:'other-supplier',ordered:40,delivered:40,agreedDate:'2026-10-22',receivedDate:'2026-10-22'},
++  {id:'SYN-PO-05',supplier:'other-supplier',ordered:null,delivered:null,agreedDate:null,receivedDate:null},
++];
++export const eligiblePurchaseLine = (line: OrderLine) => line.ordered!==null && line.ordered>0 && line.delivered!==null && line.agreedDate!==null && line.receivedDate!==null;
++export function inspectSupplier(lines:OrderLine[],supplier:string,minSample=10){
++  const filtered=lines.filter(x=>x.supplier===supplier);
++  const eligible=filtered.filter(eligiblePurchaseLine);
++  const fullOnTime=eligible.filter(x=>x.delivered! >= x.ordered! && x.receivedDate! <= x.agreedDate!);
++  const orderedAll=lines.filter(eligiblePurchaseLine).reduce((a,x)=>a+x.ordered!,0);
++  const orderedSupplier=eligible.reduce((a,x)=>a+x.ordered!,0);
++  return {total:filtered.length,eligible:eligible.length,missing:filtered.length-eligible.length,
++    onTimeInFull:fullOnTime.length,ratio:eligible.length?fullOnTime.length/eligible.length:null,
++    concentration:orderedAll>0?orderedSupplier/orderedAll:null,
++    insufficient:eligible.length<minSample,minSample};
++}
+diff --git a/src/test/remaining-findings-regressions.test.ts b/src/test/remaining-findings-regressions.test.ts
+new file mode 100644
+index 0000000..b1bcde6
+--- /dev/null
++++ b/src/test/remaining-findings-regressions.test.ts
+@@ -0,0 +1,49 @@
++import {describe,it,expect} from 'vitest';
++import {DEMO_PURCHASE_LINES,inspectSupplier} from '../him/supply/supplierPerformance';
++import {compareOccupancyFixtures} from '../him/executive/dashboardStore';
++import {validMemoActionTemplate} from '../him/phase6/MemoActionHandoff';
++import {canReviewInvestigation} from '../him/components/InvestigationWorkspace';
++import {inDateRange,DEMO_AST_EVENTS} from '../him/components/assetSourceFixtures';
++import {validateDomain} from '../him/components/DomainWorkspaces';
++import {displayTaskOwner} from '../him/components/WorkViews';
++
++describe('Outstanding Mo findings: real guards and labelled fixtures',()=>{
++ it('shows readable task owner rather than raw usr-2',()=>{
++  expect(displayTaskOwner('usr-2','SITE-TALEGHANI')).toContain('مقصودی');
++  expect(displayTaskOwner('usr-x','SITE-TALEGHANI')).toContain('شناسه ناشناخته');
++ });
++ it('derives supplier OTIF numerator/denominator and flags inadequate sample',()=>{
++  const x=inspectSupplier(DEMO_PURCHASE_LINES,'risk-supplier');
++  expect(x.onTimeInFull).toBe(2);expect(x.eligible).toBe(3);
++  expect(x.ratio).toBeCloseTo(2/3);expect(x.concentration).toBeCloseTo(0.6);
++  expect(x.insufficient).toBe(true);
++ });
++ it('does not include zero-denominator or unsupported period in synthetic multi-site comparison',()=>{
++  const sites=['SITE-TALEGHANI','SITE-IMAM-HOSSEIN','SITE-SHOHADA'];
++  const day=compareOccupancyFixtures(sites,'day');
++  expect(day.includedCount).toBe(2);expect(day.weightedFixture).toBeCloseTo(78.57);
++  expect(day.rows[2].included).toBe(false);
++  const month=compareOccupancyFixtures(sites,'month');
++  expect(month.includedCount).toBe(0);expect(month.weightedFixture).toBe(null);
++ });
++ it('prevents an investigation author from entering reviewer conclusion',()=>{
++  const record={state:'awaiting_review' as const,createdBy:'usr-1',reviewerId:'usr-2'};
++  expect(canReviewInvestigation(record,'usr-1')).toBe(false);
++  expect(canReviewInvestigation(record,'usr-2')).toBe(true);
++ });
++ it('restricts memo handoff to explicitly listed synthetic templates',()=>{
++  expect(validMemoActionTemplate('demo-capacity-review')).toBe(true);
++  expect(validMemoActionTemplate('arbitrary-unregistered-template')).toBe(false);
++ });
++ it('rejects duplicate versions of data contracts',()=>{
++  const values={contract_id:'hospital_his',source:'synthetic',dataset:'beds',schema_version:'1',owner:'steward',grain:'site-day',timezone:'Asia/Tehran',required_fields:'site_id,value',quality_rules:'quarantine invalid values',freshness_seconds:'3600',effective_from:'2026-10-01',effective_to:'2026-11-01'};
++  expect(validateDomain('/data/contracts',0,values,[])).toHaveLength(0);
++  const prior={id:'SYN-1',tab:0,values,at:'2026-10-01',state:'draft',note:'fixture'};
++  expect(validateDomain('/data/contracts',0,values,[prior])).toEqual(expect.arrayContaining([expect.stringContaining('قبلاً ثبت')]));
++ });
++ it('keeps AST source-event and ingestion timestamps separate and enforces period filtering',()=>{
++  expect(DEMO_AST_EVENTS[0].eventAt).not.toBe(DEMO_AST_EVENTS[0].ingestedAt);
++  expect(inDateRange(DEMO_AST_EVENTS[0].eventAt,'2026-10-19','2026-10-21')).toBe(true);
++  expect(inDateRange(DEMO_AST_EVENTS[0].eventAt,'2026-10-21','2026-10-22')).toBe(false);
++ });
++});

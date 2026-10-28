@@ -1,0 +1,885 @@
+diff --git a/src/him/components/ControlWorkflows.tsx b/src/him/components/ControlWorkflows.tsx
+index ee0ee66..9612025 100644
+--- a/src/him/components/ControlWorkflows.tsx
++++ b/src/him/components/ControlWorkflows.tsx
+@@ -27,7 +27,7 @@ function AlertOperationsContent({alert}:{alert:WorkAlert}) {
+  const {scope,user,openWorkView}=useApp();
+  const current={id:user?.id||'guest',name:user?.name||'کاربر ناشناس'};
+  const {rows,add}=useReviewRecords(`him.synthetic.alert-review.v1:${scope.siteId}:${alert.id}:${current.id}`);
+- const [assignee,setAssignee]=useState(''),[reason,setReason]=useState(''),[until,setUntil]=useState(''),[level,setLevel]=useState('supervisor');
++ const [assignee,setAssignee]=useState(''),[reason,setReason]=useState(''),[until,setUntil]=useState(''),[suppressUntil,setSuppressUntil]=useState(''),[suppressReason,setSuppressReason]=useState(''),[level,setLevel]=useState('supervisor');
+  const [outcome,setOutcome]=useState('none'),[outcomeEvidence,setOutcomeEvidence]=useState(''),[taskOpen,setTaskOpen]=useState(false);
+  const [playbook,setPlaybook]=useState('capacity_review'),[hypothesis,setHypothesis]=useState(''),[forEvidence,setForEvidence]=useState(''),[againstEvidence,setAgainstEvidence]=useState(''),[missing,setMissing]=useState(''),[reviewer,setReviewer]=useState(''),[conclusion,setConclusion]=useState('');
+  const owners=DEMO_USERS.filter(u=>u.permittedSiteIds.includes(scope.siteId||''));
+@@ -51,6 +51,12 @@ function AlertOperationsContent({alert}:{alert:WorkAlert}) {
+    <button className={action} disabled={!canExplain||((outcome==='completed_reported'||outcome==='observed_change')&&!outcomeEvidence.trim())} onClick={()=>log('گزارش نتیجه',{نتیجه:outcome,شاهد:outcomeEvidence||'ثبت نشده'},reason)}>ثبت گزارش نتیجه</button>
+    <button className={action} onClick={()=>setTaskOpen(true)}>ایجاد وظیفه مرتبط</button>
+   </div>
++  <div className="border-t pt-4 space-y-3" data-testid="alert-suppression-request"><h3 className="font-bold">درخواست سرکوب موقت هشدار · CTL-02</h3>
++   <p className={note}>سرکوب در اینجا فقط درخواست آزمایشی است و وضعیت هشدار، اعلان یا تشدید عملیاتی را تغییر نمی‌دهد.</p>
++   <label className="block text-xs">علت سرکوب (حداقل ۱۰ نویسه)<textarea className={input} value={suppressReason} onChange={e=>setSuppressReason(e.target.value)}/></label>
++   <label className="block text-xs">انقضای سرکوب پیشنهادی<input type="datetime-local" className={input} value={suppressUntil} onChange={e=>setSuppressUntil(e.target.value)}/></label>
++   <button type="button" className={action} disabled={suppressReason.trim().length<10||!suppressUntil||new Date(suppressUntil).getTime()<=Date.now()} onClick={()=>{log('درخواست سرکوب موقت',{انقضا:suppressUntil},suppressReason);setSuppressReason('');setSuppressUntil('')}}>ثبت درخواست سرکوب برای بازبینی</button>
++  </div>
+   <div className="border-t pt-4 space-y-3" data-testid="alert-investigation">
+    <h3 className="font-bold">تحقیق مبتنی بر شواهد (پیش‌نویس)</h3>
+    <label className="block text-xs">Playbook مصوب پیشنهادی<select className={input} value={playbook} onChange={e=>setPlaybook(e.target.value)}><option value="capacity_review">بازبینی ظرفیت (نمونه، غیرمصوب)</option><option value="source_quality">کیفیت و تازگی منبع (نمونه، غیرمصوب)</option></select></label>
+diff --git a/src/him/components/Header.tsx b/src/him/components/Header.tsx
+index 0bc4720..5ce9024 100644
+--- a/src/him/components/Header.tsx
++++ b/src/him/components/Header.tsx
+@@ -27,6 +27,7 @@ export const Header: React.FC = () => {
+     loginAsDemoUser,
+     showNotification,
+     openWorkView,
++    setActiveModule,
+     notifications,
+     readNotificationIds
+   } = useApp();
+@@ -38,6 +39,8 @@ export const Header: React.FC = () => {
+   const displayDate=new Intl.DateTimeFormat(lang==='en'?'en-US':'fa-IR',{calendar,weekday:'long',year:'numeric',month:'long',day:'numeric',timeZone}).format(new Date());
+   const unreadCount = notifications.filter(n => !readNotificationIds.includes(n.id)).length;
+ 
++  const [commandOpen,setCommandOpen]=useState(false);
++  const [commandQuery,setCommandQuery]=useState('');
+   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+   const [isStateMenuOpen, setIsStateMenuOpen] = useState(false);
+ 
+@@ -100,6 +103,8 @@ export const Header: React.FC = () => {
+         </button>
+       </div>
+ 
++      <button type="button" data-testid="global-command-search" onClick={()=>setCommandOpen(true)} aria-label="جستجوی سراسری و فرمان" className="hidden xl:inline-flex rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700 hover:bg-teal-50">جستجوی سراسری / فرمان</button>
++      {commandOpen&&<div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/50 p-3 pt-16" role="dialog" aria-modal="true" aria-label="جستجوی سراسری و فرمان" onClick={()=>setCommandOpen(false)}><div className="w-full max-w-lg rounded-xl border bg-white p-4 space-y-3 shadow-lg" dir="rtl" onClick={e=>e.stopPropagation()}><div className="flex justify-between"><h2 className="font-bold">جستجوی مسیرهای برنامه</h2><button type="button" onClick={()=>setCommandOpen(false)}>بستن</button></div><input autoFocus className="w-full rounded-lg border p-2 text-sm" placeholder="جستجوی نام بخش یا فرمان…" value={commandQuery} onChange={e=>setCommandQuery(e.target.value)}/><p className="text-xs text-amber-900">فقط جستجوی فرمان‌ها و مسیرهای همین نمونه؛ این کادر متن پرونده بیمار، اسناد محرمانه یا داده فراتر از دامنه مجاز را جست‌وجو نمی‌کند.</p><div className="max-h-64 overflow-auto space-y-1">{([{name:'داشبورد اجرایی',kind:'executive-dashboard'},{name:'فهرست وظایف',kind:'tasks'},{name:'فهرست هشدارها',kind:'alerts'},{name:'مرکز اعلان‌ها',kind:'notifications'},{name:'پیشنهادهای اقدام',kind:'proposals'},{name:'یادداشت‌های تصمیم',kind:'memos'},{name:'کوپایلت',kind:'copilot'}] as const).filter(x=>x.name.includes(commandQuery.trim())).map(x=><button type="button" key={x.kind} onClick={()=>{if(x.kind==='executive-dashboard')setActiveModule('EXE');else openWorkView({kind:x.kind});setCommandOpen(false);setCommandQuery('')}} className="block w-full rounded border p-2 text-right text-sm hover:bg-slate-50">{x.name}</button>)}</div></div></div>}
+       {/* Zone 3: Date, State Tester & User Profile */}
+       <div className="flex items-center gap-2 md:gap-3 shrink-0">
+         {/* Persian Calendar */}
+diff --git a/src/him/components/KnowledgeWorkspace.tsx b/src/him/components/KnowledgeWorkspace.tsx
+new file mode 100644
+index 0000000..113c90b
+--- /dev/null
++++ b/src/him/components/KnowledgeWorkspace.tsx
+@@ -0,0 +1,417 @@
++import React, { useMemo, useState } from 'react';
++import { useApp } from '../context/AppContext';
++import { normalizeFaSearch } from './faSearch';
++import { scopedDraftKey } from './scopedDraftKey';
++
++type Document = {
++  id: string;
++  title: string;
++  owner: string;
++  category: string;
++  version: number;
++  effectiveFrom: string;
++  effectiveTo: string;
++  retention: string;
++  fileLabel: string;
++  siteId: string;
++  state: 'draft' | 'review_requested' | 'publication_requested';
++  createdAt: string;
++  parentId?: string;
++  reason?: string;
++};
++const field = 'block w-full rounded-lg border border-slate-300 bg-white p-2 text-sm mt-1';
++const btn = 'rounded-lg bg-teal-800 px-3 py-2 text-sm text-white disabled:opacity-40';
++const info = 'rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950';
++const get = (key: string) => {
++  try {
++    const v = JSON.parse(localStorage.getItem(key) || '[]');
++    return Array.isArray(v) ? (v as Document[]) : [];
++  } catch {
++    return [];
++  }
++};
++export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName: string }) {
++  const { scope, user } = useApp();
++  const key = scopedDraftKey(
++    'him.knowledge.local.v1',
++    'documents',
++    scope.siteId || 'none',
++    user?.id || 'guest',
++  );
++  const [items, setItems] = useState<Document[]>(() => get(key));
++  const [tab, setTab] = useState(0);
++  const [title, setTitle] = useState(''),
++    [owner, setOwner] = useState(''),
++    [category, setCategory] = useState('policy'),
++    [effectiveFrom, setFrom] = useState(''),
++    [effectiveTo, setTo] = useState(''),
++    [retention, setRetention] = useState(''),
++    [fileLabel, setFileLabel] = useState(''),
++    [reason, setReason] = useState('');
++  const [selected, setSelected] = useState<string | null>(null);
++  const [q, setQ] = useState(''),
++    [purpose, setPurpose] = useState('review'),
++    [categoryFilter, setCategoryFilter] = useState('all'),
++    [asOf, setAsOf] = useState(''),
++    [submitted, setSubmitted] = useState(false);
++  const saveItems = (next: Document[]) => {
++    try {
++      localStorage.setItem(key, JSON.stringify(next));
++      setItems(next);
++      return true;
++    } catch {
++      return false;
++    }
++  };
++  const selectedDoc = items.find((x) => x.id === selected);
++  const save = () => {
++    if (
++      !title.trim() ||
++      !owner.trim() ||
++      !effectiveFrom ||
++      !effectiveTo ||
++      effectiveTo < effectiveFrom ||
++      !retention.trim()
++    )
++      return;
++    const d: Document = {
++      id: `DOC-SYN-${Date.now()}`,
++      title: title.trim(),
++      owner: owner.trim(),
++      category,
++      version: 1,
++      effectiveFrom,
++      effectiveTo,
++      retention: retention.trim(),
++      fileLabel,
++      siteId: scope.siteId || '',
++      state: 'draft',
++      createdAt: new Date().toISOString(),
++    };
++    if (saveItems([d, ...items])) {
++      setSelected(d.id);
++      setTitle('');
++    }
++  };
++  const change = (action: 'review_requested' | 'publication_requested' | 'successor') => {
++    if (!selectedDoc || reason.trim().length < 10) return;
++    const d: Document =
++      action === 'successor'
++        ? {
++            ...selectedDoc,
++            id: `DOC-SYN-${Date.now()}`,
++            version: selectedDoc.version + 1,
++            parentId: selectedDoc.id,
++            state: 'draft',
++            reason: reason.trim(),
++            createdAt: new Date().toISOString(),
++          }
++        : { ...selectedDoc, state: action, reason: reason.trim() };
++    const next = action === 'successor' ? [d, ...items] : items.map((x) => (x.id === d.id ? d : x));
++    if (saveItems(next)) {
++      setSelected(d.id);
++      setReason('');
++    }
++  };
++  const matched = useMemo(
++    () =>
++      items.filter(
++        (d) =>
++          d.siteId === scope.siteId &&
++          (categoryFilter === 'all' || d.category === categoryFilter) &&
++          (!asOf || (d.effectiveFrom <= asOf && d.effectiveTo >= asOf)) &&
++          normalizeFaSearch(d.title + ' ' + d.category).includes(normalizeFaSearch(q)),
++      ),
++    [items, q, categoryFilter, asOf, scope.siteId],
++  );
++  if (path === '/knowledge/search')
++    return (
++      <section className="space-y-4" dir="rtl" data-testid="knowledge-retrieval">
++        <h1 className="text-xl font-bold">KNO-02 · جستجوی دانش و شواهد</h1>
++        <p className={info}>
++          فقط کاتالوگ پیش‌نویس‌های همین سایت/کاربر جست‌وجو می‌شود؛ موتور بازیابی ACL، منبع رسمی و
++          نسخه منتشرشده متصل نیست. هیچ متنی را به عنوان سیاست مصوب یا پاسخ قطعی ارائه نکنید.
++        </p>
++        <div className="grid sm:grid-cols-2 gap-3">
++          <label className="text-sm">
++            پرسش/عبارت جستجو
++            <input
++              className={field}
++              value={q}
++              onChange={(e) => {
++                setQ(e.target.value);
++                setSubmitted(false);
++              }}
++            />
++          </label>
++          <label className="text-sm">
++            هدف استفاده
++            <select className={field} value={purpose} onChange={(e) => setPurpose(e.target.value)}>
++              <option value="review">بررسی مستندات</option>
++              <option value="evidence">بررسی شواهد</option>
++              <option value="policy">بررسی سیاست‌ها</option>
++            </select>
++          </label>
++          <label className="text-sm">
++            رده سند
++            <select
++              className={field}
++              value={categoryFilter}
++              onChange={(e) => setCategoryFilter(e.target.value)}
++            >
++              <option value="all">همه رده‌ها</option>
++              <option value="policy">سیاست</option>
++              <option value="procedure">روش اجرایی</option>
++              <option value="guidance">راهنما</option>
++            </select>
++          </label>
++          <label className="text-sm">
++            تاریخ مؤثر مدنظر
++            <input
++              type="date"
++              className={field}
++              value={asOf}
++              onChange={(e) => setAsOf(e.target.value)}
++            />
++          </label>
++        </div>
++        <p className="text-xs">
++          سایت محدودشده: {siteName} · هدف: {purpose} · نسخه نمایه: وجود ندارد
++        </p>
++        <button
++          className={btn}
++          disabled={!q.trim()}
++          onClick={() => {
++            setSubmitted(true);
++            setTab(1);
++          }}
++        >
++          اجرای جستجوی محدود نمایشی
++        </button>
++        <div role="tablist" className="flex gap-2 flex-wrap">
++          {['جستجو', 'شواهد و نتایج', 'محدودیت‌ها'].map((v, i) => (
++            <button
++              role="tab"
++              aria-selected={tab === i}
++              key={v}
++              className="rounded border p-2 text-sm"
++              onClick={() => setTab(i)}
++            >
++              {v}
++            </button>
++          ))}
++        </div>
++        {tab === 1 && (
++          <div data-testid="knowledge-results" className="rounded-lg border p-4 space-y-2">
++            <h2 className="font-bold">نتیجه جستجو</h2>
++            {!submitted ? (
++              <p>برای مشاهده نتیجه، جستجو را ثبت کنید.</p>
++            ) : (
++              <>
++                <p role="status" className="text-amber-900">
++                  پاسخ قابل استناد موجود نیست (abstained): نمایه و ACL رسمی متصل نیستند.
++                </p>
++                <p className="text-xs">
++                  {matched.length} پیش‌نویس محلی با عنوان منطبق یافت شد؛ این‌ها منبع منتشرشده محسوب
++                  نمی‌شوند.
++                </p>
++                {matched.map((d) => (
++                  <div key={d.id} className="border p-2 text-xs">
++                    <b>{d.title}</b> · {d.id} · نسخه {d.version} · {d.state} · مالک {d.owner} · دوره{' '}
++                    {d.effectiveFrom} تا {d.effectiveTo}
++                    <p>استناد معتبر/بخش متن: ناموجود؛ فایل واقعی ذخیره نشده است.</p>
++                  </div>
++                ))}
++              </>
++            )}
++          </div>
++        )}
++        {tab === 2 && (
++          <div className={info}>
++            <b>عدم قطعیت و ممنوعیت استناد:</b> انتشار سند، مجوز استفاده، نسخه منبع و بازیابی متنی
++            احراز نشده‌اند. در نبود شاهد معتبر، خروجی باید «شواهد کافی نیست» بماند، نه پاسخ تخمینی.
++          </div>
++        )}
++      </section>
++    );
++  return (
++    <section dir="rtl" className="space-y-4" data-testid="knowledge-documents">
++      <h1 className="text-xl font-bold">KNO-01 · مخزن سند و چرخه نسخه</h1>
++      <p className={info}>
++        اسناد محلی صرفاً metadata و نام فایل‌اند؛ محتوای فایل به سرور یا مخزن رسمی ارسال نمی‌شود.
++        درخواست بررسی/انتشار، تصویب یا انتشار واقعی نیست.
++      </p>
++      <div role="tablist" className="flex flex-wrap gap-2">
++        {['فهرست اسناد', 'نسخه‌ها', 'تأیید انتشار'].map((v, i) => (
++          <button
++            type="button"
++            role="tab"
++            aria-selected={tab === i}
++            key={v}
++            className="border rounded p-2 text-sm"
++            onClick={() => setTab(i)}
++          >
++            {v}
++          </button>
++        ))}
++      </div>
++      {tab === 0 && (
++        <div className="bg-white rounded-lg border p-4 grid sm:grid-cols-2 gap-3">
++          <label className="text-sm">
++            عنوان *
++            <input className={field} value={title} onChange={(e) => setTitle(e.target.value)} />
++          </label>
++          <label className="text-sm">
++            مالک سند *
++            <input className={field} value={owner} onChange={(e) => setOwner(e.target.value)} />
++          </label>
++          <label className="text-sm">
++            رده سند
++            <select
++              className={field}
++              value={category}
++              onChange={(e) => setCategory(e.target.value)}
++            >
++              <option value="policy">سیاست</option>
++              <option value="procedure">روش اجرایی</option>
++              <option value="guidance">راهنما</option>
++            </select>
++          </label>
++          <label className="text-sm">
++            فایل نمونه (فقط نام/فراداده)
++            <input
++              type="file"
++              className={field}
++              onChange={(e) => setFileLabel(e.target.files?.[0]?.name || '')}
++            />
++          </label>
++          <label className="text-sm">
++            شروع اعتبار *
++            <input
++              type="date"
++              className={field}
++              value={effectiveFrom}
++              onChange={(e) => setFrom(e.target.value)}
++            />
++          </label>
++          <label className="text-sm">
++            پایان اعتبار *
++            <input
++              type="date"
++              className={field}
++              value={effectiveTo}
++              onChange={(e) => setTo(e.target.value)}
++            />
++          </label>
++          <label className="text-sm">
++            سیاست نگهداری *
++            <input
++              className={field}
++              value={retention}
++              onChange={(e) => setRetention(e.target.value)}
++              placeholder="پیش‌نویس؛ نه سیاست مصوب"
++            />
++          </label>
++          <div className="sm:col-span-2">
++            <button
++              className={btn}
++              disabled={
++                !title.trim() ||
++                !owner.trim() ||
++                !effectiveFrom ||
++                !effectiveTo ||
++                effectiveTo < effectiveFrom ||
++                !retention.trim()
++              }
++              onClick={save}
++            >
++              ثبت پیش‌نویس سند
++            </button>
++          </div>
++        </div>
++      )}
++      <div className="rounded-lg border bg-white p-4 space-y-2">
++        <h2 className="font-bold">اسناد همین دامنه ({items.length})</h2>
++        {items.length === 0 ? (
++          <p className="text-sm">سندی ثبت نشده است.</p>
++        ) : (
++          items.map((d) => (
++            <button
++              type="button"
++              key={d.id}
++              onClick={() => setSelected(d.id)}
++              className={`block w-full text-right rounded border p-2 text-sm ${d.id === selected ? 'border-teal-600' : 'border-slate-200'}`}
++            >
++              {d.title} · v{d.version} · {d.state} · {d.id}
++            </button>
++          ))
++        )}
++      </div>
++      {selectedDoc && (
++        <div
++          className="rounded-lg border bg-white p-4 space-y-3"
++          data-testid="knowledge-document-detail"
++        >
++          <h2 className="font-bold">جزئیات و تاریخچه نسخه — {selectedDoc.title}</h2>
++          <p className="text-sm">
++            نسخه {selectedDoc.version} · مالک {selectedDoc.owner} · اعتبار{' '}
++            {selectedDoc.effectiveFrom} تا {selectedDoc.effectiveTo} · فایل:{' '}
++            {selectedDoc.fileLabel || 'ثبت نشده'}
++          </p>
++          <p className="text-sm">
++            Retention پیشنهادی: {selectedDoc.retention} · حذف واقعی/Legal hold: متصل نیست
++          </p>
++          <div className="text-xs">
++            {items
++              .filter(
++                (d) =>
++                  d.id === selectedDoc.id ||
++                  d.parentId === selectedDoc.id ||
++                  d.id === selectedDoc.parentId,
++              )
++              .map((d) => (
++                <p key={d.id}>
++                  v{d.version} · {d.id} · {d.state} · {d.createdAt}
++                </p>
++              ))}
++          </div>
++          <label className="block text-sm">
++            دلیل تغییر/بازبینی (حداقل ۱۰ نویسه)
++            <textarea
++              className={field}
++              value={reason}
++              onChange={(e) => setReason(e.target.value)}
++            />
++          </label>
++          <div className="flex gap-2 flex-wrap">
++            <button
++              className={btn}
++              disabled={reason.trim().length < 10}
++              onClick={() => change('successor')}
++            >
++              ساخت نسخه جانشین
++            </button>
++            <button
++              className={btn}
++              disabled={reason.trim().length < 10}
++              onClick={() => change('review_requested')}
++            >
++              درخواست بازبینی مستقل
++            </button>
++            <button
++              className={btn}
++              disabled={reason.trim().length < 10 || selectedDoc.state !== 'review_requested'}
++              onClick={() => change('publication_requested')}
++            >
++              درخواست انتشار
++            </button>
++          </div>
++          <p className={info}>
++            حالت «درخواست انتشار» گواه مجوز یا انتشار نیست؛ بدون بازبین مستقل و سند معتبر، جستجوی
++            دانش از آن به‌عنوان منبع رسمی استفاده نمی‌کند.
++          </p>
++        </div>
++      )}
++    </section>
++  );
++}
+diff --git a/src/him/components/LoginView.tsx b/src/him/components/LoginView.tsx
+index 4807844..6a60b11 100644
+--- a/src/him/components/LoginView.tsx
++++ b/src/him/components/LoginView.tsx
+@@ -25,6 +25,7 @@ export const LoginView: React.FC = () => {
+   const [rememberMe, setRememberMe] = useState(true);
+   const [isLoading, setIsLoading] = useState(false);
+   const [errorMessage, setErrorMessage] = useState<string | null>(null);
++  const [showRecovery,setShowRecovery] = useState(false);
+ 
+   const handleSubmit = async (e: React.FormEvent) => {
+     e.preventDefault();
+@@ -178,11 +179,10 @@ export const LoginView: React.FC = () => {
+                     />
+                     <span>ذخیره نشست امن در این دستگاه</span>
+                   </label>
+-                  <span className="text-teal-700 font-semibold cursor-pointer hover:underline">
+-                    فراموشی رمز عبور؟
+-                  </span>
++                  <button type="button" aria-expanded={showRecovery} onClick={()=>setShowRecovery(v=>!v)} className="text-teal-700 font-semibold hover:underline">فراموشی رمز عبور؟</button>
+                 </div>
+ 
++                {showRecovery&&<div role="region" aria-label="راهنمای بازیابی رمز" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950 leading-6">بازیابی حساب دانشگاهی فقط از طریق سامانه رسمی هویت/مسئول فناوری اطلاعات سازمان انجام می‌شود. در این نمونه هیچ ایمیل بازیابی ارسال و هیچ رمز عبوری تغییر نمی‌کند. برای حساب آزمایشی می‌توانید از ورود سریع نمایشی استفاده کنید.</div>}
+                 {/* Submit button */}
+                 <button
+                   type="submit"
+diff --git a/src/him/components/MainContent.tsx b/src/him/components/MainContent.tsx
+index 2164ee8..51fc1db 100644
+--- a/src/him/components/MainContent.tsx
++++ b/src/him/components/MainContent.tsx
+@@ -66,7 +66,7 @@ export const MainContent: React.FC = () => {
+   // If in scope-switching transition, render subtle loading
+   if (isScopeSwitching) {
+     return (
+-      <main className="flex-1 p-4 md:p-8 overflow-y-auto min-w-0" data-testid="scope-switching-state">
++      <main className="flex-1 w-full min-w-0 max-w-full p-2 sm:p-4 md:p-8 overflow-y-auto overflow-x-hidden" data-testid="scope-switching-state">
+         <LoadingState message={`در حال تغییر مرز امنیتی و بارگذاری داده‌های «${scope.siteName}»...`} />
+       </main>
+     );
+@@ -74,7 +74,7 @@ export const MainContent: React.FC = () => {
+ 
+   if (workView) {
+     return (
+-      <main className="flex-1 p-4 md:p-8 overflow-y-auto min-w-0" dir={language==='en'?'ltr':'rtl'}>
++      <main className="flex-1 w-full min-w-0 max-w-full p-2 sm:p-4 md:p-8 overflow-y-auto overflow-x-hidden" dir={language==='en'?'ltr':'rtl'}>
+         {viewState === 'loading' && <LoadingState />}
+         {viewState === 'empty' && <EmptyState />}
+         {viewState === 'error' && <ErrorState />}
+@@ -97,7 +97,6 @@ export const MainContent: React.FC = () => {
+           {workView.kind === 'proposal' && <ActionProposalDetailView id={workView.id} />}
+           {workView.kind === 'journal' && <ActionJournalView />}
+           {workView.kind === 'copilot' && <CopilotView />}
+-          {workView.kind === 'executive-dashboard' && <ExecutiveDashboard />}
+           {(['stewardship','stewardship-issues','stewardship-issue'] as const).includes(workView.kind as 'stewardship') && <StewardshipViews view={workView as Extract<typeof workView,{kind:'stewardship'|'stewardship-issues'|'stewardship-issue'}>} />}
+           {(['supply', 'supply-risk', 'supply-proposals', 'supply-proposal', 'supply-cases', 'supply-case', 'supply-new'] as const).includes(workView.kind as 'supply') && (
+             <SupplyViews
+diff --git a/src/him/components/ScopeModal.tsx b/src/him/components/ScopeModal.tsx
+index 5efefd5..36aa935 100644
+--- a/src/him/components/ScopeModal.tsx
++++ b/src/him/components/ScopeModal.tsx
+@@ -12,6 +12,7 @@ import {
+ } from 'lucide-react';
+ import { useApp } from '../context/AppContext';
+ import { SITES_DATA, CURRENT_ORGANIZATION } from '../data/mockData';
++import { normalizeFaSearch } from './faSearch';
+ 
+ export const ScopeModal: React.FC = () => {
+   const { 
+@@ -27,9 +28,9 @@ export const ScopeModal: React.FC = () => {
+   if (!isScopeModalOpen) return null;
+ 
+   const filteredSites = SITES_DATA.filter(site => 
+-    site.name.includes(searchQuery) || 
+-    site.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+-    site.typeLabel.includes(searchQuery)
++    normalizeFaSearch(site.name).includes(normalizeFaSearch(searchQuery)) ||
++    normalizeFaSearch(site.code).includes(normalizeFaSearch(searchQuery)) ||
++    normalizeFaSearch(site.typeLabel).includes(normalizeFaSearch(searchQuery))
+   );
+ 
+   const handleSelectSite = (siteId: string) => {
+diff --git a/src/him/components/SpecializedWorkspaces.tsx b/src/him/components/SpecializedWorkspaces.tsx
+index 41df849..14a8de9 100644
+--- a/src/him/components/SpecializedWorkspaces.tsx
++++ b/src/him/components/SpecializedWorkspaces.tsx
+@@ -11,6 +11,7 @@ const today = () => new Date().toISOString().slice(0,10);
+ 
+ const field = (title:string, control:React.ReactNode) => <label className="block text-sm font-medium text-slate-700">{title}{control}</label>;
+ const str = (value:string) => value.trim();
++const inOrder=(start:string,end:string)=>Boolean(start&&end&&Number.isFinite(Date.parse(start))&&Number.isFinite(Date.parse(end))&&Date.parse(end)>Date.parse(start));
+ function useLocalDrafts(path:string,siteId:string,userId:string) {
+  const key = `him.synthetic.specialized.v1:${path}:${siteId}:${userId}`;
+  const [entries,setEntries] = useState<Draft[]>(()=>{try {const data=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(data)?data:[];}catch{return [];}});
+diff --git a/src/him/components/SpecificationWorkspaces.tsx b/src/him/components/SpecificationWorkspaces.tsx
+index f87edc4..f3cd656 100644
+--- a/src/him/components/SpecificationWorkspaces.tsx
++++ b/src/him/components/SpecificationWorkspaces.tsx
+@@ -2,6 +2,8 @@ import { SpecializedWorkspace } from './SpecializedWorkspaces';
+ import {ConnectorWorkspace} from './ConnectorWorkspace';
+ import {AuditWorkspace, NotificationPolicyWorkspace} from './ControlWorkflows';
+ import { DomainWorkspace, domainPaths } from './DomainWorkspaces';
++import {KnowledgeWorkspace} from './KnowledgeWorkspace';
++import {scopedDraftKey} from './scopedDraftKey';
+ import React, { useMemo, useState } from 'react';
+ import {useApp} from '../context/AppContext';
+ 
+@@ -42,12 +44,14 @@ const SCREENS: Record<string,{title:string;intro:string;tabs:string[];warning:st
+ export const specPaths = Object.keys(SCREENS);
+ const STATE_KEY = 'him.spec-workspaces.demo.v2';
+ export function SpecificationWorkspace({path,siteName}:{path:string;siteName:string}) {
++ const {scope,user}=useApp();
+  if(path==='/audit')return <AuditWorkspace/>;
+  if(path==='/settings/notification-policy')return <NotificationPolicyWorkspace/>;
+  if(path==='/data/connectors')return <ConnectorWorkspace/>;
++ if(path==='/knowledge/documents'||path==='/knowledge/search')return <KnowledgeWorkspace key={`${path}:${scope.siteId}:${user?.id}`} path={path} siteName={siteName}/>;
+  if(['/assets/workflows','/workforce','/settings/access'].includes(path))return <SpecializedWorkspace path={path} siteName={siteName}/>;
+  if(domainPaths.includes(path)||path==='/settings/governance'||path==='/executive/briefs')return <DomainWorkspace path={path} siteName={siteName}/>;
+- return <GenericSpecificationWorkspace key={`${path}:${siteName}`} path={path} siteName={siteName}/>;
++ return <GenericSpecificationWorkspace key={`${path}:${scope.siteId}:${user?.id||'guest'}`} path={path} siteName={siteName}/>;
+ }
+ function GenericSpecificationWorkspace({path,siteName}:{path:string;siteName:string}) {
+  const page = SCREENS[path];
+@@ -56,7 +60,7 @@ function GenericSpecificationWorkspace({path,siteName}:{path:string;siteName:str
+  const [query,setQuery]=useState('');
+  const [entry,setEntry]=useState('');
+  const [records,setRecords]=useState<Record<string,Array<{title:string;detail:string;at:string}>>>(()=>{
+-  try {return JSON.parse(localStorage.getItem(`${STATE_KEY}:${path}:${scope.siteId}:${user?.id||'guest'}`)||'{}');}catch{return {};}
++  try {return JSON.parse(localStorage.getItem(scopedDraftKey(STATE_KEY,path,scope.siteId||'none',user?.id||'guest'))||'{}');}catch{return {};}
+  });
+  const items=useMemo(()=> (records[path]||[]).filter(x=>(x.title+' '+x.detail).includes(query)),[records,path,query]);
+  if(!page)return null;
+@@ -65,7 +69,7 @@ function GenericSpecificationWorkspace({path,siteName}:{path:string;siteName:str
+  const add=()=>{
+   if(!entry.trim()||isClinical)return;
+   const updated={...records,[path]:[...(records[path]||[]),{title:entry.trim(),detail:`${current} · ${siteName} · پیش‌نویس غیرمعتبر برای استفاده عملیاتی`,at:new Date().toISOString()}]};
+-  setRecords(updated);localStorage.setItem(`${STATE_KEY}:${path}:${scope.siteId}:${user?.id||'guest'}`,JSON.stringify(updated));setEntry('');
++  setRecords(updated);localStorage.setItem(scopedDraftKey(STATE_KEY,path,scope.siteId||'none',user?.id||'guest'),JSON.stringify(updated));setEntry('');
+  };
+  return <section dir="rtl" className="space-y-5" data-testid="spec-workspace">
+   <header className="bg-white rounded-xl border border-slate-200 p-5 space-y-2"><h1 className="text-xl font-bold">{page.title}</h1><p className="text-sm text-slate-600">{page.intro}</p><p className="text-xs text-slate-500">سایت جاری: {siteName}</p></header>
+diff --git a/src/him/components/WorkViews.tsx b/src/him/components/WorkViews.tsx
+index 60d7447..758e288 100644
+--- a/src/him/components/WorkViews.tsx
++++ b/src/him/components/WorkViews.tsx
+@@ -309,6 +309,7 @@ export const EvidencePackage: React.FC<{ items: EvidenceItem[]; code: string }>
+               {open === e.id && (
+                 <div className="px-3 pb-3 text-xs text-slate-600 leading-6 space-y-1">
+                   <p>{e.detail}</p>
++                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-900" data-testid="alert-evidence-provenance"><p>نسخه منبع/قرارداد: در fixture گزارش نشده</p><p>نسخه تعریف متریک و قاعده: در fixture گزارش نشده</p><p>مرز Snapshot و زمان cutoff: تأیید نشده (زمان ثبت شاهد جایگزین cutoff نیست)</p><p>فرض‌های محاسبه: ثبت نشده</p><p>محدودیت‌ها: منشأ و کامل‌بودن داده احراز نشده؛ فقط برای نمایش فرانت‌اند</p></div>
+                   <p className="text-slate-400">اثر انگشت: <bdi dir="ltr" className="font-mono">{e.hash}</bdi></p>
+                 </div>
+               )}
+diff --git a/src/him/components/faSearch.ts b/src/him/components/faSearch.ts
+new file mode 100644
+index 0000000..972b869
+--- /dev/null
++++ b/src/him/components/faSearch.ts
+@@ -0,0 +1,12 @@
++/** Fold Arabic/Persian equivalent characters only for lookup; preserve original strings. */
++export function normalizeFaSearch(value: string): string {
++  return value
++    .normalize('NFKC')
++    .replace(/[يى]/g, 'ی')
++    .replace(/ك/g, 'ک')
++    .replace(/[ًٌٍَُِّْـ]/g, '')
++    .replace(/[\u200c\u200d]/g, ' ')
++    .replace(/\s+/g, ' ')
++    .trim()
++    .toLocaleLowerCase('fa-IR');
++}
+diff --git a/src/him/components/scopedDraftKey.ts b/src/him/components/scopedDraftKey.ts
+new file mode 100644
+index 0000000..9348a2c
+--- /dev/null
++++ b/src/him/components/scopedDraftKey.ts
+@@ -0,0 +1,3 @@
++/** Browser-local synthetic namespace. Never replaces server-side authorization. */
++export const scopedDraftKey = (area: string, path: string, siteId: string, userId: string) =>
++  `${area}:${path}:${siteId}:${userId}`;
+diff --git a/src/him/executive/ExecutiveDashboard.tsx b/src/him/executive/ExecutiveDashboard.tsx
+index e09fe11..21e0d99 100644
+--- a/src/him/executive/ExecutiveDashboard.tsx
++++ b/src/him/executive/ExecutiveDashboard.tsx
+@@ -9,10 +9,11 @@ const icons=[Stethoscope,Activity,AlertTriangle,Package,Database,ClipboardList];
+ const button='rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-600';
+ const nf=(n:number|null,unit='')=>n===null?'—':`${n.toLocaleString('fa-IR')}${unit==='٪'?'٪':''}`;
+ export function ExecutiveDashboard(){
+- const {scope,alerts,tasks,openWorkView,setIsScopeModalOpen,setActiveModule,copilot}=useApp();
++ const {scope,permittedSites,alerts,tasks,openWorkView,setIsScopeModalOpen,setActiveModule,copilot}=useApp();
+  const [period,setPeriod]=useState<Period>(()=>{try{const p=sessionStorage.getItem('him.executive.period');return p==='week'||p==='month'?p:'day'}catch{return 'day'}});
+  useEffect(()=>{try{sessionStorage.setItem('him.executive.period',period)}catch{}},[period]);
+  const [revision,setRevision]=useState(0);
++ const [allSites,setAllSites]=useState(false);
+  const [selected,setSelected]=useState<string|null>(null);
+  const [evidence,setEvidence]=useState<MetricEvidence|null>(null);
+  const [tab,setTab]=useState<'summary'|'trend'|'calculation'|'evidence'|'quality'>('summary');
+@@ -40,6 +41,9 @@ export function ExecutiveDashboard(){
+    <div className="flex flex-wrap gap-2 items-center"><button className={button} onClick={()=>setIsScopeModalOpen(true)} aria-label="تغییر مرکز درمانی">{scope.siteName} ▾</button><label className="text-xs text-slate-600" htmlFor="exec-period">بازه گزارش</label><select id="exec-period" className={button} value={period} onChange={e=>setPeriod(e.target.value as Period)}>{Object.entries(periodLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select><span className="text-xs text-slate-500">منطقه زمانی Asia/Tehran · به‌روزرسانی صفحه: {new Date(snapshot.refreshedAt).toLocaleString('fa-IR')}</span></div>
+    <p className="text-xs text-amber-800 bg-amber-50 rounded-lg p-2">توجه: بازخوانی فقط داده‌های mock محلی را می‌خواند؛ زمان snapshot منبع را تغییر نمی‌دهد. بعضی شاخص‌ها فاقد داده سازگار با بازه انتخابی‌اند.</p>
+   </div>
++  <section className="rounded-xl border bg-white p-4 space-y-3" data-testid="executive-sites-comparison"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold text-sm">پوشش و مقایسه چندسایتی · EXE-002</h3><label className="text-sm flex items-center gap-2"><input type="checkbox" checked={allSites} onChange={e=>setAllSites(e.target.checked)}/>همه سایت‌های قابل‌دسترسی (مقایسه؛ نه تغییر دامنه مجوز)</label></div>
++ {allSites?<><p className="text-xs text-amber-900">مقایسه با اعداد تجمیعی معتبر قابل انتشار نیست؛ هم‌ارزی تعریف متریک، نسخه‌ها، قطع زمانی، جمعیت و وزن‌ها باید برای هر سایت تأیید شود. انتخاب «همه سایت‌ها» اجازه مشاهده داده غیرمجاز نمی‌دهد.</p><div className="overflow-x-auto"><table className="min-w-[530px] w-full text-right text-xs"><thead><tr className="border-b"><th className="p-2">سایت مجاز</th><th className="p-2">وضعیت داده مقایسه‌ای</th><th className="p-2">شمول/حذف</th><th className="p-2">دلیل</th></tr></thead><tbody>{permittedSites.map(site=><tr key={site.id} className="border-b"><td className="p-2">{site.name}</td><td className="p-2">سازگاری سنجه بررسی نشده</td><td className="p-2">خارج از تجمیع</td><td className="p-2">مخرج، نسخه/تازگی و امکان تجمیع وزنی تأیید نشده</td></tr>)}</tbody></table></div><p className="text-xs">جایگزین: مشاهده یک سایت در دامنه مجاز یا درخواست تهیه snapshot و سیاست مقایسه مصوب.</p></>:<p className="text-xs text-slate-500">حالت تک‌سایتی: {scope.siteName}. برای مشاهده شمول/حذف سایت‌های مجاز، گزینه مقایسه را انتخاب کنید.</p>}
++  </section>
+   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">{snapshot.metrics.map((m,i)=>{const Icon=icons[i]!;return <button key={m.key} onClick={()=>{setSelected(m.key);setTab('summary')}} className="text-right rounded-2xl bg-white p-5 border border-slate-200 hover:border-teal-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-600 shadow-sm space-y-2"><div className="flex justify-between items-center"><span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Icon className="h-4 w-4 text-teal-700"/>{m.title}</span><ChevronLeft className="w-4 h-4 text-slate-400"/></div><div className="text-3xl font-black text-slate-900" dir="ltr">{nf(m.value,m.unit)}{m.unit!=='٪'&&m.value!==null?<span className="text-sm mr-2 font-normal">{m.unit}</span>:null}</div><p className="text-xs text-slate-600">{qualityLabels[m.quality]}</p><p className="text-[11px] text-slate-500">{periodLabels[period]} · مبنا: {m.asOf.split('T')[0]}</p></button>})}</div>
+   <div className="grid lg:grid-cols-2 gap-4"><section className="bg-white border rounded-2xl p-5 space-y-3"><h3 className="font-bold text-slate-900">موارد نیازمند توجه</h3>{snapshot.alerts.filter(a=>a.severity==='critical'||a.severity==='high').slice(0,3).map(a=><button key={a.id} className="block w-full text-right border-b py-2 text-sm hover:text-teal-700" onClick={()=>openWorkView({kind:'alert',id:a.id})}>{a.title} <span className="text-xs text-slate-500">· {a.code}</span></button>)}{snapshot.issues.filter(i=>i.severity==='critical').slice(0,2).map(i=><button key={i.id} className="block w-full text-right border-b py-2 text-sm hover:text-teal-700" onClick={()=>openWorkView({kind:'stewardship-issue',id:i.id})}>{i.title} <span className="text-xs text-slate-500" dir="ltr">{i.id}</span></button>)}{snapshot.alerts.length===0&&snapshot.issues.length===0&&<p className="text-sm text-slate-500">موردی در داده نمایشی این مرکز یافت نشد.</p>}</section><section className="bg-white border rounded-2xl p-5 space-y-3"><h3 className="font-bold text-slate-900">ورود به گردش کارهای مرتبط</h3><div className="grid grid-cols-2 gap-2"><button className={button} onClick={()=>openWorkView({kind:'alerts'})}>هشدارها</button><button className={button} onClick={()=>openWorkView({kind:'supply'})}>زنجیره تأمین</button><button className={button} onClick={()=>openWorkView({kind:'stewardship-issues'})}>کیفیت داده</button><button className={button} onClick={()=>openWorkView({kind:'tasks'})}>وظایف</button><button className={button} onClick={()=>openWorkView({kind:'copilot'})}><Bot className="inline h-4 w-4"/> دستیار هوشمند</button><button data-testid="open-executive-brief-builder" className={button} onClick={()=>openWorkView({kind:'spec-page',path:'/executive/briefs'})}>ساخت گزارش مدیریتی (Brief Builder)</button></div></section></div>
+   {metric&&<div role="dialog" aria-modal="true" aria-label={`جزئیات ${metric.title}`} className="fixed inset-0 z-50 bg-black/40 flex justify-end"><div className="bg-white w-full max-w-xl h-full overflow-y-auto p-5 space-y-4 shadow-xl"><div className="flex items-start justify-between"><div><h2 className="font-black text-lg">{metric.title}</h2><p className="text-xs text-slate-500">{snapshot.siteName} · {periodLabels[period]} · {qualityLabels[metric.quality]}</p></div><button aria-label="بستن جزئیات" className={button} onClick={()=>setSelected(null)}><X className="w-4 h-4"/></button></div><div className="text-3xl font-bold">{nf(metric.value,metric.unit)} {metric.value!==null&&metric.unit!=='٪'?metric.unit:''}</div><div className="flex flex-wrap gap-1">{([['summary','نمای کلی'],['trend','روند'],['calculation','محاسبه'],['evidence','شواهد'],['quality','کیفیت داده']] as const).map(([key,label])=><button key={key} className={`${button} ${tab===key?'!bg-teal-700 !text-white':''}`} onClick={()=>setTab(key)}>{label}</button>)}</div>
+diff --git a/src/him/phase6/MemoActionHandoff.tsx b/src/him/phase6/MemoActionHandoff.tsx
+new file mode 100644
+index 0000000..078e5e7
+--- /dev/null
++++ b/src/him/phase6/MemoActionHandoff.tsx
+@@ -0,0 +1,91 @@
++import React, { useState } from 'react';
++import { useApp } from '../context/AppContext';
++import type { Memo } from './store';
++
++type Request = {
++  id: string;
++  memoId: string;
++  revision: number;
++  template: string;
++  reason: string;
++  createdAt: string;
++  state: string;
++};
++export function MemoActionHandoff({ memo }: { memo: Memo }) {
++  const { scope, user } = useApp();
++  const key = `him.memo.action-request.v1:${scope.siteId}:${user?.id || 'guest'}:${memo.id}`;
++  const [items, setItems] = useState<Request[]>(() => {
++    try {
++      const v = JSON.parse(localStorage.getItem(key) || '[]');
++      return Array.isArray(v) ? v : [];
++    } catch {
++      return [];
++    }
++  });
++  const [template, setTemplate] = useState('');
++  const [reason, setReason] = useState('');
++  const save = () => {
++    if (!template.trim() || reason.trim().length < 20) return;
++    const record: Request = {
++      id: `request-${Date.now()}`,
++      memoId: memo.id,
++      revision: memo.revision,
++      template: template.trim(),
++      reason: reason.trim(),
++      createdAt: new Date().toISOString(),
++      state: 'awaiting_template_and_policy_review',
++    };
++    const next = [record, ...items];
++    try {
++      localStorage.setItem(key, JSON.stringify(next));
++      setItems(next);
++      setReason('');
++      setTemplate('');
++    } catch {
++      /* Never claim durable persistence if storage failed. */
++    }
++  };
++  return (
++    <section className="rounded-xl border bg-white p-5 space-y-3" data-testid="memo-action-handoff">
++      <h3 className="font-bold">پیشنهاد اقدام مستقل · Action Gateway</h3>
++      <p className="text-sm">
++        یادداشت تصمیم یک پیش‌نویس غیرالزام‌آور T1 است. پیشنهاد اقدام باید به نسخه دقیق{' '}
++        {memo.revision} یادداشت {memo.id} و قالب ثبت‌شده متصل شود. ثبت این درخواست نه تأیید اقدام
++        است، نه اجرای آن.
++      </p>
++      <label className="block text-sm">
++        شناسه قالب اقدام ثبت‌شده (برای بررسی؛ صحت قالب تأیید نمی‌شود)
++        <input
++          className="mt-1 w-full rounded-lg border p-2"
++          value={template}
++          onChange={(e) => setTemplate(e.target.value)}
++        />
++      </label>
++      <label className="block text-sm">
++        دلیل درخواست (حداقل ۲۰ نویسه)
++        <textarea
++          className="mt-1 w-full rounded-lg border p-2"
++          value={reason}
++          onChange={(e) => setReason(e.target.value)}
++        />
++      </label>
++      <button
++        className="rounded-lg bg-teal-800 px-4 py-2 text-white disabled:opacity-40"
++        disabled={!template.trim() || reason.trim().length < 20}
++        onClick={save}
++      >
++        ثبت درخواست پیشنهاد اقدام T1
++      </button>
++      <p className="text-xs text-amber-800">
++        برای تبدیل درخواست به اقدام قابل تصویب، باید قالب، دامنه، صلاحیت‌ها، نسخه سیاست و گیت Action
++        Gateway جداگانه بررسی شوند. هیچ ارسال یا تصویب واقعی فعال نیست.
++      </p>
++      {items.map((r) => (
++        <div key={r.id} className="rounded-lg border p-3 text-xs">
++          <bdi>{r.id}</bdi> · یادداشت {r.memoId} ویرایش {r.revision} · قالب {r.template} · {r.state}{' '}
++          · {r.createdAt}
++        </div>
++      ))}
++    </section>
++  );
++}
+diff --git a/src/him/phase6/Phase6.tsx b/src/him/phase6/Phase6.tsx
+index 181e0f5..84edab2 100644
+--- a/src/him/phase6/Phase6.tsx
++++ b/src/him/phase6/Phase6.tsx
+@@ -7,6 +7,7 @@ import type {WorkTask} from '../data/workData';
+ import {demoStore,freshMemo,newTask,uid,type Memo,type DemoTask} from './store';
+ import {supplyRisks} from '../supply/store';
+ import {DEMO_USERS} from '../data/mockData';
++import {MemoActionHandoff} from './MemoActionHandoff';
+ const field='w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900';
+ const labels:Record<DemoTask['status'],string>={open:'باز',assigned:'تخصیص‌یافته',in_progress:'در حال انجام',blocked:'مسدود',submitted_for_review:'در انتظار بررسی',completed:'تکمیل‌شده',canceled:'لغوشده'};
+ const priorities:Record<DemoTask['priority'],string>={low:'کم',normal:'عادی',high:'بالا',urgent:'فوری'};
+@@ -54,9 +55,9 @@ export function Phase6View({mode,id}:{mode:'list'|'new'|'edit'|'detail'|'task';i
+  };
+  const updateTask=(p:Partial<DemoTask>,event:string)=>{if(!taskForm)return;setError('');if(task?.status==='completed'&&(p.status??taskForm.status)!=='completed'&&!reopenReason.trim()){setError('بازگشایی وظیفه تکمیل‌شده به دلیل ثبت‌شده نیاز دارد.');return}if(p.owner && !eligibleOwners(taskForm.siteId).some(u=>u.id===p.owner)){setError('شناسه مسئول معتبر یا در محدوده بیمارستان مجاز نیست.');return}if(p.status==='blocked' && (!(p.blocker??taskForm.blocker).trim() || !(p.nextReview??taskForm.nextReview) || (p.nextReview??taskForm.nextReview)<today())){setError('برای وضعیت مسدود، دلیل مانع و تاریخ بازبینی امروز یا آینده الزامی است.');return}try{const ownershipNote=p.owner && p.owner!==task?.owner ? ` · مسئول قبلی: ${ownerLabel(task?.owner||'',taskForm.siteId)} → مسئول جدید: ${ownerLabel(p.owner,taskForm.siteId)}` : '';
+  const result={...taskForm,...p,history:[...taskForm.history,{at:new Date().toISOString(),text:(task?.status==='completed'&&(p.status??taskForm.status)!=='completed'?`${event} · دلیل بازگشایی: ${reopenReason.trim()}`:event)+ownershipNote}]};demoStore.saveTask(result);setTaskForm(result);if(task?.status==='completed'&&(p.status??taskForm.status)!=='completed')setReopenReason('');refresh();showNotification('تغییرات وظیفه ذخیره شد')}catch{setError('ذخیره تغییرات ناموفق بود')}};
+- if(mode==='task')return !task?<p role="alert">وظیفه یافت نشد یا به این بیمارستان تعلق ندارد.</p>:<div className="space-y-5"><Button variant="outline" onClick={()=>go({kind:'tasks'})}>بازگشت به وظایف</Button><Panel title={taskForm?.title||task.title}>
++ if(mode==='task')return !task?<p role="alert">وظیفه یافت نشد یا به این بیمارستان تعلق ندارد.</p>:<div className="space-y-5 w-full min-w-0 max-w-full overflow-x-hidden"><Button variant="outline" onClick={()=>go({kind:'tasks'})}>بازگشت به وظایف</Button><Panel title={task.title}>
+  <p className="text-xs text-slate-500">مدیریت وظیفه · ذخیره‌سازی نمایشی محلی</p>
+- <Field label="ویرایش عنوان" required value={taskForm?.title||''} change={title=>setTaskForm(x=>x?{...x,title}:x)}/>
++ <Field label="ویرایش عنوان" required value={taskForm?.title||''} change={title=>setTaskForm(x=>x?{...x,title}:x)}/><p className="text-xs" aria-live="polite">{(taskForm?.title||'').length} / ۲۰۰ نویسه</p>{(taskForm?.title||'').length>200&&<p role="alert" className="text-red-700">عنوان بیش از ۲۰۰ نویسه است؛ ذخیره مجاز نیست و عنوان فعلی تغییر نکرده است.</p>}
+  <Field label="ویرایش شرح" multi value={taskForm?.description||''} change={description=>setTaskForm(x=>x?{...x,description}:x)}/>
+  <Button onClick={()=>{if(!taskForm?.title.trim()||taskForm.title.length>200||taskForm.description.length>5000){setError('عنوان الزامی و حداکثر ۲۰۰ حرف است؛ شرح حداکثر ۵۰۰۰ حرف.');return}setError('');updateTask({title:taskForm.title,description:taskForm.description},'ویرایش عنوان و شرح')}}>ذخیره عنوان و شرح</Button>
+  <p>وضعیت: {labels[taskForm?.status||task.status]} · اولویت: {priorities[taskForm?.priority||task.priority]} · مسئول: {taskForm?.owner?ownerLabel(taskForm.owner,task.siteId):task.queue||'نامشخص'}</p>
+@@ -74,6 +75,6 @@ export function Phase6View({mode,id}:{mode:'list'|'new'|'edit'|'detail'|'task';i
+  </Panel></div>;
+  if(mode==='list')return <div className="space-y-5"><div className="flex justify-between gap-3 flex-wrap"><h1 className="text-xl font-bold">یادداشت‌های تصمیم</h1><Button onClick={()=>go({kind:'memo-new'})}>ساخت یادداشت تصمیم</Button></div><p className="text-xs text-slate-500">ذخیره‌سازی فقط در این مرورگر و مخصوص نمایش آزمایشی است.</p><div className="flex flex-wrap gap-3"><input aria-label="جستجو" placeholder="جستجوی یادداشت" className={field+' max-w-xs'} value={search} onChange={e=>setSearch(e.target.value)}/><select aria-label="فیلتر وضعیت" className={field+' max-w-40'} value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">همه وضعیت‌ها</option><option value="draft">پیش‌نویس</option></select></div>{demoStore.memos().filter(m=>m.siteId===scope.siteId&&m.title.includes(search)&&(filter==='all'||m.status===filter)).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).map(m=><div key={m.id} className="rounded-xl border bg-white p-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold">{m.title}</h2><p className="text-xs text-slate-500">پیش‌نویس · {m.siteName} · {m.owner||'نامشخص'} · نسخه {m.revision} · {new Date(m.updatedAt).toLocaleString('fa-IR')} · {demoStore.tasks().filter(t=>t.memoId===m.id).length} وظیفه</p></div><div className="flex gap-2"><Button variant="outline" onClick={()=>go({kind:'memo',id:m.id})}>مشاهده</Button><Button variant="outline" onClick={()=>go({kind:'memo-edit',id:m.id})}>ویرایش</Button></div></div>)}{!demoStore.memos().some(m=>m.siteId===scope.siteId)&&<p className="rounded-xl border bg-white p-7 text-slate-500">هنوز هیچ یادداشت تصمیمی ثبت نشده است.</p>}</div>;
+  if((mode==='detail'||mode==='edit')&&!saved)return <p role="alert">یادداشت یافت نشد یا در محدوده این بیمارستان نیست.</p>;
+- if(mode==='detail'&&saved)return <div className="space-y-5"><Button variant="outline" onClick={()=>go({kind:'memos'})}>بازگشت</Button><Panel title={saved.title}><p>پیش‌نویس · {saved.id} · نسخه {saved.revision} · {saved.creator} · {new Date(saved.createdAt).toLocaleString('fa-IR')}</p><p>بیمارستان: {saved.siteName}</p><div className="flex flex-wrap gap-2"><Button onClick={()=>go({kind:'memo-edit',id:saved.id})}>ویرایش یادداشت</Button><Button onClick={()=>setSource({memo:saved})}>ایجاد وظیفه</Button><Button variant="outline" onClick={()=>setShowHistory(!showHistory)}>تاریخچه نسخه‌ها</Button>{saved.answerId&&<Button variant="outline" onClick={()=>go({kind:'copilot',answerId:saved.answerId})}>پاسخ اصلی</Button>}</div></Panel>{([['شرح مسئله',saved.problem],['پیشنهاد نهایی',saved.recommendation],['فرض‌ها',saved.assumptions],['عدم قطعیت',saved.uncertainty],['محدودیت داده',saved.dataLimitations],['محدودیت عملیاتی',saved.clinicalLimitations],['پیگیری',saved.followup]] as const).map(([k,v])=><Panel key={k} title={k}><p className="whitespace-pre-wrap leading-8">{v||'ثبت نشده'}</p>{k==='پیگیری'&&<div className="mt-3 grid gap-2 text-sm"><p>مسئول پیگیری: {saved.owner||'ثبت نشده'}</p><p>شاخص پیگیری: {saved.followupMetric||'ثبت نشده'}</p><p>موعد پیشنهادی: {saved.dueDate||'ثبت نشده'}</p></div>}</Panel>)}<Panel title="گزینه‌ها">{saved.alternatives.map(a=><p key={a.id}>{a.title}: {a.description} · مزایا: {a.benefits} · هزینه: {a.costs||'نامشخص'} · ریسک‌ها: {a.risks}</p>)}</Panel><Panel title="شواهد">{saved.evidence.map(e=><p key={e.id}>{e.title} · {e.id} · {e.freshness==='stale'?'کهنه':'تازه'} · {e.value||'—'}</p>)}</Panel>{showHistory&&<Panel title="تاریخچه نسخه‌ها (نمایشی)">{demoStore.revisions(saved.id).map(r=><p key={r.revision}>نسخه {r.revision} · {new Date(r.updatedAt).toLocaleString('fa-IR')} · {r.title}</p>)}</Panel>}<Panel title="وظایف مرتبط">{demoStore.tasks().filter(t=>t.memoId===saved.id).map(t=><div className="flex justify-between gap-2" key={t.id}><span>{t.title} · {labels[t.status]} · {t.owner||t.queue} · {priorities[t.priority]} · {t.dueDate||'بی‌موعد'}</span><Button variant="outline" onClick={()=>go({kind:'task',id:t.id})}>جزئیات</Button></div>)}{!demoStore.tasks().some(t=>t.memoId===saved.id)&&<p>برای این یادداشت هنوز وظیفه‌ای ایجاد نشده است.</p>}<Button onClick={()=>setSource({memo:saved})}>ایجاد وظیفه</Button></Panel><TaskDrawer source={source} close={()=>setSource(null)} created={t=>{refresh();showNotification('وظیفه ایجاد شد');openWorkView({kind:'task',id:t.id})}}/></div>;
++ if(mode==='detail'&&saved)return <div className="space-y-5"><Button variant="outline" onClick={()=>go({kind:'memos'})}>بازگشت</Button><Panel title={saved.title}><p>پیش‌نویس · {saved.id} · نسخه {saved.revision} · {saved.creator} · {new Date(saved.createdAt).toLocaleString('fa-IR')}</p><p>بیمارستان: {saved.siteName}</p><div className="flex flex-wrap gap-2"><Button onClick={()=>go({kind:'memo-edit',id:saved.id})}>ویرایش یادداشت</Button><Button onClick={()=>setSource({memo:saved})}>ایجاد وظیفه</Button><Button variant="outline" onClick={()=>setShowHistory(!showHistory)}>تاریخچه نسخه‌ها</Button>{saved.answerId&&<Button variant="outline" onClick={()=>go({kind:'copilot',answerId:saved.answerId})}>پاسخ اصلی</Button>}</div></Panel><MemoActionHandoff memo={saved}/>{([['شرح مسئله',saved.problem],['پیشنهاد نهایی',saved.recommendation],['فرض‌ها',saved.assumptions],['عدم قطعیت',saved.uncertainty],['محدودیت داده',saved.dataLimitations],['محدودیت عملیاتی',saved.clinicalLimitations],['پیگیری',saved.followup]] as const).map(([k,v])=><Panel key={k} title={k}><p className="whitespace-pre-wrap leading-8">{v||'ثبت نشده'}</p>{k==='پیگیری'&&<div className="mt-3 grid gap-2 text-sm"><p>مسئول پیگیری: {saved.owner||'ثبت نشده'}</p><p>شاخص پیگیری: {saved.followupMetric||'ثبت نشده'}</p><p>موعد پیشنهادی: {saved.dueDate||'ثبت نشده'}</p></div>}</Panel>)}<Panel title="گزینه‌ها">{saved.alternatives.map(a=><p key={a.id}>{a.title}: {a.description} · مزایا: {a.benefits} · هزینه: {a.costs||'نامشخص'} · ریسک‌ها: {a.risks}</p>)}</Panel><Panel title="شواهد">{saved.evidence.map(e=><p key={e.id}>{e.title} · {e.id} · {e.freshness==='stale'?'کهنه':'تازه'} · {e.value||'—'}</p>)}</Panel>{showHistory&&<Panel title="تاریخچه نسخه‌ها (نمایشی)">{demoStore.revisions(saved.id).map(r=><p key={r.revision}>نسخه {r.revision} · {new Date(r.updatedAt).toLocaleString('fa-IR')} · {r.title}</p>)}</Panel>}<Panel title="وظایف مرتبط">{demoStore.tasks().filter(t=>t.memoId===saved.id).map(t=><div className="flex justify-between gap-2" key={t.id}><span>{t.title} · {labels[t.status]} · {t.owner||t.queue} · {priorities[t.priority]} · {t.dueDate||'بی‌موعد'}</span><Button variant="outline" onClick={()=>go({kind:'task',id:t.id})}>جزئیات</Button></div>)}{!demoStore.tasks().some(t=>t.memoId===saved.id)&&<p>برای این یادداشت هنوز وظیفه‌ای ایجاد نشده است.</p>}<Button onClick={()=>setSource({memo:saved})}>ایجاد وظیفه</Button></Panel><TaskDrawer source={source} close={()=>setSource(null)} created={t=>{refresh();showNotification('وظیفه ایجاد شد');openWorkView({kind:'task',id:t.id})}}/></div>;
+  return <div className="space-y-5"><div className="flex justify-between flex-wrap gap-2"><h1 className="text-xl font-bold">{mode==='new'?'ساخت یادداشت تصمیم':'ویرایش یادداشت تصمیم'}</h1><span className="text-sm text-slate-500">{memo.revision?'نسخه '+memo.revision:'ذخیره‌نشده'}{dirty?' · تغییرات ذخیره‌نشده':''}</span></div><p className="text-xs text-slate-500">نسخه نمایشی؛ ذخیره‌سازی محلی و بدون تأیید یا اجرای اقدام واقعی</p>{memo.answerStatus&&memo.answerStatus!=='answered'&&<p role="alert" className="p-3 rounded bg-amber-50 text-amber-800">پاسخ اولیه ناقص یا نامطمئن است؛ پیش از تصمیم، شواهد را بررسی کنید.</p>}<Panel title="اطلاعات عمومی"><Field label="عنوان یادداشت" required value={memo.title} change={title=>patch({title})}/><p className="text-sm">بیمارستان: {memo.siteName} · ایجادکننده: {memo.creator} · وضعیت: پیش‌نویس</p><p className="text-xs">شناسه: <bdi dir="ltr">{memo.id}</bdi> · ایجاد: {new Date(memo.createdAt).toLocaleString('fa-IR')}</p></Panel><Panel title="شرح مسئله"><Field label="شرح مسئله" required multi value={memo.problem} change={problem=>patch({problem})}/></Panel><Panel title="شواهد پشتیبان">{memo.evidence.map(e=><div className="border rounded p-3 text-sm" key={e.id}><b>{e.title}</b><p dir="ltr">{e.id} · {e.version} · {e.value||'—'}</p><p>{e.locator} · {new Date(e.dataAsOf).toLocaleString('fa-IR')} · {e.freshness==='stale'?'⚠ داده کهنه':'تازه'}</p><details><summary className="cursor-pointer">مشاهده شواهد</summary><p>{e.excerpt}</p></details></div>)}{!memo.evidence.length&&<p>شاهدی متصل نشده است.</p>}</Panel><Panel title="گزینه‌های جایگزین">{memo.alternatives.map((a,i)=><div className="border rounded-xl p-4 space-y-3" key={a.id}><div className="flex justify-between"><b>گزینه {i+1}</b><Button variant="outline" onClick={()=>patch({alternatives:memo.alternatives.filter(x=>x.id!==a.id)})}>حذف گزینه</Button></div>{([['title','عنوان'],['description','شرح'],['benefits','مزایای مورد انتظار'],['costs','هزینه تخمینی (نامشخص در صورت فقدان داده)'],['impact','اثرات عملیاتی'],['risks','ریسک‌ها']] as const).map(([key,label])=><Field key={key} label={label} multi={key!=='title'} value={a[key]} change={v=>patch({alternatives:memo.alternatives.map(x=>x.id===a.id?{...x,[key]:v}:x)})}/>)}</div>)}<Button variant="outline" onClick={()=>patch({alternatives:[...memo.alternatives,{id:uid('ALT'),title:'',description:'',benefits:'',costs:'نامشخص',impact:'',risks:''}]})}>افزودن گزینه</Button></Panel><Panel title="پیشنهاد نهایی"><label className="block text-sm">گزینه منتخب<select className={field} value={memo.selected} onChange={e=>patch({selected:e.target.value})}><option value="">انتخاب نشده</option>{memo.alternatives.map(a=><option key={a.id} value={a.id}>{a.title||'بدون عنوان'}</option>)}</select></label><Field label="پیشنهاد نهایی" multi value={memo.recommendation} change={recommendation=>patch({recommendation})}/></Panel><Panel title="فرض‌ها و محدودیت‌ها">{([['assumptions','فرض‌ها'],['uncertainty','عدم قطعیت'],['dataLimitations','محدودیت داده'],['clinicalLimitations','محدودیت بالینی/عملیاتی']] as const).map(([key,label])=><Field key={key} label={label} multi value={memo[key]} change={v=>patch({[key]:v})}/>)}</Panel><Panel title="مسئولیت و پیگیری"><Field label="مسئول" value={memo.owner} change={owner=>patch({owner})}/><label className="block text-sm">موعد پیشنهادی<input type="date" className={field} value={memo.dueDate} onChange={e=>patch({dueDate:e.target.value})}/></label><Field label="شاخص پیگیری" value={memo.followupMetric} change={followupMetric=>patch({followupMetric})}/><Field label="شرح پیگیری" multi value={memo.followup} change={followup=>patch({followup})}/></Panel>{error&&<p role="alert" className="text-red-700">{error}</p>}<div className="sticky bottom-0 flex flex-wrap gap-2 bg-white border rounded-lg p-3 shadow-lg"><Button variant="outline" onClick={()=>go({kind:'memos'})}>بازگشت</Button><Button disabled={saving} onClick={save}>{saving?'در حال ذخیره…':'ذخیره پیش‌نویس'}</Button><Button variant="outline" onClick={()=>{if(dirty){setError('برای ایجاد وظیفه ابتدا یادداشت را ذخیره کنید یا تغییرات را کنار بگذارید.');return}setSource({memo:memo.revision?memo:undefined})}} disabled={!memo.revision}>ایجاد وظیفه</Button></div><TaskDrawer source={source} close={()=>setSource(null)} created={t=>{showNotification('وظیفه ایجاد شد');openWorkView({kind:'task',id:t.id})}}/></div>
+ }
+diff --git a/src/him/phase6/store.ts b/src/him/phase6/store.ts
+index 9ff5037..a23db73 100644
+--- a/src/him/phase6/store.ts
++++ b/src/him/phase6/store.ts
+@@ -9,7 +9,7 @@ export const demoStore={
+  memos:()=>read<Memo>(MEMOS), tasks:()=>read<DemoTask>(TASKS), revisions:(id:string)=>read<Memo>(HISTORY).filter(m=>m.id===id),
+  saveMemo(m:Memo){const rows=read<Memo>(MEMOS);const old=rows.find(x=>x.id===m.id);if(old && JSON.stringify({...old,updatedAt:'',revision:0})===JSON.stringify({...m,updatedAt:'',revision:0}))return old;
+  const saved={...m,updatedAt:new Date().toISOString(),revision:old?old.revision+1:1};write(MEMOS,[...rows.filter(x=>x.id!==m.id),saved]);write(HISTORY,[...read<Memo>(HISTORY),structuredClone(saved)]);return saved;},
+- saveTask(t:DemoTask){write(TASKS,[...read<DemoTask>(TASKS).filter(x=>x.id!==t.id),t]);return t;}
++ saveTask(t:DemoTask){if(!t.title.trim()||t.title.length>200)throw new Error('TASK_TITLE_INVALID');write(TASKS,[...read<DemoTask>(TASKS).filter(x=>x.id!==t.id),t]);return t;}
+ };
+ export const uid=(prefix:string)=>`${prefix}-${crypto.randomUUID()}`;
+ export function fromAnswer(answer:AnswerArtifact,siteId:string,siteName:string,creator:string,range?:string):Memo{
+diff --git a/src/him/supply/SupplyViews.tsx b/src/him/supply/SupplyViews.tsx
+index 0b696f4..6c14c18 100644
+--- a/src/him/supply/SupplyViews.tsx
++++ b/src/him/supply/SupplyViews.tsx
+@@ -41,7 +41,7 @@ export function SupplyViews({view,open,siteName,siteId,notify}:Props){
+  const kpi=(label:string,value:string,sub:string,icon:React.ReactNode)=><Card><CardContent className="p-4"><div className="mb-2 flex items-center justify-between"><span className="text-xs text-slate-500">{label}</span><span className="rounded-lg bg-teal-50 p-2 text-teal-700">{icon}</span></div><div className="text-2xl font-black">{value}</div><div className="mt-1 text-xs text-slate-500">{sub}</div></CardContent></Card>;
+  const statusBadge=(status:string,label:string)=><Badge variant={status==='high'||status==='failed'?'destructive':status==='warning'||status==='medium'?'secondary':'outline'}>{label}</Badge>;
+  if(view.kind==='supply'||view.kind==='supply-risk'){
+-  if(view.kind==='supply-risk'&&risk.siteId!==siteId)return <div dir="rtl" className="flex flex-col items-start gap-4 rounded-xl border bg-amber-50 p-6 text-right"><p className="w-full">داده این ریسک برای {risk.site} ثبت شده و برای بیمارستان انتخابی ({siteName}) داده معتبری وجود ندارد.</p><Button variant="outline" onClick={()=>open({kind:'supply'})}>بازگشت</Button></div>; if(view.kind==='supply-risk') return <div dir="rtl" className="text-right">{head(risk.item,`${risk.code} · داده نمونه متعلق به ${risk.site} · پرونده ${risk.caseId}`,()=>open({kind:'supply'}))}<div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">این داده‌های نمایشی متعلق به {risk.site} هستند و نباید به‌عنوان داده بیمارستان انتخاب‌شده ({siteName}) تفسیر شوند. فیلتر واقعی سایت نیازمند داده تفکیک‌شده هر بیمارستان است.</div><div className="mb-4 flex flex-wrap gap-2"><Button onClick={()=>create('replenishment')}><Plus className="ml-2 size-4"/>پیشنهاد تأمین مجدد</Button><Button variant="outline" onClick={()=>create('transfer')}><Truck className="ml-2 size-4"/>پیشنهاد انتقال موجودی</Button><Button variant="outline" onClick={()=>open({kind:'supply-case',id:risk.caseId})}>مشاهده پرونده کمبود</Button><Button variant="outline" onClick={()=>{setTab('assumptions')}}>بررسی فرضیات</Button></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{kpi('موجودی قابل برنامه‌ریزی',`${fmt(risk.usable)} واحد پایه`,'usable-unreserved',<Warehouse className="size-5"/>)}{kpi('ورودی واجد شرایط',`${fmt(risk.inbound)} واحد`,'دریافت‌های مورد انتظار جدا از موجودی فیزیکی',<Truck className="size-5"/>)}{kpi('موقعیت خالص موجودی',`${fmt(risk.usable+risk.inbound-risk.outbound)} واحد`,'موجودی + ورودی − تعهد خروجی',<Boxes className="size-5"/>)}{kpi('کمبود پیش‌بینی‌شده',risk.stockout,'بازه پیش‌بینی '+risk.horizon+' روز',<CalendarClock className="size-5"/>)}</div><Tabs value={tab} onValueChange={setTab} className="mt-5"><TabsList className="h-auto flex-wrap"><TabsTrigger value="overview">نمای کلی</TabsTrigger><TabsTrigger value="inventory">موجودی و بچ‌ها</TabsTrigger><TabsTrigger value="forecast">پیش‌بینی تقاضا</TabsTrigger><TabsTrigger value="expiry">سن و انقضا</TabsTrigger><TabsTrigger value="assumptions">فرضیات و سناریو</TabsTrigger><TabsTrigger value="proposals">پیشنهادهای مرتبط</TabsTrigger></TabsList><TabsContent value="overview"><div className="grid gap-4 lg:grid-cols-2"><Card><CardHeader><CardTitle>علت ریسک</CardTitle></CardHeader><CardContent className="space-y-2 text-sm"><p>موجودی قابل برنامه‌ریزی در برابر سطح هدف {fmt(risk.targetStock)} واحد بررسی می‌شود.</p><p>مرجع پیش‌بینی: <bdi>{risk.forecastRef}</bdi></p><p>زمان ثبت تصویر موجودی: <bdi>{risk.snapshot}</bdi></p><p>مالک پرونده: {risk.owner}</p>{risk.quality!=='good'&&<div className="rounded-lg bg-amber-50 p-3 text-amber-900"><AlertTriangle className="ml-2 inline size-4"/>کیفیت داده محدود یا نیازمند بررسی است؛ اعتبارسنجی ممکن است مسدود شود.</div>}</CardContent></Card><Card><CardHeader><CardTitle>خط زمانی ریسک</CardTitle></CardHeader><CardContent className="space-y-3">{risk.history.map((h)=><div key={h.label} className="border-r-2 border-teal-200 pr-3"><div className="font-bold">{h.label}</div><div className="text-xs text-slate-500">{h.at} · {h.detail}</div></div>)}</CardContent></Card></div></TabsContent><TabsContent value="inventory"><div className="mb-3 grid gap-3 sm:grid-cols-3">{kpi('موجودی کل نمایش‌داده‌شده',fmt(risk.usable+risk.reserved+risk.quarantined+risk.expired+risk.damaged),'تفکیک‌های غیرهم‌پوشان',<Boxes className="size-5"/>)}{kpi('رزروشده قابل استفاده',fmt(risk.reserved),'جدا از usable-unreserved',<Package className="size-5"/>)}{kpi('قرنطینه / منقضی / مسدود',fmt(risk.quarantined+risk.expired+risk.damaged),'در موجودی قابل برنامه‌ریزی منظور نشده',<ShieldAlert className="size-5"/>)}</div><div className={`${panel} overflow-auto`}><table dir="rtl" className="w-full min-w-[850px] text-right text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr>{['بچ','مکان','مقدار اصلی','واحد پایه','تبدیل','وضعیت','انقضا','کیفیت','مرجع'].map(x=><th className="p-3" key={x}>{x}</th>)}</tr></thead><tbody>{risk.lots.map(l=><tr className="border-t" key={l.id}>{[l.id,l.location,`${l.quantity} ${l.unit}`,l.base,l.conversion,l.disposition,l.expiry,l.quality,l.source].map((v,i)=><td className="p-3" key={i}>{v}</td>)}</tr>)}</tbody></table></div><p className="mt-2 text-xs text-slate-500">دریافت‌های مورد انتظار: {risk.inbound} واحد · تعهد خروجی جدا از رزرو: {risk.outbound} واحد</p></TabsContent><TabsContent value="forecast"><Card><CardHeader><CardTitle>پیش‌بینی تقاضا · {risk.forecastRef}</CardTitle><p className="text-xs text-slate-500">افق {risk.horizon} روز · سطل روزانه · تصویر برش {risk.snapshot}</p></CardHeader><CardContent><div className="mb-4 flex h-56 items-end gap-1 border-b border-slate-200 px-2">{risk.forecast.map((f,i)=><div key={f.day} className="group relative flex h-full flex-1 flex-col justify-end"><div title={`${f.day}: پیش‌بینی ${f.expected}; موجودی ${f.balance}`} className={`w-full rounded-t ${f.censored?'bg-amber-400':'bg-teal-500'}`} style={{height:`${Math.max(4,Math.min(95,f.expected*3))}%`}}/><div className="text-center text-[9px] text-slate-400">{i%2===0?i+1:''}</div></div>)}</div><div className="flex flex-wrap gap-4 text-xs"><span>■ تقاضای مورد انتظار</span><span className="text-amber-700">■ روزهای کمبود موجودی/تقاضای سانسورشده</span></div><div className="mt-4 overflow-auto"><table className="w-full text-sm"><thead><tr className="text-xs text-slate-500"><th className="p-2 text-right">روز</th><th className="p-2">مصرف ثبت‌شده</th><th className="p-2">پیش‌بینی</th><th className="p-2">بازه پایین–بالا</th><th className="p-2">تراز تحلیلی</th><th className="p-2">داده</th></tr></thead><tbody>{risk.forecast.map(f=><tr key={f.day} className="border-t"><td className="p-2">{f.day}</td><td className="p-2 text-center">{f.actual??'—'}</td><td className="p-2 text-center">{f.expected}</td><td className="p-2 text-center">{f.low}–{f.high}</td><td className="p-2 text-center">{f.balance}</td><td className="p-2 text-center">{f.censored?'سانسورشده':'عادی'}</td></tr>)}</tbody></table></div>{risk.quality==='limited'&&<p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">شواهد تقاضا محدود است؛ روزهای صفر مصرف در دوره کمبود به‌معنای تقاضای صفر نیست.</p>}</CardContent></Card></TabsContent><TabsContent value="expiry"><Card><CardHeader><CardTitle className="text-right">سن موجودی و مواجهه با انقضا</CardTitle></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-4">{[['۰–۳۰ روز',0],['۳۱–۶۰ روز',1],['۶۱–۹۰ روز',2],['بیش از ۹۰ روز',3]].map(([label,bucket])=>{const snapshot=Date.parse(risk.snapshot);const count=risk.lots.filter(l=>Number.isFinite(Date.parse(l.received))).reduce((sum,l)=>{const age=Math.max(0,Math.floor((snapshot-Date.parse(l.received))/86400000));return sum+(bucket===0&&age<=30||bucket===1&&age>30&&age<=60||bucket===2&&age>60&&age<=90||bucket===3&&age>90?l.base:0)},0);return [label,String(count)]}).map(([a,b])=><div className="rounded-xl bg-slate-50 p-4" key={a}><div className="text-xs text-slate-500">{a}</div><div className="mt-2 text-xl font-black">{b} واحد</div></div>)}</div><div dir="rtl" className="mt-4 space-y-2 text-right">{risk.lots.map(l=><div dir="rtl" className="flex flex-wrap flex-row-reverse items-center justify-between gap-2 rounded-lg border p-3" key={l.id}><div><bdi dir="ltr" className="block font-bold text-right">{l.id}</bdi><div className="text-xs text-slate-500">انقضا: <bdi dir="ltr">{l.expiry}</bdi> · دریافت: <bdi dir="ltr">{l.received}</bdi></div></div>{statusBadge(l.quality,l.quality==='good'?'قابل استفاده':'نیازمند بررسی')}</div>)}</div></CardContent></Card></TabsContent><TabsContent value="assumptions"><Card><CardHeader><CardTitle>مقایسه مقدار اصلی و سناریوی بررسی</CardTitle></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2"><div className="rounded-xl bg-slate-50 p-4"><div className="text-sm font-bold">مقدار اصلی</div><p className="mt-2 text-sm">تقاضای روزانه: {risk.forecast[0]?.expected} واحد</p><p className="text-sm">زمان تأمین: {risk.leadTime} روز</p><p className="text-sm">موجودی قابل برنامه‌ریزی: {risk.usable} واحد</p></div><div className="space-y-3 rounded-xl border p-4"><div className="font-bold">سناریوی بررسی</div><label className="block text-sm">تقاضای روزانه<input className="mt-1 w-full rounded-md border p-2" type="number" min="0" value={scenarioDemand} onChange={e=>setScenarioDemand(e.target.value)}/></label><label className="block text-sm">زمان تأمین (روز)<input className="mt-1 w-full rounded-md border p-2" type="number" min="1" value={scenarioLead} onChange={e=>setScenarioLead(e.target.value)}/></label><div className="rounded-lg bg-teal-50 p-3 text-sm">نیاز طی زمان تأمین: {fmt(Math.max(0,Number(scenarioDemand)||0)*Math.max(0,Number(scenarioLead)||0))} واحد</div><div className="rounded-xl border bg-slate-50 p-3 text-xs"><strong>Override های این ریسک (نمایشی)</strong><div className="mt-2 space-y-1">{(()=>{try{const entries=JSON.parse(localStorage.getItem('him.supply.overrides.v1')||'[]') as {riskId:string;demand:number;leadTime:number;expiresAt:string;supersededAt?:string}[];void overrideRefresh;return entries.filter(x=>x.riskId===risk.id).length?entries.filter(x=>x.riskId===risk.id).map((x,i)=><p key={i}>{x.demand} واحد/روز · {x.leadTime} روز · انقضا: <bdi dir="ltr">{x.expiresAt}</bdi> · {x.supersededAt?'جایگزین‌شده':x.expiresAt<new Date().toISOString().slice(0,10)?'منقضی':'فعال'}</p>):<p>Override ثبت نشده است.</p>}catch{return <p>داده ذخیره‌شده قابل خواندن نیست.</p>}})()}</div></div><div className="rounded-xl border p-3 text-xs space-y-1"><strong>مقایسه سناریو با حالت پایه (تخمینی)</strong><p>کمبود ثبت‌شده در حالت پایه: <bdi dir="ltr">{risk.stockout}</bdi></p><p>مقدار تأمین پایه: {fmt(Math.max(0,Math.ceil(Math.max(0,risk.targetStock-(risk.usable+risk.inbound-risk.outbound))/risk.pack)*risk.pack))} واحد</p><p>مقدار سناریویی: {fmt(Math.max(0,Math.ceil(Math.max(0,(Number(scenarioDemand)||0)*(Number(scenarioLead)||0)+risk.safetyStock-(risk.usable+risk.inbound-risk.outbound))/risk.pack)*risk.pack))} واحد</p><p>زمان رسیدن به کسری در سناریو: {Number(scenarioDemand)>0?`${Math.floor(Math.max(0,risk.usable+risk.inbound-risk.outbound)/Number(scenarioDemand))} روز پس از تصویر موجودی`:'نامشخص'}</p><p className="text-amber-800">تاریخ کمبود پایه داده فیکسچر است؛ برآورد سناریو جایگزین پیش‌بینی معتبر نیست.</p></div><label className="block text-sm">دلیل تغییر سناریو<textarea className="mt-1 w-full rounded-md border p-2" value={overrideReason} onChange={e=>setOverrideReason(e.target.value)}/></label><label className="block text-sm">تاریخ انقضای سناریو<input type="date" className="mt-1 w-full rounded-md border p-2" value={overrideExpiry} onChange={e=>setOverrideExpiry(e.target.value)}/></label><Button onClick={()=>{if(!Number.isFinite(Number(scenarioDemand))||scenarioDemand.trim()===''||Number(scenarioDemand)<0||!Number.isFinite(Number(scenarioLead))||scenarioLead.trim()===''||Number(scenarioLead)<1){notify('تقاضا نباید منفی باشد و زمان تأمین باید دست‌کم یک روز باشد.');return}if(!overrideReason.trim()||!overrideExpiry){notify('برای ثبت سناریو، دلیل و تاریخ انقضا الزامی است.');return} if(overrideExpiry<new Date().toISOString().slice(0,10)){notify('تاریخ انقضای Override باید در آینده باشد.');return}(()=>{const key='him.supply.overrides.v1';const all=JSON.parse(localStorage.getItem(key)||'[]') as {riskId:string;expiresAt:string;supersededAt?:string}[];const conflict=all.some(x=>x.riskId===risk.id&&!x.supersededAt&&x.expiresAt>=new Date().toISOString().slice(0,10));if(conflict&&!window.confirm('Override فعال برای این ریسک وجود دارد. آیا می‌خواهید آن را جایگزین کنید؟')){return;}const now=new Date().toISOString();localStorage.setItem(key,JSON.stringify([...all.map(x=>x.riskId===risk.id&&!x.supersededAt&&x.expiresAt>=now.slice(0,10)?{...x,supersededAt:now}:x),{riskId:risk.id,demand:Number(scenarioDemand),leadTime:Number(scenarioLead),reason:overrideReason,expiresAt:overrideExpiry,createdAt:now}]));setOverrideRefresh(x=>x+1);notify('Override نمایشی ثبت شد؛ داده پایه بدون تغییر باقی ماند.');})()}}>اعمال سناریوی نمایشی</Button></div></CardContent></Card></TabsContent><TabsContent value="proposals"><ProposalTable proposals={proposals.filter(p=>p.caseId===risk.caseId)} open={open}/></TabsContent></Tabs></div>;
++  if(view.kind==='supply-risk'&&risk.siteId!==siteId)return <div dir="rtl" className="flex flex-col items-start gap-4 rounded-xl border bg-amber-50 p-6 text-right"><p className="w-full">داده این ریسک برای {risk.site} ثبت شده و برای بیمارستان انتخابی ({siteName}) داده معتبری وجود ندارد.</p><Button variant="outline" onClick={()=>open({kind:'supply'})}>بازگشت</Button></div>; if(view.kind==='supply-risk') return <div dir="rtl" className="text-right">{head(risk.item,`${risk.code} · داده نمونه متعلق به ${risk.site} · پرونده ${risk.caseId}`,()=>open({kind:'supply'}))}<div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">این داده‌های نمایشی متعلق به {risk.site} هستند و نباید به‌عنوان داده بیمارستان انتخاب‌شده ({siteName}) تفسیر شوند. فیلتر واقعی سایت نیازمند داده تفکیک‌شده هر بیمارستان است.</div><div className="mb-4 flex flex-wrap gap-2"><Button onClick={()=>create('replenishment')}><Plus className="ml-2 size-4"/>پیشنهاد تأمین مجدد</Button><Button variant="outline" onClick={()=>create('transfer')}><Truck className="ml-2 size-4"/>پیشنهاد انتقال موجودی</Button><Button variant="outline" onClick={()=>open({kind:'supply-case',id:risk.caseId})}>مشاهده پرونده کمبود</Button><Button variant="outline" onClick={()=>{setTab('assumptions')}}>بررسی فرضیات</Button></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{kpi('موجودی قابل برنامه‌ریزی',`${fmt(risk.usable)} واحد پایه`,'usable-unreserved',<Warehouse className="size-5"/>)}{kpi('ورودی واجد شرایط',`${fmt(risk.inbound)} واحد`,'دریافت‌های مورد انتظار جدا از موجودی فیزیکی',<Truck className="size-5"/>)}{kpi('موقعیت خالص موجودی',`${fmt(risk.usable+risk.inbound-risk.outbound)} واحد`,'موجودی + ورودی − تعهد خروجی',<Boxes className="size-5"/>)}{kpi('کمبود پیش‌بینی‌شده',risk.stockout,'بازه پیش‌بینی '+risk.horizon+' روز',<CalendarClock className="size-5"/>)}</div><Tabs value={tab} onValueChange={setTab} className="mt-5"><TabsList className="h-auto flex-wrap"><TabsTrigger value="overview">نمای کلی</TabsTrigger><TabsTrigger value="inventory">موجودی و بچ‌ها</TabsTrigger><TabsTrigger value="forecast">پیش‌بینی تقاضا</TabsTrigger><TabsTrigger value="expiry">سن و انقضا</TabsTrigger><TabsTrigger value="assumptions">فرضیات و سناریو</TabsTrigger><TabsTrigger value="proposals">پیشنهادهای مرتبط</TabsTrigger><TabsTrigger value="supplier">عملکرد تأمین‌کننده</TabsTrigger></TabsList><TabsContent value="overview"><div className="grid gap-4 lg:grid-cols-2"><Card><CardHeader><CardTitle>علت ریسک</CardTitle></CardHeader><CardContent className="space-y-2 text-sm"><p>موجودی قابل برنامه‌ریزی در برابر سطح هدف {fmt(risk.targetStock)} واحد بررسی می‌شود.</p><p>مرجع پیش‌بینی: <bdi>{risk.forecastRef}</bdi></p><p>زمان ثبت تصویر موجودی: <bdi>{risk.snapshot}</bdi></p><p>مالک پرونده: {risk.owner}</p>{risk.quality!=='good'&&<div className="rounded-lg bg-amber-50 p-3 text-amber-900"><AlertTriangle className="ml-2 inline size-4"/>کیفیت داده محدود یا نیازمند بررسی است؛ اعتبارسنجی ممکن است مسدود شود.</div>}</CardContent></Card><Card><CardHeader><CardTitle>خط زمانی ریسک</CardTitle></CardHeader><CardContent className="space-y-3">{risk.history.map((h)=><div key={h.label} className="border-r-2 border-teal-200 pr-3"><div className="font-bold">{h.label}</div><div className="text-xs text-slate-500">{h.at} · {h.detail}</div></div>)}</CardContent></Card></div></TabsContent><TabsContent value="supplier"><section className="rounded-xl border bg-white p-4 space-y-3" data-testid="supplier-performance"><h3 className="font-bold">تحلیل عملکرد تأمین‌کننده · SUP.4</h3><p className="text-sm">تأمین‌کننده نمونه: {risk.supplier} · کالای مرتبط: {risk.item} · سایت: {siteName}</p><div className="grid gap-2 sm:grid-cols-3">{['OTIF / تحویل کامل و به‌موقع','تعداد خطوط واجد شرایط / مخرج','نرخ تأخیر / نقص تحویل','پوشش داده و Missingness','تمرکز هزینه یا مقدار','پنجره مقایسه و نسخه قرارداد'].map(label=><div key={label} className="rounded-lg border p-3 text-xs"><b>{label}</b><p className="text-amber-800">ناموجود / قابل محاسبه نیست</p></div>)}</div><p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">فقط نام تأمین‌کننده و مدت تأمین از fixture ریسک موجود است. سفارش‌ها، تاریخ‌های توافق‌شده، رسیدهای واجد شرایط و مبلغ مصوب در دسترس نیستند؛ هیچ OTIF، رتبه‌بندی یا ادعای عملکرد تأمین‌کننده محاسبه نشده است. در صورت کمتر از ۱۰ خط واجد شرایط، وضعیت باید «نمونه ناکافی» باشد؛ در اینجا حتی تعداد نمونه نامشخص است.</p><p className="text-sm">مدت تأمین ثبت‌شده در فرض ریسک: {risk.leadTime} روز · کیفیت تصویر داده: {risk.quality} · مرجع: {risk.snapshot}</p></section></TabsContent><TabsContent value="inventory"><div className="mb-3 grid gap-3 sm:grid-cols-3">{kpi('موجودی کل نمایش‌داده‌شده',fmt(risk.usable+risk.reserved+risk.quarantined+risk.expired+risk.damaged),'تفکیک‌های غیرهم‌پوشان',<Boxes className="size-5"/>)}{kpi('رزروشده قابل استفاده',fmt(risk.reserved),'جدا از usable-unreserved',<Package className="size-5"/>)}{kpi('قرنطینه / منقضی / مسدود',fmt(risk.quarantined+risk.expired+risk.damaged),'در موجودی قابل برنامه‌ریزی منظور نشده',<ShieldAlert className="size-5"/>)}</div><div className={`${panel} overflow-auto`}><table dir="rtl" className="w-full min-w-[850px] text-right text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr>{['بچ','مکان','مقدار اصلی','واحد پایه','تبدیل','وضعیت','انقضا','کیفیت','مرجع'].map(x=><th className="p-3" key={x}>{x}</th>)}</tr></thead><tbody>{risk.lots.map(l=><tr className="border-t" key={l.id}>{[l.id,l.location,`${l.quantity} ${l.unit}`,l.base,l.conversion,l.disposition,l.expiry,l.quality,l.source].map((v,i)=><td className="p-3" key={i}>{v}</td>)}</tr>)}</tbody></table></div><p className="mt-2 text-xs text-slate-500">دریافت‌های مورد انتظار: {risk.inbound} واحد · تعهد خروجی جدا از رزرو: {risk.outbound} واحد</p></TabsContent><TabsContent value="forecast"><Card><CardHeader><CardTitle>پیش‌بینی تقاضا · {risk.forecastRef}</CardTitle><p className="text-xs text-slate-500">افق {risk.horizon} روز · سطل روزانه · تصویر برش {risk.snapshot}</p></CardHeader><CardContent><div className="mb-4 flex h-56 items-end gap-1 border-b border-slate-200 px-2">{risk.forecast.map((f,i)=><div key={f.day} className="group relative flex h-full flex-1 flex-col justify-end"><div title={`${f.day}: پیش‌بینی ${f.expected}; موجودی ${f.balance}`} className={`w-full rounded-t ${f.censored?'bg-amber-400':'bg-teal-500'}`} style={{height:`${Math.max(4,Math.min(95,f.expected*3))}%`}}/><div className="text-center text-[9px] text-slate-400">{i%2===0?i+1:''}</div></div>)}</div><div className="flex flex-wrap gap-4 text-xs"><span>■ تقاضای مورد انتظار</span><span className="text-amber-700">■ روزهای کمبود موجودی/تقاضای سانسورشده</span></div><div className="mt-4 overflow-auto"><table className="w-full text-sm"><thead><tr className="text-xs text-slate-500"><th className="p-2 text-right">روز</th><th className="p-2">مصرف ثبت‌شده</th><th className="p-2">پیش‌بینی</th><th className="p-2">بازه پایین–بالا</th><th className="p-2">تراز تحلیلی</th><th className="p-2">داده</th></tr></thead><tbody>{risk.forecast.map(f=><tr key={f.day} className="border-t"><td className="p-2">{f.day}</td><td className="p-2 text-center">{f.actual??'—'}</td><td className="p-2 text-center">{f.expected}</td><td className="p-2 text-center">{f.low}–{f.high}</td><td className="p-2 text-center">{f.balance}</td><td className="p-2 text-center">{f.censored?'سانسورشده':'عادی'}</td></tr>)}</tbody></table></div>{risk.quality==='limited'&&<p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">شواهد تقاضا محدود است؛ روزهای صفر مصرف در دوره کمبود به‌معنای تقاضای صفر نیست.</p>}</CardContent></Card></TabsContent><TabsContent value="expiry"><Card><CardHeader><CardTitle className="text-right">سن موجودی و مواجهه با انقضا</CardTitle></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-4">{[['۰–۳۰ روز',0],['۳۱–۶۰ روز',1],['۶۱–۹۰ روز',2],['بیش از ۹۰ روز',3]].map(([label,bucket])=>{const snapshot=Date.parse(risk.snapshot);const count=risk.lots.filter(l=>Number.isFinite(Date.parse(l.received))).reduce((sum,l)=>{const age=Math.max(0,Math.floor((snapshot-Date.parse(l.received))/86400000));return sum+(bucket===0&&age<=30||bucket===1&&age>30&&age<=60||bucket===2&&age>60&&age<=90||bucket===3&&age>90?l.base:0)},0);return [label,String(count)]}).map(([a,b])=><div className="rounded-xl bg-slate-50 p-4" key={a}><div className="text-xs text-slate-500">{a}</div><div className="mt-2 text-xl font-black">{b} واحد</div></div>)}</div><div dir="rtl" className="mt-4 space-y-2 text-right">{risk.lots.map(l=><div dir="rtl" className="flex flex-wrap flex-row-reverse items-center justify-between gap-2 rounded-lg border p-3" key={l.id}><div><bdi dir="ltr" className="block font-bold text-right">{l.id}</bdi><div className="text-xs text-slate-500">انقضا: <bdi dir="ltr">{l.expiry}</bdi> · دریافت: <bdi dir="ltr">{l.received}</bdi></div></div>{statusBadge(l.quality,l.quality==='good'?'قابل استفاده':'نیازمند بررسی')}</div>)}</div></CardContent></Card></TabsContent><TabsContent value="assumptions"><Card><CardHeader><CardTitle>مقایسه مقدار اصلی و سناریوی بررسی</CardTitle></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2"><div className="rounded-xl bg-slate-50 p-4"><div className="text-sm font-bold">مقدار اصلی</div><p className="mt-2 text-sm">تقاضای روزانه: {risk.forecast[0]?.expected} واحد</p><p className="text-sm">زمان تأمین: {risk.leadTime} روز</p><p className="text-sm">موجودی قابل برنامه‌ریزی: {risk.usable} واحد</p></div><div className="space-y-3 rounded-xl border p-4"><div className="font-bold">سناریوی بررسی</div><label className="block text-sm">تقاضای روزانه<input className="mt-1 w-full rounded-md border p-2" type="number" min="0" value={scenarioDemand} onChange={e=>setScenarioDemand(e.target.value)}/></label><label className="block text-sm">زمان تأمین (روز)<input className="mt-1 w-full rounded-md border p-2" type="number" min="1" value={scenarioLead} onChange={e=>setScenarioLead(e.target.value)}/></label><div className="rounded-lg bg-teal-50 p-3 text-sm">نیاز طی زمان تأمین: {fmt(Math.max(0,Number(scenarioDemand)||0)*Math.max(0,Number(scenarioLead)||0))} واحد</div><div className="rounded-xl border bg-slate-50 p-3 text-xs"><strong>Override های این ریسک (نمایشی)</strong><div className="mt-2 space-y-1">{(()=>{try{const entries=JSON.parse(localStorage.getItem('him.supply.overrides.v1')||'[]') as {riskId:string;demand:number;leadTime:number;expiresAt:string;supersededAt?:string}[];void overrideRefresh;return entries.filter(x=>x.riskId===risk.id).length?entries.filter(x=>x.riskId===risk.id).map((x,i)=><p key={i}>{x.demand} واحد/روز · {x.leadTime} روز · انقضا: <bdi dir="ltr">{x.expiresAt}</bdi> · {x.supersededAt?'جایگزین‌شده':x.expiresAt<new Date().toISOString().slice(0,10)?'منقضی':'فعال'}</p>):<p>Override ثبت نشده است.</p>}catch{return <p>داده ذخیره‌شده قابل خواندن نیست.</p>}})()}</div></div><div className="rounded-xl border p-3 text-xs space-y-1"><strong>مقایسه سناریو با حالت پایه (تخمینی)</strong><p>کمبود ثبت‌شده در حالت پایه: <bdi dir="ltr">{risk.stockout}</bdi></p><p>مقدار تأمین پایه: {fmt(Math.max(0,Math.ceil(Math.max(0,risk.targetStock-(risk.usable+risk.inbound-risk.outbound))/risk.pack)*risk.pack))} واحد</p><p>مقدار سناریویی: {fmt(Math.max(0,Math.ceil(Math.max(0,(Number(scenarioDemand)||0)*(Number(scenarioLead)||0)+risk.safetyStock-(risk.usable+risk.inbound-risk.outbound))/risk.pack)*risk.pack))} واحد</p><p>زمان رسیدن به کسری در سناریو: {Number(scenarioDemand)>0?`${Math.floor(Math.max(0,risk.usable+risk.inbound-risk.outbound)/Number(scenarioDemand))} روز پس از تصویر موجودی`:'نامشخص'}</p><p className="text-amber-800">تاریخ کمبود پایه داده فیکسچر است؛ برآورد سناریو جایگزین پیش‌بینی معتبر نیست.</p></div><label className="block text-sm">دلیل تغییر سناریو<textarea className="mt-1 w-full rounded-md border p-2" value={overrideReason} onChange={e=>setOverrideReason(e.target.value)}/></label><label className="block text-sm">تاریخ انقضای سناریو<input type="date" className="mt-1 w-full rounded-md border p-2" value={overrideExpiry} onChange={e=>setOverrideExpiry(e.target.value)}/></label><Button onClick={()=>{if(!Number.isFinite(Number(scenarioDemand))||scenarioDemand.trim()===''||Number(scenarioDemand)<0||!Number.isFinite(Number(scenarioLead))||scenarioLead.trim()===''||Number(scenarioLead)<1){notify('تقاضا نباید منفی باشد و زمان تأمین باید دست‌کم یک روز باشد.');return}if(!overrideReason.trim()||!overrideExpiry){notify('برای ثبت سناریو، دلیل و تاریخ انقضا الزامی است.');return} if(overrideExpiry<new Date().toISOString().slice(0,10)){notify('تاریخ انقضای Override باید در آینده باشد.');return}(()=>{const key='him.supply.overrides.v1';const all=JSON.parse(localStorage.getItem(key)||'[]') as {riskId:string;expiresAt:string;supersededAt?:string}[];const conflict=all.some(x=>x.riskId===risk.id&&!x.supersededAt&&x.expiresAt>=new Date().toISOString().slice(0,10));if(conflict&&!window.confirm('Override فعال برای این ریسک وجود دارد. آیا می‌خواهید آن را جایگزین کنید؟')){return;}const now=new Date().toISOString();localStorage.setItem(key,JSON.stringify([...all.map(x=>x.riskId===risk.id&&!x.supersededAt&&x.expiresAt>=now.slice(0,10)?{...x,supersededAt:now}:x),{riskId:risk.id,demand:Number(scenarioDemand),leadTime:Number(scenarioLead),reason:overrideReason,expiresAt:overrideExpiry,createdAt:now}]));setOverrideRefresh(x=>x+1);notify('Override نمایشی ثبت شد؛ داده پایه بدون تغییر باقی ماند.');})()}}>اعمال سناریوی نمایشی</Button></div></CardContent></Card></TabsContent><TabsContent value="proposals"><ProposalTable proposals={proposals.filter(p=>p.caseId===risk.caseId)} open={open}/></TabsContent></Tabs></div>;
+   return <div dir="rtl" className="text-right">{head('ریسک‌های کمبود موجودی',`بیمارستان انتخاب‌شده: ${siteName} · داده‌های ساختگی مستقل برای تست (نه موجودی واقعی)`)}<div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{kpi('پرونده‌های فعال',fmt(siteCases.filter(c=>c.status!=='closed').length),'پرونده‌های نمایشی',<ClipboardList className="size-5"/>)}{kpi('ریسک‌های با اهمیت بالا',fmt(siteRisks.filter(r=>r.criticality==='high').length),'بر اساس سیاست بحرانی بودن نمونه',<ShieldAlert className="size-5"/>)}{kpi('اقلام با کسری پیش‌بینی‌شده',fmt(siteRisks.length),'در افق پیش‌بینی ثبت‌شده',<CalendarClock className="size-5"/>)}{kpi('موجودی در معرض انقضا',fmt(siteRisks.reduce((s,r)=>s+r.expired,0)),'واحد ثبت‌شده در داده نمونه',<AlertTriangle className="size-5"/>)}{kpi('پرونده نیازمند بررسی',fmt(siteCases.filter(c=>c.status==='under_review').length),'بررسی برنامه‌ریز',<FileText className="size-5"/>)}{kpi('پیشنهادهای باز',fmt(siteProposals.filter(p=>p.status==='draft').length),'پیش‌نویس‌های T1',<Truck className="size-5"/> )}</div><div className={`${panel} mb-4 p-4`}><div className="grid gap-3 md:grid-cols-4"><div className="relative"><Search className="absolute right-3 top-3 size-4 text-slate-400"/><Input className="pr-9" placeholder="جست‌وجوی قلم، کد یا مالک" value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}}/></div><select className="rounded-md border bg-white px-3 text-sm" value={criticality} onChange={e=>setCriticality(e.target.value)}><option value="all">همه سطوح بحرانی بودن</option><option value="high">زیاد</option><option value="medium">متوسط</option><option value="low">کم</option></select><select className="rounded-md border bg-white px-3 text-sm" value={quality} onChange={e=>setQuality(e.target.value)}><option value="all">همه کیفیت‌های داده</option><option value="good">مناسب</option><option value="warning">هشدار</option><option value="limited">محدود</option></select><select aria-label="فیلتر مکان" className="rounded-md border bg-white px-3 py-2 text-sm" value={locationFilter} onChange={e=>{setLocationFilter(e.target.value);setPage(1)}}><option value="all">همه مکان‌ها</option>{[...new Set(siteRisks.map(r=>r.location))].map(x=><option key={x} value={x}>{x}</option>)}</select><select aria-label="فیلتر دسته قلم" className="rounded-md border bg-white px-3 py-2 text-sm" value={categoryFilter} onChange={e=>{setCategoryFilter(e.target.value);setPage(1)}}><option value="all">همه دسته‌ها</option>{[...new Set(siteRisks.map(r=>r.category))].map(x=><option key={x} value={x}>{x}</option>)}</select><select aria-label="فیلتر فهرست دارویی" className="rounded-md border bg-white px-3 py-2 text-sm" value={formularyFilter} onChange={e=>{setFormularyFilter(e.target.value);setPage(1)}}><option value="all">همه وضعیت‌های فهرست دارویی</option><option value="unknown">وضعیت ثبت‌نشده / نامشخص</option><option value="yes" disabled>در فهرست دارویی (داده موجود نیست)</option><option value="no" disabled>خارج از فهرست دارویی (داده موجود نیست)</option></select><select aria-label="فیلتر افق ریسک" className="rounded-md border bg-white px-3 py-2 text-sm" value={horizonFilter} onChange={e=>{setHorizonFilter(e.target.value);setPage(1)}}><option value="all">همه افق‌ها</option><option value="7">تا ۷ روز</option><option value="30">تا ۳۰ روز</option><option value="gt30">بیش از ۳۰ روز</option></select><select className="rounded-md border bg-white px-3 text-sm" value={sort} onChange={e=>setSort(e.target.value as 'risk'|'stockout')}><option value="risk">مرتب‌سازی: بحرانی بودن</option><option value="stockout">مرتب‌سازی: نزدیک‌ترین کسری</option></select></div><div className="mt-3 flex justify-between"><span className="text-xs text-slate-500">{filtered.length} ریسک از {siteRisks.length}</span><Button variant="ghost" size="sm" onClick={()=>{setSearch('');setCriticality('all');setQuality('all');setLocationFilter('all');setCategoryFilter('all');setFormularyFilter('all');setHorizonFilter('all');setPage(1);setSort('risk')}}><RefreshCw className="ml-1 size-3"/>پاک‌کردن فیلترها</Button></div></div>{filtered.length===0?<div className={`${panel} p-10 text-center text-slate-500`}>ریسکی با فیلترهای انتخاب‌شده یافت نشد.</div>:<div className={`${panel} overflow-auto`}><table dir="rtl" className="w-full min-w-[1000px] text-right text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr>{['قلم / کد','دسته','مکان','بحرانی بودن','نوع ریسک','موجودی قابل استفاده','کسری پیش‌بینی','کیفیت داده','مالک پرونده','وضعیت پرونده','جزئیات'].map(x=><th className="p-3" key={x}>{x}</th>)}</tr></thead><tbody>{filtered.slice((page-1)*10,page*10).map(r=><tr key={r.id} className="cursor-pointer border-t hover:bg-teal-50/50" onClick={()=>open({kind:'supply-risk',id:r.id})}><td className="p-3"><b>{r.item}</b><div className="text-xs text-slate-500"><bdi>{r.code}</bdi></div></td><td className="p-3">{r.category}</td><td className="p-3">{r.location}</td><td className="p-3">{statusBadge(r.criticality,riskLabel[r.criticality])}</td><td className="p-3">{r.riskType}</td><td className="p-3">{fmt(r.usable)} واحد</td><td className="p-3"><bdi>{r.stockout}</bdi></td><td className="p-3">{statusBadge(r.quality,r.quality==='good'?'مناسب':r.quality==='limited'?'محدود':'هشدار')}</td><td className="p-3">{r.owner}</td><td className="p-3">{statusLabels[cases.find(c=>c.id===r.caseId)!.status]}</td><td className="p-3"><Button size="sm" variant="outline" onClick={e=>{e.stopPropagation();open({kind:'supply-risk',id:r.id})}}>جزئیات</Button></td></tr>)}</tbody></table><div className="flex items-center justify-between border-t p-3 text-xs"><span>صفحه {page} از {Math.max(1,Math.ceil(filtered.length/10))}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={page===1} onClick={()=>setPage(p=>p-1)}>قبلی</Button><Button size="sm" variant="outline" disabled={page>=Math.ceil(filtered.length/10)} onClick={()=>setPage(p=>p+1)}>بعدی</Button></div></div></div>}<div className="mt-4 flex flex-wrap gap-2"><Button variant="outline" onClick={()=>open({kind:'supply-cases'})}>پرونده‌های کمبود</Button><Button variant="outline" onClick={()=>open({kind:'supply-proposals'})}>پیشنهادهای تأمین و انتقال</Button></div></div>;
+  }
+  if(view.kind==='supply-new'){
+diff --git a/src/test/mo-13-regressions.test.ts b/src/test/mo-13-regressions.test.ts
+new file mode 100644
+index 0000000..38010ed
+--- /dev/null
++++ b/src/test/mo-13-regressions.test.ts
+@@ -0,0 +1,39 @@
++import { describe, it, expect } from 'vitest';
++import { normalizeFaSearch } from '../him/components/faSearch';
++import { scopedDraftKey } from '../him/components/scopedDraftKey';
++import { demoStore, newTask } from '../him/phase6/store';
++
++describe('Mo Persian search and browser-local scope', () => {
++  it('finds Arabic Yeh and Kaf spellings of Persian hospital names', () => {
++    expect(
++      normalizeFaSearch('بیمارستان امام حسین (ع)').includes(normalizeFaSearch('امام حسين')),
++    ).toBe(true);
++    expect(normalizeFaSearch('كاربری')).toBe(normalizeFaSearch('کاربری'));
++  });
++  it('separates FIN and KNO synthetic drafts by hospital and user', () => {
++    const tal = scopedDraftKey(
++      'him.spec-workspaces.demo.v2',
++      '/finance/workflows',
++      'SITE-TALEGHANI',
++      'user-1',
++    );
++    const imam = scopedDraftKey(
++      'him.spec-workspaces.demo.v2',
++      '/finance/workflows',
++      'SITE-IMAM-HOSSEIN',
++      'user-1',
++    );
++    expect(tal).not.toBe(imam);
++    expect(
++      scopedDraftKey('him.knowledge.local.v1', 'documents', 'SITE-TALEGHANI', 'user-1'),
++    ).not.toBe(
++      scopedDraftKey('him.knowledge.local.v1', 'documents', 'SITE-IMAM-HOSSEIN', 'user-1'),
++    );
++  });
++  it('rejects oversized task titles before writing them to local storage', () => {
++    const task = newTask('SITE-TALEGHANI', {});
++    task.title = '1234567890'.repeat(21);
++    expect(() => demoStore.saveTask(task)).toThrow('TASK_TITLE_INVALID');
++    expect(demoStore.tasks().some((t) => t.id === task.id)).toBe(false);
++  });
++});

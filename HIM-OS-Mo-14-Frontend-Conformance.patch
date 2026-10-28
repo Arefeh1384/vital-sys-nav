@@ -1,0 +1,589 @@
+diff --git a/src/him/App.tsx b/src/him/App.tsx
+--- a/src/him/App.tsx
++++ b/src/him/App.tsx
+@@ -11,9 +11,12 @@
+ import { MainContent } from './components/MainContent';
+ import { ScopeModal } from './components/ScopeModal';
+ import { X, Info, Bot } from 'lucide-react';
++import {useShellLanguage} from './components/useShellLanguage';
+ 
+ const AppShell: React.FC = () => {
+   const { user, notificationMessage, clearNotification, workView, openWorkView } = useApp();
++  const [lang] = useShellLanguage();
++  useEffect(()=>{document.documentElement.lang=lang;document.documentElement.dir=lang==='en'?'ltr':'rtl';},[lang]);
+ 
+   // Auto-dismiss notification after 4 seconds
+   useEffect(() => {
+@@ -32,7 +35,7 @@
+   }
+ 
+   return (
+-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans antialiased" dir="rtl">
++    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans antialiased" dir={lang==='en'?'ltr':'rtl'}>
+       {/* Toast Notification Bar */}
+       {notificationMessage && (
+         <div className="fixed bottom-5 right-5 z-50 max-w-md bg-slate-900 text-white text-xs px-4 py-3 rounded-xl shadow-xl flex items-center justify-between gap-3 border border-slate-700 animate-in slide-in-from-bottom-3 duration-200">
+@@ -61,13 +64,14 @@
+           className="fixed bottom-5 left-5 z-40 inline-flex items-center gap-2 rounded-full bg-teal-700 px-4 py-3 text-sm font-bold text-white shadow-xl hover:bg-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+         >
+           <Bot className="w-5 h-5" aria-hidden />
+-          <span>کوپایلت</span>
++          <span>{lang==='en'?'Copilot':'کوپایلت'}</span>
+         </button>
+       )}
+ 
+       {/* Main Top Header */}
+       <Header />
+ 
++      {lang==='en' && <p role="status" className="border-b bg-amber-50 px-4 py-1 text-xs text-amber-900">English LTR shell enabled. Some domain-specific content is not translated yet; this is a localization preview, not completed English acceptance.</p>}
+       {/* Shell Layout: Sidebar + Main Content Area */}
+       <div className="flex-1 flex overflow-hidden relative min-w-0 w-full">
+         <Sidebar />
+diff --git a/src/him/components/DomainWorkspaces.tsx b/src/him/components/DomainWorkspaces.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/him/components/DomainWorkspaces.tsx
+@@ -0,0 +1,130 @@
++import React, {useEffect, useMemo, useState} from 'react';
++import {useApp} from '../context/AppContext';
++
++/** Domain-specific, site-scoped synthetic workflow. No upstream writes or clinical decisions. */
++type Kind='text'|'date'|'datetime-local'|'number'|'textarea'|'select';
++type Field={key:string;label:string;kind?:Kind;required?:boolean;options?:string[];placeholder?:string};
++type RecordItem={id:string;tab:number;values:Record<string,string>;at:string;state:string;note:string;originId?:string};
++type Definition={title:string;tabs:Array<{name:string;fields:Field[];help:string}>;warning:string};
++const f=(key:string,label:string,kind:Kind='text',required=true,options?:string[]):Field=>({key,label,kind,required,options});
++const definitions:Record<string,Definition>={
++ '/data/datasets':{title:'مدیریت متریک و مجموعه‌داده · DAT-05',warning:'فرمول‌های ثبت‌شده اجرا یا منتشر نمی‌شوند. نسخه مصوب و مجموعه‌داده واقعی متصل نیستند.',tabs:[
++ {name:'فهرست مجموعه‌داده‌ها',help:'موجودی مرجع مجموعه‌داده‌ها دریافت نشده؛ فقط درخواست بررسی داده نگهداری می‌شود.',fields:[f('dataset','شناسه مجموعه‌داده'),f('owner','مسئول داده'),f('classification','طبقه‌بندی','select',true,['synthetic','internal','restricted']),f('freshness','حد تازگی (ثانیه)','number')]},
++ {name:'تعریف متریک',help:'تعریف پیش‌نویس، کنترل نحوی فرمول، نسخه‌بندی و درخواست بازبینی مستقل؛ انتشار اجرایی مسدود است.',fields:[f('metric_key','metric_key'),f('name','نام متریک'),f('owner_id','owner_id'),f('unit','واحد UCUM'),f('grain','grain'),f('numerator','فرمول صورت'),f('denominator','فرمول مخرج'),f('aggregation','aggregation','select',true,['sum','ratio','avg','count']),f('allowed_dimensions','ابعاد مجاز (با ویرگول)'),f('required_datasets','شناسه مجموعه‌داده‌های لازم'),f('exclusions','استثناها','textarea'),f('timezone_policy','سیاست منطقه زمانی','select',true,['Asia/Tehran','UTC']),f('freshness_limit_seconds','حد تازگی (ثانیه)','number'),f('quality_policy_id','شناسه سیاست کیفیت'),f('effective_from','تاریخ مؤثر','date'),f('version','نسخه')]},
++ {name:'نسخه‌های مصوب',help:'نسخه اجرایی/مصوب در این محیط موجود نیست؛ تاریخچه پیش‌نویس‌ها و نتیجه بررسی نشان داده می‌شود.',fields:[]}]},
++ '/data/identity':{title:'همسان‌سازی هویت و Crosswalk · DAT-02',warning:'بدون منبع هویت معتبر یا بررسی مستقل، هیچ همسان‌سازی، ادغام یا حذف منبع اجرا نمی‌شود.',tabs:[
++ {name:'مبدأ و شناسه',help:'مرجع منبع و موجودیت، بدون ادعای اتصال واقعی.',fields:[f('authority','مرجع شناسه'),f('source_id','source_id'),f('entity_type','نوع موجودیت'),f('source_key','source_key')]},
++ {name:'نگاشت بازه‌دار',help:'نگاشت دقیق با کنترل تداخل بازه‌های مؤثر؛ سابقه به صورت نسخه جانشین نگهداری می‌شود.',fields:[f('authority','مرجع شناسه'),f('source_id','source_id'),f('entity_type','entity_type'),f('source_key','source_key'),f('canonical_id','شناسه کانونی پیشنهادی'),f('effective_from','شروع اعتبار','date'),f('effective_to','پایان اعتبار','date'),f('evidence','مرجع شواهد','textarea'),f('reviewer','شناسه بازبین مستقل')]},
++ {name:'تعارض‌ها و جداسازی',help:'درخواست جداسازی فقط نسخه جانشین و نیازمند بازبینی ایجاد می‌کند؛ حذف مخرب ممکن نیست.',fields:[f('original','شناسه نگاشت مبدأ'),f('successor','شناسه کانونی جانشین'),f('evidence','دلیل جداسازی و شاهد','textarea'),f('reviewer','شناسه بازبین')] }]},
++ '/data/ingestion':{title:'پایش دریافت داده · DAT-03',warning:'Jobها و شمارنده‌ها در این صفحه نمونه کنترل‌شده هستند؛ منبع واقعی و checkpoint معتبر متصل نیست.',tabs:[
++ {name:'کارهای دریافت',help:'ثبت درخواست آزمایشی بدون اتصال به داده بیمارستان.',fields:[f('connector','شناسه اتصال مصنوعی'),f('dataset','مجموعه‌داده'),f('contract','نسخه قرارداد'),f('cutoff','cutoff مشاهده','datetime-local')]},
++ {name:'ردیف‌های قرنطینه',help:'هیچ ردیف واقعی برای نمایش مجاز نیست؛ فقط ثبت دلیل قرنطینه نمونه.',fields:[f('job','شناسه Job'),f('code','کد خطای ایمن'),f('count','تعداد قرنطینه','number'),f('reason','دلیل','textarea')]},
++ {name:'پیشرفت و چک‌پوینت',help:'درخواست شبیه‌سازی Job را ایجاد کن تا state، counts و امکان لغو/تلاش مجدد نمایشی را ببینی.',fields:[f('job','شناسه Job آزمایشی'),f('contract','نسخه قرارداد'),f('cutoff','زمان cutoff','datetime-local'),f('accepted','accepted','number'),f('duplicate','duplicate','number'),f('quarantined','quarantined','number'),f('checkpoint','پیشرفت checkpoint (۰ تا ۱۰۰)','number'),f('consistency','سازگاری','select',true,['unknown','consistent','partial'])]}]},
++ '/data/calendars':{title:'تقویم‌های نسخه‌دار · DAT-05',warning:'تقویم مرجع سازمان یا تعطیلات رسمی تأیید نشده؛ اعمال تقویم بر محاسبات واقعی مسدود است.',tabs:[
++ {name:'تقویم محلی',help:'تعریف پیشنهادی روز کاری.',fields:[f('calendar','شناسه تقویم'),f('timezone','timezone','select',true,['Asia/Tehran','UTC']),f('week_start','شروع هفته','select',true,['saturday','sunday','monday'])]},
++ {name:'تعاریف دوره',help:'دوره‌ها با زمان محلی و نسخه تقویم تعریف می‌شوند.',fields:[f('period','شناسه دوره'),f('calendar','شناسه تقویم'),f('start','شروع دوره','date'),f('end','پایان دوره','date')]},
++ {name:'نسخه‌ها',help:'بازه، ساعات کاری، منشأ تعطیلات و درخواست تأیید نسخه؛ تداخل بازه مؤثر مسدود است.',fields:[f('calendar','شناسه تقویم'),f('version','شماره نسخه'),f('timezone','منطقه زمانی','select',true,['Asia/Tehran','UTC']),f('week_start','اولین روز هفته','select',true,['saturday','sunday','monday']),f('work_intervals','بازه‌های کاری (مثال 08:00-16:00)'),f('holiday_ref','نسخه تعطیلات/منشأ'),f('effective_from','شروع اعتبار','date'),f('effective_to','پایان اعتبار','date'),f('owner','مالک تقویم'),f('reviewer','بازبین مستقل')] }]},
++ '/settings/agents':{title:'Agent Studio · ADV-04',warning:'ساخت نسخه تنها برای Sandbox است؛ اجرای کد سفارشی، ابزار شبکه/شل و ارتقای عامل غیرفعال‌اند.',tabs:[
++ {name:'عامل‌ها',help:'فهرست مصنوعی نسخه‌های محلی.',fields:[f('name','نام عامل'),f('owner','مالک'),f('purpose','کاربرد مجاز','textarea')]},
++ {name:'نسخه و ابزارها',help:'گراف JSON شامل nodes و edges با نوع‌های محدود؛ schema ابزار JSON؛ validator از کد اجرایی استفاده نمی‌کند.',fields:[f('name','نام نسخه'),f('nodes','گره‌های JSON (آرایه id,type)','textarea'),f('edges','یال‌های JSON (آرایه from,to)','textarea'),f('tool_schema','طرح JSON ابزار (object)','textarea'),f('max_steps','سقف گام','number'),f('max_calls','سقف فراخوانی ابزار','number'),f('max_seconds','سقف زمان (ثانیه)','number'),f('terminal','شرط پایان') ]},
++ {name:'ارزیابی',help:'درخواست آزمون مصنوعی با fixture و جمع‌بندی مقایسه؛ اجرا و امتیاز معتبر هنوز موجود نیست.',fields:[f('workflow','شناسه نسخه'),f('fixture','شناسه fixture مصنوعی'),f('policy','سیاست ارزیابی'),f('baseline','خط پایه')]},
++ {name:'انتشار محدود',help:'درخواست ارتقا نیازمند digest و بسته ارزیابی معتبر است؛ هیچ انتشار واقعی صورت نمی‌گیرد.',fields:[f('workflow','شناسه نسخه'),f('digest','اثر انگشت نسخه'),f('evaluation','مرجع ارزیابی'),f('reviewer','بازبین مستقل')] }]},
++ '/settings/modules':{title:'پیکربندی و فعال‌سازی ماژول · PLT-03',warning:'کنترل‌ها فقط در مرورگر اجرا می‌شوند؛ فعال‌سازی واقعی job، ابزار یا اتصال سازمانی انجام نمی‌شود.',tabs:[
++ {name:'ماژول‌ها',help:'وضعیت پیشنهادی ماژول بر اساس سایت و نسخه.',fields:[f('module','ماژول','select',true,['EXE','OPS','SUP','DAT','KNO','AIM','AST','FIN','WFM','QLT','MLO']),f('version','نسخه'),f('state','وضعیت','select',true,['disabled','sandbox','shadow','active','suspended','retired'])]},
++ {name:'اعتبارسنجی نسخه',help:'نتیجه gateها به‌صورت اعلام‌شده ثبت می‌شود؛ تأیید واقعی قرارداد، مدل و امنیت موجود نیست.',fields:[f('module','ماژول','select',true,['OPS','SUP','AST','WFM','QLT','AIM','DAT']),f('version','نسخه'),f('dependency','نسخه وابستگی'),f('contract_gate','گیت قرارداد','select',true,['missing','pending','verified_synthetic']),f('policy_gate','گیت سیاست','select',true,['missing','pending','verified_synthetic']),f('release_gate','گیت انتشار','select',true,['missing','pending','verified_synthetic'])]},
++ {name:'ارتقا و تعلیق',help:'درخواستِ وضعیت جدید ثبت می‌شود. Promote به active تا تأیید واقعی وابستگی‌ها مسدود است.',fields:[f('module','ماژول','select',true,['OPS','SUP','AST','WFM','QLT','AIM','DAT']),f('version','نسخه'),f('current','وضعیت فعلی','select',true,['disabled','sandbox','shadow','active','suspended','retired']),f('target','وضعیت پیشنهادی','select',true,['sandbox','shadow','active','suspended','retired']),f('reason','دلیل','textarea'),f('reviewer','بازبین مستقل')]},
++ {name:'تاریخچه نمونه',help:'فقط رخدادهای همین سایت و مرورگر نشان داده می‌شود.',fields:[]}]},
++ '/operations/forecasts':{title:'پیش‌بینی ظرفیت · OPS-02',warning:'مدل پیش‌بینی و داده‌های ورودی تأیید نشده‌اند؛ هیچ پیش‌بینی نقطه‌ای یا بازه اطمینان ساختگی تولید نمی‌شود.',tabs:[
++ {name:'درخواست',help:'درخواست با سایت، بازه، متریک و افق ذخیره می‌شود؛ وضعیت «در انتظار منبع» می‌ماند.',fields:[f('metric','متریک ظرفیت','select',true,['available_staffed_beds','occupancy','ed_wait','ward_demand']),f('start','شروع بازه مبنا','datetime-local'),f('end','پایان بازه مبنا','datetime-local'),f('horizon','افق پیش‌بینی (ساعت)','number'),f('granularity','دانه‌بندی','select',true,['hour','day']),f('model','نسخه مدل پیشنهادی'),f('assumptions','فرض‌ها','textarea')]},
++ {name:'نتایج و بازه‌های عدم قطعیت',help:'برای هر درخواست، point / p10 / p50 / p90 فقط پس از اتصال مدل و شواهد معتبر قابل محاسبه‌اند.',fields:[]},
++ {name:'پیشینه و بازبینی',help:'تاریخچه و ارجاع درخواست بازبینی؛ هیچ پیش‌بینی معتبر یا تصمیم اجرایی وجود ندارد.',fields:[f('request','شناسه درخواست'),f('reviewer','بازبین'),f('comment','شرح بررسی','textarea')] }]},
++ '/quality/workflows':{title:'کیفیت، ایمنی و اعتباربخشی · QLT-01–06',warning:'تمام داده‌ها مصنوعی و غیرقابل استفاده بالینی‌اند؛ رسیدگی، افشا و تأیید واقعی به مجوز سازمانی نیاز دارند.',tabs:[
++ {name:'ثبت رخداد',help:'در وضعیت خطر فوری، گزارش‌دهنده باید فوراً از مسیر اضطراری مصوب استفاده کند؛ این فرم سامانه فوریت نیست.',fields:[f('category','دسته رخداد'),f('occurred','زمان رخداد','datetime-local'),f('location','محل'),f('mode','نوع ثبت','select',true,['identified','confidential','anonymous']),f('narrative','شرح رخداد','textarea'),f('immediate','اقدام ایمنی فوری','textarea')]},
++ {name:'صف تریاژ',help:'طبقه‌بندی و ارجاع داخلی پیش‌نویس؛ رسیدگی واقعی صورت نمی‌گیرد.',fields:[f('incident','شناسه رخداد'),f('severity','شدت','select',true,['low','medium','high','critical']),f('category','رده'),f('queue','صف رسیدگی'),f('reason','توضیح طبقه‌بندی','textarea')]},
++ {name:'بررسی رخداد',help:'جدول زمانی و شواهد موافق، مخالف و ناموجود بدون انتساب تقصیر.',fields:[f('incident','شناسه رخداد'),f('timeline','جدول زمانی','textarea'),f('evidence','شواهد','textarea'),f('missing','شواهد ناموجود','textarea'),f('reviewer','بازبین مستقل')]},
++ {name:'CAPA',help:'معیار اثربخشی و پنجره بازبینی الزامی است؛ بستن اصلاحیه بدون بررسی اثربخشی مجاز نیست.',fields:[f('incident','شناسه رخداد'),f('action','اقدام اصلاحی/پیشگیرانه','textarea'),f('owner','مسئول'),f('due','موعد','date'),f('effectiveness','معیار اثربخشی','textarea'),f('review_start','شروع بازبینی','date'),f('review_end','پایان بازبینی','date')]},
++ {name:'ماتریس اعتباربخشی',help:'ثبت معیار و شواهد ارزیابی، بدون ادعای دریافت گواهی.',fields:[f('standard','استاندارد'),f('criterion','معیار'),f('status','ارزیابی','select',true,['not_assessed','gap','partially_met','met_synthetic']),f('evidence','مرجع شاهد'),f('assessor','ارزیاب')]},
++ {name:'بازخورد',help:'متن بازخورد باید از شناسه‌های شخصی پاک‌سازی شود؛ امتیاز احساسات تشخیص پزشکی نیست.',fields:[f('channel','کانال دریافت'),f('masked_text','شرح بدون اطلاعات شناسایی','textarea'),f('sentiment','برداشت نمایشی','select',true,['positive','neutral','negative','unknown']),f('handler','مسئول پیگیری'),f('disposition','وضعیت','select',true,['new','review','closed'])]}]}
++};
++export const domainPaths=Object.keys(definitions);
++const cls='block w-full rounded-lg border border-slate-300 bg-white p-2 text-sm mt-1';
++const primary='rounded-lg bg-teal-800 px-4 py-2 text-sm text-white disabled:opacity-40';
++const iso=()=>new Date().toISOString();
++const text=(v:string)=>v.trim();
++export function validateDomain(path:string,tab:number,v:Record<string,string>,items:RecordItem[]):string[] {
++ const def=definitions[path];if(!def)return ['مسیر ناشناخته'];
++ const fields=def.tabs[tab]?.fields||[];
++ const errors=fields.filter(x=>x.required&&!text(v[x.key]||'')).map(x=>`${x.label} الزامی است.`);
++ for(const x of fields.filter(f=>f.kind==='number'&&text(v[f.key]||''))) if(!Number.isFinite(Number(v[x.key]))||Number(v[x.key])<0)errors.push(`${x.label}: مقدار نامعتبر`);
++ const from=v.effective_from||v.start||v.review_start, to=v.effective_to||v.end||v.review_end;
++ if(from&&to&&new Date(to).getTime()<=new Date(from).getTime())errors.push('پایان بازه باید بعد از شروع باشد.');
++ if(path==='/data/datasets'&&tab===1){if(!/^[\w.()+\-*/\s]+$/.test((v.numerator||'')+(v.denominator||'')))errors.push('فرمول شامل نویسه غیرمجاز است؛ فرمول هرگز به‌عنوان کد اجرا نمی‌شود.');if((v.numerator||'').length>300||(v.denominator||'').length>300)errors.push('فرمول بیش از حد طولانی است.');if(Number(v.freshness_limit_seconds)<=0)errors.push('حد تازگی باید مثبت باشد.');if(items.some(x=>x.tab===1&&x.values.metric_key===v.metric_key&&x.values.version===v.version))errors.push('این نسخه متریک قبلاً ثبت شده است.');}
++ if(path==='/data/identity'&&tab===1&&from&&to){if(items.some(x=>x.tab===1&&['authority','source_id','entity_type','source_key'].every(k=>x.values[k]===v[k])&&new Date(x.values.effective_from).getTime()<new Date(to).getTime()&&new Date(from).getTime()<new Date(x.values.effective_to).getTime()))errors.push('بازه مؤثر برای این کلید منبع همپوشانی دارد.');}
++ if(path==='/data/calendars'&&tab===2&&from&&to){if(items.some(x=>x.tab===2&&x.values.calendar===v.calendar&&new Date(x.values.effective_from).getTime()<new Date(to).getTime()&&new Date(from).getTime()<new Date(x.values.effective_to).getTime()))errors.push('نسخه‌های مؤثر تقویم همپوشانی دارند.');}
++ if(path==='/data/ingestion'&&tab===2&&Number(v.checkpoint)>100)errors.push('پیشرفت از ۱۰۰ درصد بیشتر نیست.');
++ if(path==='/operations/forecasts'&&tab===0&&Number(v.horizon)<=0)errors.push('افق باید مثبت باشد.');
++ if(path==='/quality/workflows'&&tab===3&&!v.review_end)errors.push('پایان پنجره بررسی الزامی است.');
++ if(path==='/settings/modules'&&((tab===2&&v.target==='active')||(tab===0&&v.state==='active')))errors.push('انتقال به حالت active بدون تأیید واقعی دروازه‌های مستقل مسدود است.');
++ if(path==='/settings/agents'&&tab===1&&v.nodes&&v.edges&&v.tool_schema){try{
++ const nodes=JSON.parse(v.nodes),edges=JSON.parse(v.edges),schema=JSON.parse(v.tool_schema);
++ if(!Array.isArray(nodes)||!Array.isArray(edges)||!schema||typeof schema!=='object'||Array.isArray(schema))throw Error('ساختار JSON باید آرایه گره، آرایه یال و شیء schema باشد.');
++ const validTypes=['model_call','transform','tool_call','branch','bounded_iteration','join','human_review'];
++ if(nodes.some((n:any)=>!n.id||!validTypes.includes(n.type)))errors.push('نوع گره یا شناسه نامعتبر است.');
++ const ids=new Set(nodes.map((n:any)=>n.id));if(ids.size!==nodes.length||edges.some((e:any)=>!ids.has(e.from)||!ids.has(e.to)))errors.push('یال/شناسه تکراری یا نامعتبر است.');
++ const graph=new Map<string,string[]>();for(const e of edges){graph.set(e.from,[...(graph.get(e.from)||[]),e.to]);}
++ const visiting=new Set<string>(),seen=new Set<string>();let cycle=false;
++ const visit=(n:string)=>{if(visiting.has(n)){cycle=true;return;}if(seen.has(n))return;visiting.add(n);for(const next of graph.get(n)||[])visit(next);visiting.delete(n);seen.add(n);};for(const n of ids)visit(String(n));if(cycle)errors.push('چرخه گراف بدون تحلیل کران مجاز نیست (UNBOUNDED_GRAPH).');
++ }catch{errors.push('ساختار JSON گراف یا طرح ابزار نامعتبر است.');}
++ if(Number(v.max_steps)<=0||Number(v.max_calls)<=0||Number(v.max_seconds)<=0)errors.push('بودجه گام، ابزار و زمان باید مثبت باشد.');}
++ return errors;
++}
++function storageKey(path:string,siteId:string,userId:string){return `him.synthetic.domain.v2:${path}:${siteId}:${userId}`;}
++export function DomainWorkspace({path,siteName}:{path:string;siteName:string}){
++ const {scope,user}=useApp();
++ return <DomainWorkspaceContent key={`${path}:${scope.siteId}:${user?.id||'demo'}`} path={path} siteId={scope.siteId||'no-site'} siteName={siteName} userId={user?.id||'demo'}/>;
++}
++function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteId:string;siteName:string;userId:string}){
++ const def=definitions[path];const [tab,setTab]=useState(0);
++ const [values,setValues]=useState<Record<string,string>>({});const [q,setQ]=useState('');
++ const key=storageKey(path,siteId,userId);
++ const [items,setItems]=useState<RecordItem[]>(()=>{try{const a=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(a)?a:[];}catch{return [];}});
++ useEffect(()=>{try{localStorage.setItem(key,JSON.stringify(items));}catch{/* private-mode storage */}},[key,items]);
++ const fields=def?.tabs[tab]?.fields||[];
++ const errors=useMemo(()=>validateDomain(path,tab,values,items),[path,tab,values,items]);
++ const update=(k:string,v:string)=>setValues(old=>({...old,[k]:v}));
++ const save=()=>{if(!fields.length||errors.length)return;const record:RecordItem={id:`SYN-${Math.random().toString(36).slice(2,9)}`,tab,values:{...values},at:iso(),state:path==='/operations/forecasts'?'awaiting_source':'draft',note:'فقط پیش‌نویس در مرورگر؛ شواهد و تأیید واقعی موجود نیست.'};setItems(old=>[record,...old]);setValues({});};
++ const transition=(record:RecordItem,action:'validate'|'review'|'cancel'|'retry'|'successor')=>{
++  let state=record.state,note=record.note;
++  if(action==='validate'){state='validated_synthetic';note='اعتبارسنجی فرم فقط با قواعد محلی؛ قرارداد و مرجع داده تأیید نشده‌اند.';}
++  if(action==='review'){state='awaiting_independent_review';note='برای بازبینی مستقل ثبت شده؛ بدون امضای بازبین معتبر انتشار ممکن نیست.';}
++  if(action==='cancel'){state='cancel_requested';note='لغو تعاونی نمونه؛ هیچ Job واقعی اجرا نشده است.';}
++  if(action==='retry'){const clone={...record,id:`SYN-${Math.random().toString(36).slice(2,9)}`,originId:record.id,at:iso(),state:'retry_draft',note:'تلاش مجدد پیونددار نمونه بدون پردازش داده واقعی'};setItems(old=>[clone,...old]);return;}
++  if(action==='successor'){const clone={...record,id:`SYN-${Math.random().toString(36).slice(2,9)}`,originId:record.id,at:iso(),state:'successor_draft',note:'نگاشت جانشین / unmerge پیشنهادی؛ نسخه قبلی حفظ شد'};setItems(old=>[clone,...old]);return;}
++  setItems(old=>old.map(x=>x.id===record.id?{...x,state,note}:x));
++ };
++ if(!def)return null;
++ const visible=items.filter(x=>(JSON.stringify(x.values)+' '+x.id).toLowerCase().includes(q.toLowerCase()));
++ return <section dir="rtl" data-testid="domain-workspace" className="space-y-4">
++  <header className="rounded-xl bg-white border p-5 space-y-1"><h1 className="font-bold text-xl">{def.title}</h1><p className="text-sm text-slate-500">سایت انتخابی: {siteName} · <bdi>{siteId}</bdi> · کاربر نمونه: <bdi>{userId}</bdi></p></header>
++  <p role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{def.warning}</p>
++  <nav role="tablist" className="flex flex-wrap gap-2" aria-label={def.title}>{def.tabs.map((x,i)=><button key={x.name} type="button" role="tab" aria-selected={tab===i} onClick={()=>{setTab(i);setValues({});}} className={`rounded-lg border px-3 py-2 text-sm ${i===tab?'bg-teal-800 text-white':'bg-white'}`}>{x.name}</button>)}</nav>
++  <div role="tabpanel" className="bg-white rounded-xl border p-5 space-y-4"><h2 className="font-bold text-lg">{def.tabs[tab].name}</h2><p className="text-sm text-slate-600">{def.tabs[tab].help}</p>
++  {!!fields.length&&<div className="space-y-3"><div className="grid sm:grid-cols-2 gap-3">{fields.map(field=><label key={field.key} className="block text-sm text-slate-700">{field.label}{field.required?' *':''}
++   {field.kind==='textarea'?<textarea className={cls} rows={3} value={values[field.key]||''} onChange={e=>update(field.key,e.target.value)}/>:field.kind==='select'?<select className={cls} value={values[field.key]||''} onChange={e=>update(field.key,e.target.value)}><option value="">انتخاب کنید</option>{field.options?.map(o=><option key={o} value={o}>{o}</option>)}</select>:<input className={cls} type={field.kind||'text'} value={values[field.key]||''} onChange={e=>update(field.key,e.target.value)} placeholder={field.placeholder}/>}</label>)}</div>
++   {errors.length>0&&<p role="status" className="text-xs text-amber-800">{errors.slice(0,4).join(' · ')}</p>}
++   <button type="button" className={primary} disabled={errors.length>0} onClick={save}>{path==='/operations/forecasts'&&tab===0?'ثبت درخواست پیش‌بینی (در انتظار منبع)':'ثبت نسخه پیش‌نویس نمونه'}</button>
++  </div>}
++  {path==='/operations/forecasts'&&tab===1&&<div className="rounded-lg bg-slate-50 p-3 text-sm" data-testid="forecast-results"><strong>نتیجه: unavailable</strong><p>point: ناموجود · p10: ناموجود · p50: ناموجود · p90: ناموجود</p><p>علت: مدل/نسخه و snapshot ورودی در دسترس نیست. عدد جایگزین تولید نمی‌شود.</p></div>}
++  {path==='/data/ingestion'&&tab===2&&<p className="text-xs text-slate-600">نمایش Job شامل وضعیت اجرا، accepted/duplicate/quarantined، cutoff، consistency و checkpoint از داده واردشده مصنوعی است. هیچ پردازشی آغاز نمی‌شود.</p>}
++  {path==='/settings/modules'&&tab===2&&<p className="text-xs text-rose-800">در این محیط Promote to active ممنوع است؛ درخواست Suspend صرفاً یک پیش‌نویس است و اجرای جاری را متوقف نمی‌کند.</p>}
++  <div className="space-y-2"><h3 className="font-semibold">سوابق محلی همین سایت و کاربر</h3><input aria-label="جستجوی سوابق" className={cls} value={q} onChange={e=>setQ(e.target.value)} placeholder="جستجو بر اساس شناسه یا اطلاعات"/>
++   {!visible.length?<p className="p-3 text-sm bg-slate-50">رکوردی برای این سایت ذخیره نشده است.</p>:visible.map(item=><details key={item.id} className="rounded-lg border p-3 text-sm"><summary className="cursor-pointer"><bdi dir="ltr">{item.id}</bdi> · {def.tabs[item.tab]?.name} · <bdi>{item.state}</bdi></summary><div className="mt-2 space-y-2"><p className="text-xs">{item.at} · {item.note}</p>{item.originId&&<p className="text-xs">مرجع نسخه پیشین: {item.originId}</p>}<dl className="grid sm:grid-cols-2 gap-1 text-xs">{Object.entries(item.values).map(([k,v])=><div key={k} className="break-words"><dt className="font-bold inline">{k}: </dt><dd className="inline">{v}</dd></div>)}</dl><div className="flex flex-wrap gap-2">
++    {item.state==='draft'&&<button className="border rounded p-2" onClick={()=>transition(item,'validate')}>اعتبارسنجی فرم</button>}
++    {(item.state==='draft'||item.state==='validated_synthetic')&&<button className="border rounded p-2" onClick={()=>transition(item,'review')}>درخواست بازبینی مستقل</button>}
++    {path==='/data/ingestion'&&!item.state.includes('cancel')&&<button className="border rounded p-2" onClick={()=>transition(item,'cancel')}>درخواست لغو (نمایشی)</button>}
++    {path==='/data/ingestion'&&<button className="border rounded p-2" onClick={()=>transition(item,'retry')}>تلاش مجدد پیونددار (نمایشی)</button>}
++    {path==='/data/identity'&&<button className="border rounded p-2" onClick={()=>transition(item,'successor')}>درخواست جانشین / Unmerge</button>}
++   </div></div></details>)}</div>
++  </div>
++ </section>;
++}
+diff --git a/src/him/components/Header.tsx b/src/him/components/Header.tsx
+--- a/src/him/components/Header.tsx
++++ b/src/him/components/Header.tsx
+@@ -12,6 +12,7 @@
+ } from 'lucide-react';
+ import { useApp } from '../context/AppContext';
+ import { DEMO_USERS } from '../data/mockData';
++import {useShellLanguage} from './useShellLanguage';
+ 
+ export const Header: React.FC = () => {
+   const { 
+@@ -29,13 +30,14 @@
+     notifications,
+     readNotificationIds
+   } = useApp();
++  const [lang,setLang] = useShellLanguage();
+   const unreadCount = notifications.filter(n => !readNotificationIds.includes(n.id)).length;
+ 
+   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+   const [isStateMenuOpen, setIsStateMenuOpen] = useState(false);
+ 
+   // Persian date representation (e.g., سه‌شنبه ۲۲ مهر ۱۴۰۵)
+-  const currentPersianDate = 'سه‌شنبه، ۲۲ مهر ۱۴۰۵';
++  const currentPersianDate = new Intl.DateTimeFormat('fa-IR-u-ca-persian',{year:'numeric',month:'long',day:'numeric',weekday:'long',timeZone:'Asia/Tehran'}).format(new Date());
+ 
+   return (
+     <header className="h-16 bg-white border-b border-slate-200/80 px-4 md:px-6 flex items-center justify-between gap-4 sticky top-0 z-30 select-none">
+@@ -59,7 +61,7 @@
+               HIM-OS
+             </span>
+             <span className="text-[11px] text-slate-500 leading-tight hidden sm:inline">
+-              سامانه هوشمندی سلامت
++              {lang==='en'?'Healthcare intelligence':'سامانه هوشمندی سلامت'}
+             </span>
+           </div>
+         </div>
+@@ -71,7 +73,7 @@
+           type="button"
+           onClick={() => setIsScopeModalOpen(true)}
+           className="group flex items-center gap-1.5 sm:gap-2.5 px-2.5 py-1.5 sm:px-3.5 bg-slate-50 hover:bg-slate-100/90 border border-slate-200/80 rounded-xl transition-all shadow-2xs hover:border-teal-400 min-w-0 max-w-full"
+-          title="تغییر محدوده سازمانی یا سایت بیمارستانی"
++          title={lang==='en'?'Change hospital/site scope':'تغییر محدوده سازمانی یا سایت بیمارستانی'}
+         >
+           <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center shrink-0">
+             <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+@@ -100,7 +102,7 @@
+         {/* Persian Calendar */}
+         <div className="hidden lg:flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 font-mono">
+           <Calendar className="w-3.5 h-3.5 text-slate-400" />
+-          <span className="font-sans">{currentPersianDate}</span>
++          <span className="font-sans">{lang==='en'?new Date().toLocaleDateString('en-GB'):currentPersianDate}</span>
+         </div>
+ 
+         {/* View State Switcher for User to test normal, loading, empty, error */}
+@@ -124,10 +126,10 @@
+           >
+             <SlidersHorizontal className="w-3.5 h-3.5" />
+             <span className="hidden sm:inline">
+-              {viewState === 'normal' && 'نمای عادی'}
+-              {viewState === 'loading' && 'لودینگ'}
+-              {viewState === 'empty' && 'داده خالی'}
+-              {viewState === 'error' && 'حالت خطا'}
++              {viewState === 'normal' && (lang==='en'?'Normal':'نمای عادی')}
++              {viewState === 'loading' && (lang==='en'?'Loading':'لودینگ')}
++              {viewState === 'empty' && (lang==='en'?'Empty':'داده خالی')}
++              {viewState === 'error' && (lang==='en'?'Error':'حالت خطا')}
+             </span>
+             <ChevronDown className="w-3 h-3 text-slate-400" />
+           </button>
+@@ -184,6 +186,12 @@
+           )}
+         </div>
+ 
++        <label className="flex items-center gap-1 text-xs font-medium text-slate-600">
++          <span className="hidden sm:inline">{lang==='en'?'Language':'زبان'}</span>
++          <select aria-label="Language / زبان" value={lang} onChange={e=>setLang(e.target.value as 'fa'|'en')} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs">
++            <option value="fa">فارسی · RTL</option><option value="en">English · LTR</option>
++          </select>
++        </label>
+         {/* Notifications Icon */}
+         <button
+           type="button"
+diff --git a/src/him/components/MainContent.tsx b/src/him/components/MainContent.tsx
+--- a/src/him/components/MainContent.tsx
++++ b/src/him/components/MainContent.tsx
+@@ -1,3 +1,4 @@
++import {useShellLanguage} from './useShellLanguage';
+ import {SpecificationWorkspace} from './SpecificationWorkspaces';
+ import {ManualViews} from '../manual/ManualViews';
+ import {ExecutiveDashboard} from '../executive/ExecutiveDashboard';
+@@ -45,6 +46,7 @@
+ import { ActionProposalListView, ActionProposalDetailView, ActionJournalView, ApprovalQueueView } from './ActionViews';
+ 
+ export const MainContent: React.FC = () => {
++  const [language] = useShellLanguage();
+   const { 
+     scope, 
+     activeModule, 
+@@ -72,7 +74,7 @@
+ 
+   if (workView) {
+     return (
+-      <main className="flex-1 p-4 md:p-8 overflow-y-auto min-w-0" dir="rtl">
++      <main className="flex-1 p-4 md:p-8 overflow-y-auto min-w-0" dir={language==='en'?'ltr':'rtl'}>
+         {viewState === 'loading' && <LoadingState />}
+         {viewState === 'empty' && <EmptyState />}
+         {viewState === 'error' && <ErrorState />}
+diff --git a/src/him/components/Sidebar.tsx b/src/him/components/Sidebar.tsx
+--- a/src/him/components/Sidebar.tsx
++++ b/src/him/components/Sidebar.tsx
+@@ -25,8 +25,10 @@
+ import { MODULES_CONFIG } from '../data/mockData';
+ import { ModuleKey } from '../types';
+ import { Button } from '@/components/ui/button';
++import {useShellLanguage,moduleEnglish} from './useShellLanguage';
+ 
+ export const Sidebar: React.FC = () => {
++  const [lang]=useShellLanguage();
+   const { 
+     activeModule, 
+     setActiveModule, 
+@@ -91,7 +93,7 @@
+               H
+             </span>
+             <span className="text-xs font-bold text-slate-800">
+-              منوی ماژول‌های سامانه
++              {lang==='en'?'Module navigation':'منوی ماژول‌های سامانه'}
+             </span>
+           </div>
+           <button
+@@ -116,7 +118,7 @@
+                   {scope.siteName}
+                 </span>
+                 <span className="text-[10px] text-slate-400 block truncate font-mono">
+-                  محدوده: {scope.siteCode}
++                  {lang==='en'?'Scope':'محدوده'}: {scope.siteCode}
+                 </span>
+               </div>
+             </div>
+@@ -128,12 +130,12 @@
+           <div>
+             {!sidebarCollapsed && (
+               <div className="px-3 pb-2 text-[11px] font-bold text-slate-400 tracking-wider">
+-                ماژول‌های هوشمندی و عملیات
++                {lang==='en'?'Intelligence & operations':'ماژول‌های هوشمندی و عملیات'}
+               </div>
+             )}
+ 
+             <nav className="space-y-1">
+-              <button type="button" onClick={()=>openWorkView({kind:'spec-page',path:'/workforce'})} data-testid="sidebar-item-WFM" className="w-full rounded-lg px-3 py-2.5 text-right text-xs font-semibold text-slate-700 hover:bg-teal-50">{!sidebarCollapsed?'نیروی انسانی (WFM)':'WFM'}</button>
++              <button type="button" onClick={()=>openWorkView({kind:'spec-page',path:'/workforce'})} data-testid="sidebar-item-WFM" className="w-full rounded-lg px-3 py-2.5 text-right text-xs font-semibold text-slate-700 hover:bg-teal-50">{!sidebarCollapsed?(lang==='en'?'Workforce (WFM)':'نیروی انسانی (WFM)'):'WFM'}</button>
+               {MODULES_CONFIG.map((mod) => {
+                 const isSelected = !workView && activeModule === mod.key;
+ 
+@@ -156,7 +158,7 @@
+                     {!sidebarCollapsed && (
+                       <div className="flex-1 text-right overflow-hidden min-w-0">
+                         <div className="flex items-center justify-between gap-1">
+-                          <span className="truncate">{mod.shortTitle}</span>
++                          <span className="truncate">{lang==='en'?(moduleEnglish[mod.key]||mod.key):mod.shortTitle}</span>
+                           <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-500 font-normal shrink-0">
+                             {mod.key}
+                           </span>
+@@ -187,7 +189,7 @@
+                   title={label} aria-label={label} aria-pressed={selected}
+                   onClick={() => { openWorkView({ kind }); if (window.innerWidth < 768) setSidebarCollapsed(true); }}
+                   className={`w-full justify-start gap-3 h-auto px-3 py-2.5 text-xs font-semibold ${selected ? 'bg-action-brand/10 text-action-brand' : 'text-muted-foreground'}`}>
+-                  <Icon className="size-5 shrink-0" />{!sidebarCollapsed && <span>{label}</span>}
++                  <Icon className="size-5 shrink-0" />{!sidebarCollapsed && <span>{lang==='en'?({proposals:'Action proposals',approvals:'My approvals',journal:'Action journal',copilot:'Copilot',memos:'Decision memos',supply:'Supply risks',stewardship:'Data quality'} as Record<string,string>)[kind]||label:label}</span>}
+                 </Button>;
+               })}
+             </nav>
+@@ -195,7 +197,7 @@
+ 
+           <div>
+             {!sidebarCollapsed && (
+-              <div className="px-3 pb-2 text-[11px] font-bold text-slate-400 tracking-wider">کارتابل</div>
++              <div className="px-3 pb-2 text-[11px] font-bold text-slate-400 tracking-wider">{lang==='en'?'Work queues':'کارتابل'}</div>
+             )}
+             <nav className="space-y-1">
+               {([
+@@ -211,7 +213,7 @@
+                     <Icon className={`w-5 h-5 shrink-0 ${sel ? 'text-teal-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                     {!sidebarCollapsed && (
+                       <div className="flex-1 flex items-center justify-between gap-1 min-w-0">
+-                        <span className="truncate">{label}</span>
++                        <span className="truncate">{lang==='en'?(kind==='tasks'?'Tasks':'Alerts'):label}</span>
+                         {count > 0 && <span className="text-[10px] px-1.5 rounded-full bg-rose-100 text-rose-700 shrink-0 tabular-nums">{count.toLocaleString('fa-IR')}</span>}
+                       </div>
+                     )}
+diff --git a/src/him/components/SpecializedWorkspaces.tsx b/src/him/components/SpecializedWorkspaces.tsx
+--- a/src/him/components/SpecializedWorkspaces.tsx
++++ b/src/him/components/SpecializedWorkspaces.tsx
+@@ -28,21 +28,50 @@
+ const Panel=({children}:{children:React.ReactNode})=><div className="rounded-xl border bg-white p-5 space-y-4">{children}</div>;
+ const Blocked=({children}:{children:React.ReactNode})=><p role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{children}</p>;
+ 
++type SyntheticAsset={id:string;name:string;unit:string;klass:string;criticality:string;status:string;location:string;freshness:string;downtime:string;utilization:string;risk:string};
++const samplePortfolio:SyntheticAsset[]=[
++ {id:'SYN-AST-TAL-001',name:'مانیتور علائم حیاتی (fixture)',unit:'ICU',klass:'monitor',criticality:'high',status:'in_service',location:'بخش ICU',freshness:'unknown',downtime:'unknown',utilization:'unknown',risk:'not_evaluated'},
++ {id:'SYN-AST-TAL-002',name:'پمپ انفوزیون (fixture)',unit:'Emergency',klass:'pump',criticality:'high',status:'maintenance_pending',location:'اورژانس',freshness:'unknown',downtime:'unknown',utilization:'unknown',risk:'not_evaluated'},
++ {id:'SYN-AST-TAL-003',name:'UPS تأسیسات (fixture)',unit:'Facilities',klass:'power',criticality:'critical',status:'in_service',location:'تأسیسات',freshness:'unknown',downtime:'unknown',utilization:'unknown',risk:'not_evaluated'},
++];
++function AssetPortfolio({select}:{select:(id:string)=>void}){
++ const {scope}=useApp();const [unit,setUnit]=useState('all'),[klass,setKlass]=useState('all'),[criticality,setCriticality]=useState('all'),[status,setStatus]=useState('all'),[freshness,setFreshness]=useState('all'),[risk,setRisk]=useState('all'),[query,setQuery]=useState(''),[selected,setSelected]=useState('');
++ const rows=samplePortfolio.map((asset,i)=>({...asset,id:`SYN-AST-${scope.siteId}-${String(i+1).padStart(3,'0')}`})).filter(a=>(unit==='all'||a.unit===unit)&&(klass==='all'||a.klass===klass)&&(criticality==='all'||a.criticality===criticality)&&(status==='all'||a.status===status)&&(freshness==='all'||a.freshness===freshness)&&(risk==='all'||a.risk===risk)&&(`${a.id} ${a.name} ${a.location}`.toLowerCase().includes(query.toLowerCase())));
++ const filter=(label:string,val:string,set:(v:string)=>void,options:string[])=>field(label,<select className={inputClass} value={val} onChange={e=>set(e.target.value)}><option value="all">همه</option>{options.map(x=><option key={x}>{x}</option>)}</select>);
++ return <div className="space-y-4" data-testid="asset-portfolio"><h2 className="font-bold">AST-01 · پرتفوی دارایی‌های نمونه</h2><Blocked>این سه دارایی داده ثابت ساختگی مخصوص آزمون فرانت‌اند هستند؛ تعلق سازمانی، تازگی، خرابی، استفاده و امتیاز ریسک واقعی تأیید نشده است. همه ردیف‌ها فقط در سایت انتخابی به صورت نمونه قابل مرورند.</Blocked><p className="text-sm">سایت: {scope.siteName} · دوره پیش‌فرض: ۳۰ روز محلی کامل گذشته (بدون snapshot معتبر)</p><div className="grid grid-cols-2 md:grid-cols-4 gap-2">{filter('واحد',unit,setUnit,['ICU','Emergency','Facilities'])}{filter('کلاس',klass,setKlass,['monitor','pump','power'])}{filter('بحرانی بودن',criticality,setCriticality,['high','critical'])}{filter('وضعیت بهره‌برداری',status,setStatus,['in_service','maintenance_pending'])}{filter('تازگی',freshness,setFreshness,['fresh','stale','unknown'])}{filter('ریسک مصوب',risk,setRisk,['low','medium','high','not_evaluated'])}{field('شناسه / نام',<input className={inputClass} value={query} onChange={e=>setQuery(e.target.value)}/>)}</div><div className="overflow-x-auto"><table className="min-w-[850px] w-full text-right text-xs"><thead><tr className="border-b bg-slate-50">{['شناسه منبع','نام','واحد / مکان','کلاس','وضعیت','تازگی','مدت توقف','بهره‌برداری','ریسک','میزکار'].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(a=><tr key={a.id} className="border-b"><td className="p-2 font-mono" dir="ltr">{a.id}</td><td className="p-2">{a.name}</td><td className="p-2">{a.unit} / {a.location}</td><td className="p-2">{a.klass}</td><td className="p-2">{a.status}</td><td className="p-2">نامشخص</td><td className="p-2">نامشخص</td><td className="p-2">نامشخص</td><td className="p-2">ارزیابی نشده</td><td className="p-2"><button className="text-teal-800 underline" onClick={()=>{setSelected(a.id);select(a.id)}}>بازکردن دارایی</button></td></tr>)}</tbody></table></div>{!rows.length&&<p>موردی با این فیلترها یافت نشد.</p>}{selected&&<section className="border rounded-lg p-3 space-y-2" data-testid="asset-detail"><h3 className="font-bold">AST-02 · جزئیات {selected}</h3><p className="text-sm">آخرین نسخه همگام‌سازی: ناموجود · وضعیت هویت: نیازمند تأیید · تاریخچه منبع و تله‌متری: متصل نیست</p><button onClick={()=>select(selected)} className={btnClass}>استفاده از شناسه در بازبینی نگهداشت</button></section>}</div>;
++}
++function MeterAnalysis({save,entries}:{save:ReturnType<typeof useLocalDrafts>['save'];entries:Draft[]}){
++ const [meter,setMeter]=useState(''),[interval,setInterval]=useState(''),[unit,setUnit]=useState('kWh'),[baseline,setBaseline]=useState(''),[peer,setPeer]=useState(''),[covariates,setCovariates]=useState(''),[exclusions,setExclusions]=useState(''),[reason,setReason]=useState(''),[reference,setReference]=useState('');
++ const ready=Boolean(meter&&interval&&unit&&baseline&&peer);const fixture=meter==='SYN-METER-001';
++ return <section className="space-y-4" data-testid="meter-analysis"><h2 className="font-bold">AST-04 · تحلیل ناهنجاری کنتور</h2><Blocked>قرائت‌های زیر فقط fixture هستند؛ داده واقعی کنتور، تعدیل آب‌وهوا، نسخه خط پایه و شواهد منبع متصل نیستند. هیچ فرمان کنترل/عملگر وجود ندارد.</Blocked><div className="grid sm:grid-cols-2 gap-3">
++ {field('کنتور *',<select className={inputClass} value={meter} onChange={e=>setMeter(e.target.value)}><option value="">انتخاب کنتور</option><option value="SYN-METER-001">SYN-METER-001 · fixture برق</option></select>)}
++ {field('بازه اندازه‌گیری *',<select className={inputClass} value={interval} onChange={e=>setInterval(e.target.value)}><option value="">انتخاب بازه</option><option value="daily">روزانه</option><option value="weekly">هفتگی</option></select>)}
++ {field('واحد *',<select className={inputClass} value={unit} onChange={e=>setUnit(e.target.value)}><option value="kWh">kWh</option><option value="m3">m³</option></select>)}
++ {field('نسخه خط پایه *',<input className={inputClass} value={baseline} onChange={e=>setBaseline(e.target.value)} placeholder="شناسه خط پایه تأیید نشده"/>)}
++ {field('دوره همتا *',<input type="date" className={inputClass} value={peer} onChange={e=>setPeer(e.target.value)}/>)}
++ {field('هم‌متغیرهای مجاز (اختیاری)',<input className={inputClass} value={covariates} onChange={e=>setCovariates(e.target.value)}/>)}
++ {field('موارد حذف کیفیت',<input className={inputClass} value={exclusions} onChange={e=>setExclusions(e.target.value)}/>)}
++ </div>{ready&&fixture&&<div className="border rounded-lg p-3 space-y-2 text-sm"><h3 className="font-semibold">نمونه مصنوعی خوانش و شواهد</h3><p>قرائت‌های خام fixture: ۱۲۰، ۱۳۵، ۱۷۵ {unit} · داده حذف‌شده: {exclusions||'نامشخص'}</p><p>مصرف نرمال‌شده: محاسبه‌نشده (نبود عامل نرمال‌سازی معتبر) · مبنای همتا: {peer}</p><p>ناهنجاری: <b>نیازمند بررسی</b>، نه تأییدشده؛ اختلاف با نسخه خط پایه {baseline} بدون داده معتبر قابل استنتاج نیست.</p></div>}
++ {ready&&<div className="space-y-2 border rounded p-3">{field('دلیل یا توضیح (برای بررسی/توضیح الزامی)',<textarea className={inputClass} value={reason} onChange={e=>setReason(e.target.value)}/>)}{field('شناسه بررسی مرتبط (اختیاری)',<input className={inputClass} value={reference} onChange={e=>setReference(e.target.value)}/>)}<div className="flex flex-wrap gap-2">{['acknowledge','investigate','explain'].map(action=><button key={action} className={btnClass} disabled={reason.trim().length<10||(action==='investigate'&&!reference.trim())} onClick={()=>save('meter',`${meter} · ${action}`,{'کنتور':meter,'بازه':interval,'واحد':unit,'خط پایه':baseline,'دوره همتا':peer,'هم‌متغیرها':covariates,'حذف‌ها':exclusions,'دلیل':reason,'مرجع بررسی':reference||'ندارد'},'بررسی مصنوعی ثبت شده؛ هیچ رخداد واقعی تأیید یا اجرا نشده است.')}>{action==='acknowledge'?'تأیید مشاهده':action==='investigate'?'پیوند به بررسی':'ثبت توضیح مستدل'}</button>)}</div></div>}
++ <DraftHistory entries={entries} category="meter"/></section>;
++}
++
+ function Assets({save,entries}:{save:ReturnType<typeof useLocalDrafts>['save'];entries:Draft[]}) {
+  const tabs=['فهرست دارایی','تاریخچه منبع','تله‌متری','نگهداری','قطعات یدکی','پیشنهادها','شواهد','ناهنجاری کنتور'];
+- const [tab,setTab]=useState(3);
++ const [tab,setTab]=useState(0);
+  const [asset,setAsset]=useState(''); const [recommendation,setRecommendation]=useState('');
+  const [reason,setReason]=useState(''); const [start,setStart]=useState(''); const [end,setEnd]=useState('');
+  const [urgency,setUrgency]=useState('normal'); const [queue,setQueue]=useState('');
+  const [estimate,setEstimate]=useState(''); const [currency,setCurrency]=useState('IRR'); const [assumption,setAssumption]=useState('');
+  const [prepared,setPrepared]=useState(false);
+- const errors = [!str(asset)?'شناسه دارایی الزامی است.':'',!str(recommendation)?'مرجع پیشنهاد نگهداشت الزامی است.':'',!validMaintenanceReason(reason)?'شرح دلیل باید بین ۲۰ تا ۲۰۰۰ نویسه باشد.':'',!validTimeWindow(start,end)?'پایان بازه باید پس از شروع بازه باشد.':'',!queue?'صف نگهداشت الزامی است.':'',estimate!==''&&(!Number.isFinite(Number(estimate))||Number(estimate)<0)?'برآورد هزینه معتبر نیست.':'',estimate!==''&&!str(assumption)?'برای برآورد هزینه، منبع فرض الزامی است.':''].filter(Boolean);
+- const values={'شناسه دارایی':asset,'پیشنهاد مرجع':recommendation,'دلیل':reason,'شروع':start,'پایان':end,'فوریت':urgency,'صف':queue,'برآورد':estimate?`${estimate} ${currency}`:'ثبت نشده','مبنای برآورد':assumption};
++ const [selectedAsset,setSelectedAsset]=useState('');
++ const errors = [!str(asset||selectedAsset)?'شناسه دارایی الزامی است.':'',!str(recommendation)?'مرجع پیشنهاد نگهداشت الزامی است.':'',!validMaintenanceReason(reason)?'شرح دلیل باید بین ۲۰ تا ۲۰۰۰ نویسه باشد.':'',!validTimeWindow(start,end)?'پایان بازه باید پس از شروع بازه باشد.':'',!queue?'صف نگهداشت الزامی است.':'',estimate!==''&&(!Number.isFinite(Number(estimate))||Number(estimate)<0)?'برآورد هزینه معتبر نیست.':'',estimate!==''&&!str(assumption)?'برای برآورد هزینه، منبع فرض الزامی است.':''].filter(Boolean);
++ const values={'شناسه دارایی':asset||selectedAsset,'پیشنهاد مرجع':recommendation,'دلیل':reason,'شروع':start,'پایان':end,'فوریت':urgency,'صف':queue,'برآورد':estimate?`${estimate} ${currency}`:'ثبت نشده','مبنای برآورد':assumption};
+  const prepare=(e:React.FormEvent)=>{e.preventDefault();if(errors.length)return;setPrepared(true);};
+- return <><nav role="tablist" aria-label="میزکار دارایی" className="flex flex-wrap gap-2">{tabs.map((t,i)=><button type="button" role="tab" key={t} aria-selected={tab===i} className={tabClass(tab===i)} onClick={()=>setTab(i)}>{t}</button>)}</nav><Panel>{tab===3?<>
++ return <><nav role="tablist" aria-label="میزکار دارایی" className="flex flex-wrap gap-2">{tabs.map((t,i)=><button type="button" role="tab" key={t} aria-selected={tab===i} className={tabClass(tab===i)} onClick={()=>setTab(i)}>{t}</button>)}</nav><Panel>{tab===0?<AssetPortfolio select={id=>setSelectedAsset(id)}/>:tab===7?<MeterAnalysis save={save} entries={entries}/>:tab===3?<>
+   <h2 className="font-bold">AST-03 · بازبینی و آماده‌سازی اقدام نگهداشت</h2><Blocked>داده‌های این فرم مصنوعی است. آماده‌سازی، صرفاً یک پیش‌نویس T1 می‌سازد؛ وضعیت سفارش‌های کاری فعال CMMS قابل استعلام نیست. هیچ اقدام واقعی یا تأیید عملیاتی انجام نمی‌شود.</Blocked>
+   <form onSubmit={prepare} className="grid sm:grid-cols-2 gap-3">
+-   {field('دارایی / شناسه منبع *',<input aria-label="شناسه دارایی" className={inputClass} value={asset} onChange={e=>{setAsset(e.target.value);setPrepared(false)}} placeholder="شناسه دارایی نمایشی"/>)}
++   {field('دارایی / شناسه منبع *',<input aria-label="شناسه دارایی" className={inputClass} value={asset||selectedAsset} onChange={e=>{setAsset(e.target.value);setSelectedAsset('');setPrepared(false)}} placeholder="شناسه دارایی نمایشی"/>)}
+    {field('مرجع توصیه نگهداشت *',<input aria-label="توصیه نگهداشت" className={inputClass} value={recommendation} onChange={e=>{setRecommendation(e.target.value);setPrepared(false)}} placeholder="کد پیشنهاد"/>)}
+    <div className="sm:col-span-2">{field('دلیل اقدام * (۲۰ تا ۲۰۰۰ نویسه)',<textarea aria-label="دلیل نگهداشت" className={inputClass} rows={3} maxLength={2000} value={reason} onChange={e=>{setReason(e.target.value);setPrepared(false)}}/>)}</div>
+    {field('شروع پنجره درخواستی *',<input aria-label="شروع نگهداشت" type="datetime-local" className={inputClass} value={start} onChange={e=>{setStart(e.target.value);setPrepared(false)}}/>)}
+@@ -54,7 +83,7 @@
+    <div className="sm:col-span-2">{field('منبع/فرض برآورد',<input className={inputClass} value={assumption} onChange={e=>{setAssumption(e.target.value);setPrepared(false)}} placeholder="فقط فرض نمایشی، نه قیمت معتبر"/>)}</div>
+    <div className="sm:col-span-2 space-y-2">{errors.length>0&&<ul role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{errors.map(err=><li key={err}>{err}</li>)}</ul>}<button type="submit" className={btnClass} disabled={errors.length>0}>آماده‌سازی اقدام (پیش‌نویس)</button></div>
+   </form>
+-  {prepared&&<section className="space-y-3 rounded-xl border border-teal-300 p-4" role="region" aria-label="مقایسه با سفارش‌های فعال"><h3 className="font-semibold">پیش‌نمایش و مقایسه با سفارش‌های منبع</h3><p className="text-sm">دارایی {asset}، پیشنهاد {recommendation}، بازه {start} تا {end}، صف {queue}.</p><Blocked>مقایسه با سفارش‌های فعال: نامشخص — اتصال خواندنی CMMS وجود ندارد. نبود تداخل یا امکان اجرا تأیید نشده است؛ تأیید/ارسال غیرفعال است.</Blocked><button className={btnClass} type="button" onClick={()=>{save('maintenance',`نگهداشت ${asset}`,values,'پیش‌نویس داخلی؛ تطبیق CMMS و بازبینی مستقل انجام نشده است.');setPrepared(false)}}>ذخیره پیش‌نویس نمایشی</button></section>}
++  {prepared&&<section className="space-y-3 rounded-xl border border-teal-300 p-4" role="region" aria-label="مقایسه با سفارش‌های فعال"><h3 className="font-semibold">پیش‌نمایش و مقایسه با سفارش‌های منبع</h3><p className="text-sm">دارایی {asset||selectedAsset}، پیشنهاد {recommendation}، بازه {start} تا {end}، صف {queue}.</p><Blocked>مقایسه با سفارش‌های فعال: نامشخص — اتصال خواندنی CMMS وجود ندارد. نبود تداخل یا امکان اجرا تأیید نشده است؛ تأیید/ارسال غیرفعال است.</Blocked><button className={btnClass} type="button" onClick={()=>{save('maintenance',`نگهداشت ${asset||selectedAsset}`,values,'پیش‌نویس داخلی؛ تطبیق CMMS و بازبینی مستقل انجام نشده است.');setPrepared(false)}}>ذخیره پیش‌نویس نمایشی</button></section>}
+   <DraftHistory entries={entries} category="maintenance"/>
+  </>:<><h2 className="font-bold">{tabs[tab]}</h2><Blocked>این بخش به داده مرجع، مجوز و قرارداد مربوط به CMMS نیاز دارد و هنوز گردش‌کار کاملش پیاده نشده است. داده خیالی به‌عنوان تاریخچه/شاهد تجهیزات نمایش داده نمی‌شود.</Blocked></>}</Panel></>;
+ }
+diff --git a/src/him/components/SpecificationWorkspaces.tsx b/src/him/components/SpecificationWorkspaces.tsx
+--- a/src/him/components/SpecificationWorkspaces.tsx
++++ b/src/him/components/SpecificationWorkspaces.tsx
+@@ -1,5 +1,7 @@
+ import { SpecializedWorkspace } from './SpecializedWorkspaces';
++import { DomainWorkspace, domainPaths } from './DomainWorkspaces';
+ import React, { useMemo, useState } from 'react';
++import {useApp} from '../context/AppContext';
+ 
+ /** Frontend-only specification workspaces. No authentication or source-system operation. */
+ const SCREENS: Record<string,{title:string;intro:string;tabs:string[];warning:string}> = {
+@@ -35,18 +37,20 @@
+  '/finance/workflows':{title:'مالی و درآمد (FIN)',intro:'مطالبات و کسورات، سناریوهای پیش‌بینی و قراردادها',tabs:['نمای مالی','کسورات ادعا','پیش‌بینی هزینه','بررسی محرمانه','نسخه قراردادها'],warning:'هیچ تراکنش مالی یا دسترسی به داده محرمانه واقعی وجود ندارد.'},
+ };
+ export const specPaths = Object.keys(SCREENS);
+-const STATE_KEY = 'him.spec-workspaces.demo.v1';
++const STATE_KEY = 'him.spec-workspaces.demo.v2';
+ export function SpecificationWorkspace({path,siteName}:{path:string;siteName:string}) {
+  if(['/assets/workflows','/workforce','/settings/access'].includes(path))return <SpecializedWorkspace path={path} siteName={siteName}/>;
+- return <GenericSpecificationWorkspace path={path} siteName={siteName}/>;
++ if(domainPaths.includes(path))return <DomainWorkspace path={path} siteName={siteName}/>;
++ return <GenericSpecificationWorkspace key={`${path}:${siteName}`} path={path} siteName={siteName}/>;
+ }
+ function GenericSpecificationWorkspace({path,siteName}:{path:string;siteName:string}) {
+  const page = SCREENS[path];
++ const {scope,user}=useApp();
+  const [tab,setTab]=useState(0);
+  const [query,setQuery]=useState('');
+  const [entry,setEntry]=useState('');
+  const [records,setRecords]=useState<Record<string,Array<{title:string;detail:string;at:string}>>>(()=>{
+-  try {return JSON.parse(localStorage.getItem(STATE_KEY)||'{}');}catch{return {};}
++  try {return JSON.parse(localStorage.getItem(`${STATE_KEY}:${path}:${scope.siteId}:${user?.id||'guest'}`)||'{}');}catch{return {};}
+  });
+  const items=useMemo(()=> (records[path]||[]).filter(x=>(x.title+' '+x.detail).includes(query)),[records,path,query]);
+  if(!page)return null;
+@@ -55,7 +59,7 @@
+  const add=()=>{
+   if(!entry.trim()||isClinical)return;
+   const updated={...records,[path]:[...(records[path]||[]),{title:entry.trim(),detail:`${current} · ${siteName} · پیش‌نویس غیرمعتبر برای استفاده عملیاتی`,at:new Date().toISOString()}]};
+-  setRecords(updated);localStorage.setItem(STATE_KEY,JSON.stringify(updated));setEntry('');
++  setRecords(updated);localStorage.setItem(`${STATE_KEY}:${path}:${scope.siteId}:${user?.id||'guest'}`,JSON.stringify(updated));setEntry('');
+  };
+  return <section dir="rtl" className="space-y-5" data-testid="spec-workspace">
+   <header className="bg-white rounded-xl border border-slate-200 p-5 space-y-2"><h1 className="text-xl font-bold">{page.title}</h1><p className="text-sm text-slate-600">{page.intro}</p><p className="text-xs text-slate-500">سایت جاری: {siteName}</p></header>
+diff --git a/src/him/components/WorkViews.tsx b/src/him/components/WorkViews.tsx
+--- a/src/him/components/WorkViews.tsx
++++ b/src/him/components/WorkViews.tsx
+@@ -158,13 +158,20 @@
+ };
+ 
+ export const AlertListView: React.FC = () => {
++ const {scope}=useApp();
++ return <SiteAlertList key={scope.siteId||'none'}/>;
++};
++const SiteAlertList:React.FC = () => {
+   const { alerts, scope, openWorkView, workView } = useApp();
+-  const [status, setStatus] = useState<AlertStatus | 'all'>('all');
++  const storeKey = `him.alert.filters:${scope.siteId||'none'}`;
++  const initial=()=>{try{return JSON.parse(sessionStorage.getItem(storeKey)||'{}') as Record<string,string>;}catch{return {} as Record<string,string>;}};
++  const [status, setStatus] = useState<AlertStatus | 'all'>(()=>(['new','acknowledged','resolved'].includes(initial().status)?initial().status:'all') as AlertStatus|'all');
+   const routeFilter = workView?.kind === 'alerts' ? workView.filter : undefined;
+-  const [activeOnly,setActiveOnly]=useState(()=>routeFilter==='active');
++  const [activeOnly,setActiveOnly]=useState(()=>routeFilter==='active'||initial().activeOnly==='true');
+   useEffect(()=>{setActiveOnly(routeFilter==='active');},[routeFilter]);
+-  const [severity, setSeverity] = useState<Priority | 'all'>('all');
+-  const [q, setQ] = useState('');
++  const [severity, setSeverity] = useState<Priority | 'all'>(()=>(['critical','high','medium','low'].includes(initial().severity)?initial().severity:'all') as Priority|'all');
++  const [q, setQ] = useState(()=>initial().q||'');
++  useEffect(()=>{try{sessionStorage.setItem(storeKey,JSON.stringify({status,severity,q,activeOnly:String(activeOnly)}));}catch{}},[storeKey,status,severity,q,activeOnly]);
+   const rows = useMemo(() => alerts.filter(a => a.siteId === scope.siteId
+     && (!activeOnly || a.status !== 'resolved')
+     && (status === 'all' || a.status === status)
+diff --git a/src/him/components/useShellLanguage.ts b/src/him/components/useShellLanguage.ts
+new file mode 100644
+--- /dev/null
++++ b/src/him/components/useShellLanguage.ts
+@@ -0,0 +1,11 @@
++import {useEffect,useState} from 'react';
++export type ShellLanguage='fa'|'en';
++const KEY='him.ui.language.v1';
++function read():ShellLanguage {try{return localStorage.getItem(KEY)==='en'?'en':'fa';}catch{return 'fa';}}
++export function setShellLanguage(value:ShellLanguage){try{localStorage.setItem(KEY,value);}catch{/* optional persistence */}window.dispatchEvent(new Event('him:language'));}
++export function useShellLanguage():[ShellLanguage,(value:ShellLanguage)=>void]{
++ const [lang,setLang]=useState<ShellLanguage>(read);
++ useEffect(()=>{const sync=()=>setLang(read());window.addEventListener('him:language',sync);window.addEventListener('storage',sync);return()=>{window.removeEventListener('him:language',sync);window.removeEventListener('storage',sync);};},[]);
++ return [lang,setShellLanguage];
++}
++export const moduleEnglish:Record<string,string>={EXE:'Executive dashboard',OPS:'Operations',SUP:'Supply and pharmacy',QLT:'Quality and safety',AST:'Assets and facilities',FIN:'Finance and revenue',DAT:'Data Steward',PLT:'Platform and access'};
+diff --git a/src/test/alert-filter-persistence.test.tsx b/src/test/alert-filter-persistence.test.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/test/alert-filter-persistence.test.tsx
+@@ -0,0 +1,23 @@
++import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
++import {cleanup,fireEvent,render,screen} from '@testing-library/react';
++import {AlertListView} from '@/him/components/WorkViews';
++let siteId='SITE-TAL';
++vi.mock('@/him/context/AppContext',()=>({useApp:()=>({scope:{siteId,siteName:siteId},alerts:[
++{id:'a1',siteId:'SITE-TAL',code:'ALR-1020',title:'هشدار الف',severity:'high',status:'new',module:'PLT',raisedAt:'2026-10-26'},
++{id:'a2',siteId:'SITE-TAL',code:'ALR-1021',title:'هشدار ب',severity:'low',status:'new',module:'PLT',raisedAt:'2026-10-26'},
++{id:'a3',siteId:'SITE-IMAM',code:'ALR-1030',title:'هشدار پ',severity:'high',status:'new',module:'PLT',raisedAt:'2026-10-26'}],openWorkView:vi.fn()})}));
++beforeEach(()=>{sessionStorage.clear();siteId='SITE-TAL';});afterEach(cleanup);
++describe('scoped alert list history',()=>{
++ it('restores search after remount without leaking filters to another site',()=>{
++  const ui=render(<AlertListView/>);
++  fireEvent.change(screen.getByRole('textbox'),{target:{value:'ALR-1020'}});
++  expect(screen.queryByText('ALR-1021')).toBeNull();
++  ui.unmount();
++  const restored=render(<AlertListView/>);
++  expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('ALR-1020');
++  expect(screen.queryByText('ALR-1021')).toBeNull();
++  siteId='SITE-IMAM';restored.rerender(<AlertListView/>);
++  expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('');
++  expect(screen.getByText('ALR-1030')).toBeTruthy();
++ });
++});
+diff --git a/src/test/domain-conformance.test.tsx b/src/test/domain-conformance.test.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/test/domain-conformance.test.tsx
+@@ -0,0 +1,34 @@
++import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
++import {cleanup,fireEvent,render,screen} from '@testing-library/react';
++import {DomainWorkspace,validateDomain} from '@/him/components/DomainWorkspaces';
++
++let selectedSite='SITE-TAL';
++vi.mock('@/him/context/AppContext',()=>({useApp:()=>({scope:{siteId:selectedSite,siteName:selectedSite},user:{id:'demo-user'}})}));
++const metric={metric_key:'occupancy',name:'Occupancy',owner_id:'OWNER-1',unit:'1',grain:'site/day',numerator:'occupied_beds',denominator:'staffed_beds',aggregation:'ratio',allowed_dimensions:'site',required_datasets:'beds',exclusions:'none',timezone_policy:'Asia/Tehran',freshness_limit_seconds:'300',quality_policy_id:'QP-1',effective_from:'2026-10-01',version:'1'};
++beforeEach(()=>{localStorage.clear();sessionStorage.clear();selectedSite='SITE-TAL';});
++afterEach(cleanup);
++describe('HIM-OS domain guards',()=>{
++ it('rejects invalid metric formula and duplicate version',()=>{
++  expect(validateDomain('/data/datasets',1,metric,[])).toEqual([]);
++  expect(validateDomain('/data/datasets',1,{...metric,numerator:'eval("foo")'},[]).some(x=>x.includes('فرمول'))).toBe(true);
++  expect(validateDomain('/data/datasets',1,metric,[{id:'existing',tab:1,values:metric,at:'',state:'draft',note:''}]).some(x=>x.includes('قبلاً'))).toBe(true);
++ });
++ it('blocks overlapping crosswalk intervals and invalid calendar bounds',()=>{
++  const mapping={authority:'hospital',source_id:'src',entity_type:'ward',source_key:'A',canonical_id:'CAN-1',effective_from:'2026-10-01',effective_to:'2026-11-01',evidence:'fixture',reviewer:'QA-2'};
++  const stored=[{id:'old',tab:1,values:mapping,at:'',state:'draft',note:''}];
++  expect(validateDomain('/data/identity',1,{...mapping,effective_from:'2026-10-15',effective_to:'2026-12-01'},stored)).toContain('بازه مؤثر برای این کلید منبع همپوشانی دارد.');
++  expect(validateDomain('/data/identity',1,{...mapping,effective_from:'2026-11-01',effective_to:'2026-12-01'},stored)).toEqual([]);
++ });
++ it('isolates browser draft lists by site',()=>{
++  const ui=render(<DomainWorkspace path="/data/ingestion" siteName="Taleghani"/>);
++  for(const [label,value] of [['شناسه اتصال مصنوعی','CON-1'],['مجموعه‌داده','DATA-1'],['نسخه قرارداد','v1'],['cutoff مشاهده','2026-10-25T10:00']] as const){
++   fireEvent.change(screen.getByLabelText(label+' *'),{target:{value}});
++  }
++  fireEvent.click(screen.getByRole('button',{name:'ثبت نسخه پیش‌نویس نمونه'}));
++  expect(screen.getAllByText(/draft/).length).toBeGreaterThan(0);
++  selectedSite='SITE-IMAM';ui.rerender(<DomainWorkspace path="/data/ingestion" siteName="Imam Hossein"/>);
++  expect(screen.getByText('رکوردی برای این سایت ذخیره نشده است.')).toBeTruthy();
++  selectedSite='SITE-TAL';ui.rerender(<DomainWorkspace path="/data/ingestion" siteName="Taleghani"/>);
++  expect(screen.getAllByText(/draft/).length).toBeGreaterThan(0);
++ });
++});

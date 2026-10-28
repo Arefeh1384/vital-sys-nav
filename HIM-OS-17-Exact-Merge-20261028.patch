@@ -1,0 +1,1130 @@
+diff --git a/scripts/verify-round3.cjs b/scripts/verify-round3.cjs
+new file mode 100644
+index 0000000..37cf758
+--- /dev/null
++++ b/scripts/verify-round3.cjs
+@@ -0,0 +1,65 @@
++/** Offline tests of synthetic transforms plus source/compile safety smoke checks. No network. */
++const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
++const ts=(()=>{try{return require('typescript')}catch{return require('/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript/lib/typescript.js')}})();
++const root=path.resolve(__dirname,'..');
++let checks=0;
++function check(name,condition){assert.ok(condition,name);console.log('PASS',name);checks++}
++function syntheticModule(relative){
++ const file=path.join(root,relative),content=fs.readFileSync(file,'utf8');
++ const transpiled=ts.transpileModule(content,{fileName:file,reportDiagnostics:true,compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022}});
++ assert.deepEqual(transpiled.diagnostics||[],[]);
++ const module={exports:{}};
++ new Function('module','exports','require',transpiled.outputText)(module,module.exports,(x)=>{
++  if(x==='react')return {default:{},useState:()=>{},useEffect:()=>{}};
++  if(x==='react/jsx-runtime')return {jsx:()=>{},jsxs:()=>{}};
++  if(x.endsWith('AppContext'))return {useApp:()=>{}};
++  if(x.endsWith('mockData'))return {DEMO_USERS:[]};
++  throw new Error(`Unexpected dependency in offline module: ${x}`);
++ });return module.exports;
++}
++const {DEMO_DATA_INPUT,runDemoBatch,demoSemanticOccupancy}=syntheticModule('src/him/components/SyntheticDataFlow.tsx');
++const batch=runDemoBatch(DEMO_DATA_INPUT);
++check('DAT fixture accepts 2 unique events',batch.accepted===2);
++check('DAT idempotency counts initial duplicate',batch.duplicate===1);
++check('DAT quarantines negative value',batch.quarantined===1);
++const replay=runDemoBatch(DEMO_DATA_INPUT,'demo-bed-occupancy',new Set(batch.checkpoint));
++check('DAT replay never double counts accepted IDs',replay.accepted===0&&replay.duplicate===3&&replay.quarantined===1);
++check('DAT schema mismatch quarantines instead of accepting',runDemoBatch(DEMO_DATA_INPUT,'other').accepted===0);
++const metric=demoSemanticOccupancy([{id:'test',connector:'SYN',contract:'demo',startedAt:'2026-10-01T00:00:00Z',status:'simulated',sourceCutoff:'2026-10-01T00:00:00Z',accepted:batch.accepted,duplicate:batch.duplicate,quarantined:batch.quarantined,rows:batch.rows}]);
++check('DAT semantic aggregate preserves lineage',metric.value===165&&metric.count===2&&metric.ids.length===2);
++const {DEMO_PURCHASE_LINES,inspectSupplier,inspectSupplierVariability}=syntheticModule('src/him/supply/supplierPerformance.ts');
++const perf=inspectSupplier(DEMO_PURCHASE_LINES,'risk-supplier');
++check('SUP OTIF 2/3 and concentration 60%',perf.eligible===3&&Math.abs(perf.ratio-2/3)<1e-9&&Math.abs(perf.concentration-0.6)<1e-9);
++const spread=inspectSupplierVariability(DEMO_PURCHASE_LINES,'risk-supplier');
++check('SUP lead-time sample and mean',spread.leadSample===3&&spread.meanDays===7);
++check('SUP lead-time sigma',Math.abs(spread.stdDays-Math.sqrt(8/3))<1e-8);
++check('SUP quality denominator 37/40',spread.inspected===40&&spread.rejected===3&&Math.abs(spread.passRate-0.925)<1e-9);
++const {decideRetention}=syntheticModule('src/him/components/SyntheticRetentionPlan.tsx');
++check('PLT legal hold overrides eligibility',decideRetention(150,false,true,90)==='PROTECT_LEGAL_HOLD'&&decideRetention(150,true,false,90)==='PROTECT_LEGAL_HOLD');
++check('PLT no actual deletion from evaluation',decideRetention(150,false,false,90)==='ELIGIBLE_FOR_REVIEW_ONLY'&&decideRetention(50,false,false,90)==='RETAIN');
++const files={
++ '#2':'src/him/components/SpecializedWorkspaces.tsx',
++ '#8':'src/him/components/SyntheticDataFlow.tsx',
++ '#9':'src/him/phase6/MemoActionHandoff.tsx',
++ '#12':'src/him/data/evidenceData.ts',
++ '#13':'src/him/components/ControlWorkflows.tsx',
++ '#14':'src/him/components/WorkViews.tsx',
++ '#15':'src/him/components/DomainWorkspaces.tsx',
++ '#20':'src/him/components/SyntheticRetentionPlan.tsx',
++ '#23':'src/him/data/evidenceData.ts',
++ '#24':'src/him/components/ControlWorkflows.tsx',
++ '#26':'src/him/components/ControlWorkflows.tsx',
++ '#27':'src/him/components/ControlWorkflows.tsx',
++ '#28':'src/him/components/KnowledgeWorkspace.tsx',
++ '#29':'src/him/components/KnowledgeWorkspace.tsx',
++ '#30':'src/him/components/WorkViews.tsx',
++ '#31':'src/him/components/ControlWorkflows.tsx',
++ '#35':'src/him/supply/SupplierPerformancePanel.tsx',
++};
++for(const [id,file] of Object.entries(files))check(`${id} source module exists`,fs.existsSync(path.join(root,file)));
++const sources=[...new Set(Object.values(files).concat(['src/him/components/SyntheticRetentionPlan.tsx','src/him/components/SyntheticDataFlow.tsx','src/him/components/DomainWorkspaces.tsx','src/him/components/KnowledgeWorkspace.tsx']))];
++for(const file of sources){const full=path.join(root,file);const source=fs.readFileSync(full,'utf8');const result=ts.transpileModule(source,{fileName:full,reportDiagnostics:true,compilerOptions:{jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022}});check(`TS parse ${file}`,(result.diagnostics||[]).length===0);}
++check('KNO only permits positive answer for published demo items',fs.readFileSync(path.join(root,files['#28']),'utf8').includes("d.state==='published_synthetic'"));
++check('CTL review avoids author self approval',fs.readFileSync(path.join(root,files['#13']),'utf8').includes('r.actorId!==reviewer.id'));
++check('PLT audit does not label output official',fs.readFileSync(path.join(root,files['#31']),'utf8').includes('UNSIGNED_BROWSER_DEMO_NOT_OFFICIAL_AUDIT'));
++console.log(`OFFLINE CHECKS PASS: ${checks}`);
+diff --git a/src/him/components/ControlWorkflows.tsx b/src/him/components/ControlWorkflows.tsx
+index 2c77682..c4b78c2 100644
+--- a/src/him/components/ControlWorkflows.tsx
++++ b/src/him/components/ControlWorkflows.tsx
+@@ -6,7 +6,8 @@ import { demoStore } from '../phase6/store';
+ import { TaskDrawer } from '../phase6/Phase6';
+ 
+ /** These drafts are strictly browser-local. They never change source, authorization or an alert's authoritative status. */
+-type ReviewRecord = { id: string; type: string; at: string; actorId: string; actor: string; detail: string; fields: Record<string,string> };
++type ReviewRecord = { id: string; type: string; at: string; actorId: string; actor: string; detail: string; fields: Record<string,string>; state?: 'requested'|'approved_synthetic'; reviewerId?: string; reviewedAt?: string; reviewedBy?: string };
++const LOCAL_DEMO_DISCLAIMER = 'صرفاً سناریوی نمایشی قابل‌ردیابی در همین مرورگر؛ بدون تغییر در داده اصلی، مجوز، اعلان یا سامانه عملیاتی.';
+ const input = 'w-full rounded-lg border border-slate-300 bg-white p-2 text-sm mt-1';
+ const action = 'rounded-lg bg-teal-800 px-3 py-2 text-sm text-white disabled:opacity-40';
+ const note = 'rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs leading-6 text-amber-900';
+@@ -15,27 +16,43 @@ function useReviewRecords(key: string) {
+  const [rows,setRows] = useState<ReviewRecord[]>(()=>{try{const v=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(v)?v:[]}catch{return []}});
+  useEffect(()=>{try{localStorage.setItem(key,JSON.stringify(rows))}catch{/* In-memory only if storage denied. */}},[key,rows]);
+  const add = (type:string,detail:string,fields:Record<string,string>,actor:{id:string;name:string}) => {
+-  const rec:ReviewRecord={id:`local-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,type,detail,fields,at:stamp(),actorId:actor.id,actor:actor.name};
++  const rec:ReviewRecord={id:`local-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,type,detail,fields,at:stamp(),actorId:actor.id,actor:actor.name,state:'requested',reviewerId:fields.reviewer};
+   setRows(prev=>[rec,...prev]);
+  };
+- return {rows,add};
++ const approve=(id:string,reviewer:{id:string;name:string})=>{setRows(prev=>prev.map(r=>r.id===id&&r.state!=='approved_synthetic'&&r.reviewerId===reviewer.id&&r.actorId!==reviewer.id?{...r,state:'approved_synthetic',reviewedBy:reviewer.name,reviewedAt:stamp()}:r))};
++ return {rows,add,approve};
+ }
+-function History({rows}:{rows:ReviewRecord[]}) {
+- return <div className="space-y-2" data-testid="local-review-history"><h3 className="font-semibold text-sm">تاریخچه درخواست‌ها و بررسی‌های نمایشی</h3>{rows.length===0?<p className="text-xs text-slate-500">درخواستی ثبت نشده است.</p>:rows.map(r=><details key={r.id} className="rounded-lg border p-3 text-xs"><summary className="cursor-pointer font-semibold">{r.type} · {r.at} · {r.actor}</summary><p className="mt-2">{r.detail}</p>{Object.entries(r.fields).map(([k,v])=><p key={k}>{k}: {v}</p>)}<p className="text-amber-700">پیشنهاد نمایشی؛ اجرا و تأیید سازمانی انجام نشده است.</p></details>)}</div>;
++function History({rows,current,onApprove}:{rows:ReviewRecord[];current?:{id:string;name:string};onApprove?:(id:string,reviewer:{id:string;name:string})=>void}) {
++ return <div className="space-y-2" data-testid="local-review-history"><h3 className="font-semibold text-sm">تاریخچه درخواست‌ها و بررسی‌های نمایشی</h3>{rows.length===0?<p className="text-xs text-slate-500">درخواستی ثبت نشده است.</p>:rows.map(r=><details key={r.id} className="rounded-lg border p-3 text-xs"><summary className="cursor-pointer font-semibold">{r.type} · {r.at} · {r.actor} · {r.state==='approved_synthetic'?'تأیید مستقل نمایشی':'در انتظار بازبینی'}</summary><p className="mt-2">{r.detail}</p>{Object.entries(r.fields).filter(([k])=>k!=='eventsJson').map(([k,v])=><p key={k}>{k}: {v}</p>)}{r.reviewedBy&&<p>بازبین: {r.reviewedBy} · {r.reviewedAt}</p>}{r.state!=='approved_synthetic'&&r.reviewerId&&current?.id===r.reviewerId&&current.id!==r.actorId&&onApprove&&<button type="button" className={action} data-testid="independent-mock-approval" onClick={()=>onApprove(r.id,current)}>بازبینی و تأیید مستقل در شبیه‌سازی</button>}<p className="text-amber-700">{LOCAL_DEMO_DISCLAIMER}</p></details>)}</div>;
+ }
+ function AlertOperationsContent({alert}:{alert:WorkAlert}) {
+  const {scope,user,openWorkView}=useApp();
+  const current={id:user?.id||'guest',name:user?.name||'کاربر ناشناس'};
+- const {rows,add}=useReviewRecords(`him.synthetic.alert-review.v1:${scope.siteId}:${alert.id}:${current.id}`);
++ const {rows,add,approve}=useReviewRecords(`him.synthetic.alert-review.v2:${scope.siteId}:${alert.id}`);
+  const [assignee,setAssignee]=useState(''),[reason,setReason]=useState(''),[until,setUntil]=useState(''),[suppressUntil,setSuppressUntil]=useState(''),[suppressReason,setSuppressReason]=useState(''),[level,setLevel]=useState('supervisor');
+  const [outcome,setOutcome]=useState('none'),[outcomeEvidence,setOutcomeEvidence]=useState(''),[taskOpen,setTaskOpen]=useState(false);
+  const [playbook,setPlaybook]=useState('capacity_review'),[hypothesis,setHypothesis]=useState(''),[forEvidence,setForEvidence]=useState(''),[againstEvidence,setAgainstEvidence]=useState(''),[missing,setMissing]=useState(''),[reviewer,setReviewer]=useState(''),[conclusion,setConclusion]=useState('');
+  const owners=DEMO_USERS.filter(u=>u.permittedSiteIds.includes(scope.siteId||''));
++ const [approvalReviewer,setApprovalReviewer]=useState('');
+  const canExplain=reason.trim().length>=10;
+- const log=(type:string,fields:Record<string,string>,detail:string)=>{add(type,detail,fields,current);setReason('')};
++ const log=(type:string,fields:Record<string,string>,detail:string)=>{add(type,detail,{...fields,reviewer:fields.reviewer||approvalReviewer},current);setReason('')};
++ const approved=rows.filter(r=>r.state==='approved_synthetic');
++ const latest=(type:string)=>approved.find(r=>r.type===type);
++ const mockAssignee=latest('درخواست انتساب')?.fields.مسئول||'بدون تغییر';
++ const snooze=latest('درخواست تعویق')?.fields.تا;
++ const suppression=latest('درخواست سرکوب موقت')?.fields.انقضا;
++ const snoozed=!!snooze&&new Date(snooze).getTime()>Date.now();
++ const suppressed=!!suppression&&new Date(suppression).getTime()>Date.now();
++ const mockLevel=latest('درخواست تشدید')?.fields.سطح||'ارجاع انجام نشده';
++ const mockOutcome=latest('گزارش نتیجه')?.fields.نتیجه||'ثبت نشده';
+  return <section className="rounded-2xl border bg-white p-5 space-y-4" data-testid="alert-governed-controls">
+   <h2 className="font-bold">پیگیری پاسخ به هشدار · EXE-04 / CTL-02</h2>
+   <p className={note}>این کنترل‌ها درخواست و گزارش داخلی آزمایشی ثبت می‌کنند؛ تعویق، انتساب، تشدید یا تغییر وضعیت واقعی هشدار فقط پس از تأیید سامانه کنترل مجاز است. «مشاهده تغییر» هرگز اثبات اثرِ اقدام نیست.</p>
++  <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm" data-testid="alert-approved-synthetic-state">
++   <strong>وضعیت مؤثر شبیه‌سازی (فقط درخواست تأییدشده مستقل)</strong><p>انتساب: {mockAssignee} · تعویق: {snoozed?`تا ${snooze}`:'غیرفعال'} · سرکوب: {suppressed?`تا ${suppression}`:'غیرفعال'} · ارجاع: {mockLevel} · نتیجه: {mockOutcome}</p>
++   <p className="text-xs">وضعیت واقعی هشدار دست‌نخورده است؛ انقضا در زمان مشاهده مجدد محاسبه می‌شود.</p>
++  </div>
++  <label className="block text-xs">بازبین مستقل همه درخواست‌های پاسخ به هشدار *<select className={input} value={approvalReviewer} onChange={e=>setApprovalReviewer(e.target.value)}><option value="">انتخاب بازبین</option>{owners.filter(u=>u.id!==current.id).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
+   <div className="grid sm:grid-cols-2 gap-3">
+    <label className="block text-xs">مسئول پیشنهادی در دامنه فعلی<select className={input} value={assignee} onChange={e=>setAssignee(e.target.value)}><option value="">انتخاب مسئول</option>{owners.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
+    <label className="block text-xs">زمان پایان تعویق (درخواست)<input type="datetime-local" className={input} value={until} onChange={e=>setUntil(e.target.value)} /></label>
+@@ -45,17 +62,17 @@ function AlertOperationsContent({alert}:{alert:WorkAlert}) {
+    <label className="block text-xs sm:col-span-2">دلیل و توضیحات (حداقل ۱۰ نویسه)<textarea aria-label="علت درخواست پیگیری هشدار" rows={2} className={input} value={reason} onChange={e=>setReason(e.target.value)} /></label>
+   </div>
+   <div className="flex flex-wrap gap-2">
+-   <button className={action} disabled={!canExplain||!assignee} onClick={()=>log('درخواست انتساب',{مسئول:owners.find(x=>x.id===assignee)?.name||assignee},reason)}>درخواست انتساب</button>
+-   <button className={action} disabled={!canExplain||!until||new Date(until).getTime()<=Date.now()} onClick={()=>log('درخواست تعویق',{تا:until},reason)}>درخواست تعویق با دلیل</button>
+-   <button className={action} disabled={!canExplain} onClick={()=>log('درخواست تشدید',{سطح:level},reason)}>درخواست تشدید</button>
+-   <button className={action} disabled={!canExplain||((outcome==='completed_reported'||outcome==='observed_change')&&!outcomeEvidence.trim())} onClick={()=>log('گزارش نتیجه',{نتیجه:outcome,شاهد:outcomeEvidence||'ثبت نشده'},reason)}>ثبت گزارش نتیجه</button>
++   <button className={action} disabled={!canExplain||!assignee||!approvalReviewer} onClick={()=>log('درخواست انتساب',{مسئول:owners.find(x=>x.id===assignee)?.name||assignee},reason)}>درخواست انتساب</button>
++   <button className={action} disabled={!canExplain||!approvalReviewer||!until||new Date(until).getTime()<=Date.now()} onClick={()=>log('درخواست تعویق',{تا:until},reason)}>درخواست تعویق با دلیل</button>
++   <button className={action} disabled={!canExplain||!approvalReviewer} onClick={()=>log('درخواست تشدید',{سطح:level},reason)}>درخواست تشدید</button>
++   <button className={action} disabled={!canExplain||!approvalReviewer||((outcome==='completed_reported'||outcome==='observed_change')&&!outcomeEvidence.trim())} onClick={()=>log('گزارش نتیجه',{نتیجه:outcome,شاهد:outcomeEvidence||'ثبت نشده'},reason)}>ثبت گزارش نتیجه</button>
+    <button className={action} onClick={()=>setTaskOpen(true)}>ایجاد وظیفه مرتبط</button>
+   </div>
+   <div className="border-t pt-4 space-y-3" data-testid="alert-suppression-request"><h3 className="font-bold">درخواست سرکوب موقت هشدار · CTL-02</h3>
+    <p className={note}>سرکوب در اینجا فقط درخواست آزمایشی است و وضعیت هشدار، اعلان یا تشدید عملیاتی را تغییر نمی‌دهد.</p>
+    <label className="block text-xs">علت سرکوب (حداقل ۱۰ نویسه)<textarea className={input} value={suppressReason} onChange={e=>setSuppressReason(e.target.value)}/></label>
+    <label className="block text-xs">انقضای سرکوب پیشنهادی<input type="datetime-local" className={input} value={suppressUntil} onChange={e=>setSuppressUntil(e.target.value)}/></label>
+-   <button type="button" className={action} disabled={suppressReason.trim().length<10||!suppressUntil||new Date(suppressUntil).getTime()<=Date.now()} onClick={()=>{log('درخواست سرکوب موقت',{انقضا:suppressUntil},suppressReason);setSuppressReason('');setSuppressUntil('')}}>ثبت درخواست سرکوب برای بازبینی</button>
++   <button type="button" className={action} disabled={!approvalReviewer||suppressReason.trim().length<10||!suppressUntil||new Date(suppressUntil).getTime()<=Date.now()} onClick={()=>{log('درخواست سرکوب موقت',{انقضا:suppressUntil},suppressReason);setSuppressReason('');setSuppressUntil('')}}>ثبت درخواست سرکوب برای بازبینی</button>
+   </div>
+   <div className="border-t pt-4 space-y-3" data-testid="alert-investigation">
+    <h3 className="font-bold">تحقیق مبتنی بر شواهد (پیش‌نویس)</h3>
+@@ -64,9 +81,9 @@ function AlertOperationsContent({alert}:{alert:WorkAlert}) {
+     {([['فرضیه',hypothesis,setHypothesis],['شواهد موافق',forEvidence,setForEvidence],['شواهد مخالف',againstEvidence,setAgainstEvidence],['شواهد ناموجود',missing,setMissing],['نتیجه پیشنهادی بازبین',conclusion,setConclusion]] as const).map(([label,value,set])=><label key={label} className="text-xs">{label}<textarea className={input} value={value} onChange={e=>set(e.target.value)} rows={2}/></label>)}
+     <label className="text-xs">بازبین مستقل پیشنهادی<select className={input} value={reviewer} onChange={e=>setReviewer(e.target.value)}><option value="">انتخاب بازبین</option>{owners.filter(x=>x.id!==current.id).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+    </div>
+-   <button className={action} disabled={!hypothesis.trim()||!forEvidence.trim()||!againstEvidence.trim()||!missing.trim()||!reviewer||!conclusion.trim()} onClick={()=>log('درخواست بررسی مستقل',{playbook,فرضیه:hypothesis,موافق:forEvidence,مخالف:againstEvidence,مفقود:missing,بازبین:reviewer,جمع‌بندی:conclusion},'درخواست برای بازبینی مستقل؛ نتیجه تأیید نشده است.')}>ثبت پرونده تحقیق برای بازبینی مستقل</button>
++   <button className={action} disabled={!hypothesis.trim()||!forEvidence.trim()||!againstEvidence.trim()||!missing.trim()||!reviewer||!conclusion.trim()} onClick={()=>log('درخواست بررسی مستقل',{reviewer,playbook,فرضیه:hypothesis,موافق:forEvidence,مخالف:againstEvidence,مفقود:missing,بازبین:reviewer,جمع‌بندی:conclusion},'درخواست برای بازبینی مستقل؛ نتیجه تأیید نشده است.')}>ثبت پرونده تحقیق برای بازبینی مستقل</button>
+   </div>
+-  <History rows={rows}/>
++  <History rows={rows} current={current} onApprove={approve}/>
+   <TaskDrawer source={taskOpen?{alertId:alert.id}:null} defaults={{title:`بررسی هشدار ${alert.code}`,description:`پیگیری مستقل هشدار ${alert.id}: ${alert.title}. مرجع شواهد باید مستقل تأیید شود.`}} close={()=>setTaskOpen(false)} created={t=>{setTaskOpen(false);add('ایجاد وظیفه',`وظیفه ${t.id} در پروتوتایپ ساخته شد.`,{taskId:t.id},current);openWorkView({kind:'task',id:t.id})}}/>
+  </section>;
+ }
+@@ -80,18 +97,25 @@ export function NotificationPolicyWorkspace() {
+ }
+ function NotificationPolicyContent() {
+  const {scope,user}=useApp();const current={id:user?.id||'guest',name:user?.name||'کاربر ناشناس'};
+- const {rows,add}=useReviewRecords(`him.synthetic.notification-policy.v1:${scope.siteId}:${current.id}`);
++ const {rows,add,approve}=useReviewRecords(`him.synthetic.notification-policy.v2:${scope.siteId}`);
+  const [version,setVersion]=useState(''),[severity,setSeverity]=useState('high'),[minutes,setMinutes]=useState('30'),[fallback,setFallback]=useState(''),[reviewer,setReviewer]=useState(''),[reason,setReason]=useState('');
+- const okay=version.trim()&&Number.isInteger(Number(minutes))&&Number(minutes)>0&&Number(minutes)<=10080&&fallback.trim()&&reviewer.trim()&&reviewer!==current.id&&reason.trim().length>=10;
+- return <section dir="rtl" className="space-y-4" data-testid="notification-policy"><h1 className="text-xl font-bold">سیاست اعلان و مهلت تشدید · CTL-009</h1><p className={note}>فقط پیش‌نویس تنظیمات ذخیره می‌شود. ارسال کانال بیرونی و اعمال سیاست واقعی غیرفعال است؛ مرورگر هیچ زمان‌بند تشدید معتبری ندارد.</p>
++ const [scenarioAt,setScenarioAt]=useState(''),[scenarioAck,setScenarioAck]=useState(false);
++ const effective=rows.find(r=>r.type==='درخواست بازبینی سیاست اعلان'&&r.state==='approved_synthetic');
++ const dueTime=effective&&scenarioAt?new Date(scenarioAt).getTime()+Number(effective.fields.minutes)*60000:NaN;
++ const triggered=Number.isFinite(dueTime)&&!scenarioAck&&Date.now()>=dueTime;
++ const okay=version.trim()&&Number.isInteger(Number(minutes))&&Number(minutes)>0&&Number(minutes)<=10080&&fallback.trim()&&DEMO_USERS.some(u=>u.id===reviewer&&u.id!==current.id&&u.permittedSiteIds.includes(scope.siteId||''))&&reason.trim().length>=10;
++ return <section dir="rtl" className="space-y-4" data-testid="notification-policy"><h1 className="text-xl font-bold">سیاست اعلان و مهلت تشدید · CTL-009</h1><p className={note}>بازبینی مستقل، اعمال سیاست و مهلت ارجاع فقط شبیه‌سازی محلی هستند. هیچ اعلان، سرور یا زمان‌بند عملیاتی اجرا نمی‌شود.</p>
+   <p className="text-sm">بیمارستان: {scope.siteName} · کانال مجاز نمونه: اعلان داخلی</p><div className="grid sm:grid-cols-2 gap-3">
+    <label className="text-xs">نسخه سیاست *<input className={input} value={version} onChange={e=>setVersion(e.target.value)}/></label>
+    <label className="text-xs">شدت هدف<select className={input} value={severity} onChange={e=>setSeverity(e.target.value)}><option value="critical">بحرانی</option><option value="high">بالا</option><option value="medium">متوسط</option><option value="low">پایین</option></select></label>
+    <label className="text-xs">مهلت تأیید قبل از تشدید (دقیقه)*<input type="number" min="1" max="10080" className={input} value={minutes} onChange={e=>setMinutes(e.target.value)}/></label>
+    <label className="text-xs">صف جانشین *<input className={input} value={fallback} onChange={e=>setFallback(e.target.value)}/></label>
+-   <label className="text-xs">شناسه بازبین مستقل *<input className={input} value={reviewer} onChange={e=>setReviewer(e.target.value)}/></label>
++   <label className="text-xs">بازبین مستقل *<select className={input} value={reviewer} onChange={e=>setReviewer(e.target.value)}><option value="">انتخاب بازبین</option>{DEMO_USERS.filter(u=>u.id!==current.id&&u.permittedSiteIds.includes(scope.siteId||'')).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
+    <label className="text-xs">علت تغییر *<textarea className={input} value={reason} onChange={e=>setReason(e.target.value)}/></label>
+-  </div><button className={action} disabled={!okay} onClick={()=>add('درخواست بازبینی سیاست اعلان','اعمال سیاست منوط به تصویب مستقل است.',{version, severity,minutes,fallback,reviewer,reason},current)}>ذخیره درخواست بازبینی سیاست</button><History rows={rows}/>
++  </div><button className={action} disabled={!okay} onClick={()=>add('درخواست بازبینی سیاست اعلان','اعمال سیاست منوط به تصویب مستقل است.',{version, severity,minutes,fallback,reviewer,reason},current)}>ذخیره درخواست بازبینی سیاست</button><div className="rounded-lg border border-sky-200 p-3 space-y-2" data-testid="synthetic-notification-escalation">
++ <p className="font-semibold text-sm">سناریوی سیاست تأییدشده نمونه</p>
++ {effective?<><p className="text-xs">نسخه {effective.fields.version} · شدت {effective.fields.severity} · صف جانشین {effective.fields.fallback} · زمان پاسخ {effective.fields.minutes} دقیقه</p><label className="block text-xs">زمان شروع هشدار فرضی<input type="datetime-local" className={input} value={scenarioAt} onChange={e=>setScenarioAt(e.target.value)}/></label><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={scenarioAck} onChange={e=>setScenarioAck(e.target.checked)}/>تأیید پاسخ دریافت شده</label><p className="text-xs">{!Number.isFinite(dueTime)?'زمان شروع را انتخاب کنید.':scenarioAck?'ارجاع شبیه‌سازی‌شده لغو شد (پاسخ تأییدشده).':triggered?`مهلت گذشته؛ انتقال نمایشی به ${effective.fields.fallback}`:`هنوز مهلت باقی است؛ پایان ${new Date(dueTime).toLocaleString('fa-IR')}`}</p></>:<p className="text-xs">سیاست مستقل تأییدشده‌ای در این بیمارستان موجود نیست.</p>}
++ </div><History rows={rows} current={current} onApprove={approve}/>
+  </section>;
+ }
+ export function AuditWorkspace() {
+@@ -100,19 +124,38 @@ export function AuditWorkspace() {
+ }
+ function AuditContent() {
+  const {scope,user,openWorkView,alerts,tasks}=useApp();const current={id:user?.id||'guest',name:user?.name||'کاربر ناشناس'};
+- const {rows,add}=useReviewRecords(`him.synthetic.audit-request.v1:${scope.siteId}:${current.id}`);
++ const {rows,add,approve}=useReviewRecords(`him.synthetic.audit-request.v2:${scope.siteId}`);
++ const [exportResult,setExportResult]=useState('');
+  const [search,setSearch]=useState(''),[kind,setKind]=useState('all'),[reason,setReason]=useState(''),[reviewer,setReviewer]=useState('');
+  const events=[...alerts.filter(x=>x.siteId===scope.siteId).flatMap(x=>(x.activity||[]).map(v=>({id:x.id,type:'alert',date:v.at,description:v.text}))),...tasks.filter(x=>x.siteId===scope.siteId).flatMap(x=>x.history.map(v=>({id:x.id,type:'task',date:v.at,description:v.text})))];
+  const filtered=events.filter(e=>(kind==='all'||e.type===kind)&&(`${e.id} ${e.description}`.toLowerCase().includes(search.toLowerCase())));
++ const downloadApproved=async(r:ReviewRecord)=>{
++  if(r.actorId!==current.id||r.state!=='approved_synthetic')return;
++  try {
++   const list=JSON.parse(r.fields.eventsJson||'[]') as typeof events;
++   const evidence: {eventId:string;prevHash:string;sha256:string;payload:{id:string;type:string;date:string;description:string}}[]=[];
++   let previous='GENESIS';
++   for(const [i,record] of list.entries()){
++    const canonical=JSON.stringify({index:i,previous,record});
++    const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonical));
++    const sha256=Array.from(new Uint8Array(digest)).map(v=>v.toString(16).padStart(2,'0')).join('');
++    evidence.push({eventId:`${record.type}:${record.id}:${i}`,prevHash:previous,sha256,payload:record});previous=sha256;
++   }
++   const manifest={kind:'UNSIGNED_BROWSER_DEMO_NOT_OFFICIAL_AUDIT',requestId:r.id,siteId:scope.siteId,filters:{search:r.fields.search,kind:r.fields.kind},requestedAt:r.at,reviewedAt:r.reviewedAt,reviewedBy:r.reviewedBy,exportedAt:stamp(),algorithm:'SHA-256 demo canonical chain',recordCount:evidence.length,terminalHash:previous,disclaimer:LOCAL_DEMO_DISCLAIMER,records:evidence};
++   const url=URL.createObjectURL(new Blob([JSON.stringify(manifest,null,2)],{type:'application/json;charset=utf-8'}));
++   const anchor=document.createElement('a');anchor.href=url;anchor.download=`HIM-OS-DEMO-AUDIT-${r.id}.json`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url);
++   setExportResult(`تمامیت محلی ${evidence.length} رکورد بررسی و فایل JSON نمایشی ساخته شد؛ بدون امضای دیجیتال یا anchor مستقل.`);
++  }catch(e){setExportResult(`خروجی تولید نشد: ${String(e)}`)}
++ };
+  return <section dir="rtl" className="space-y-4" data-testid="audit-workspace"><h1 className="text-xl font-bold">ممیزی و بازبینی تمامیت · PLT-04</h1>
+  <p className={note}>فقط تاریخچه وقایع نمایشی این مرورگر قابل جست‌وجو است. این اطلاعات مهر دیجیتال، زنجیره custody یا خروجی Audit رسمی ندارند؛ Batch #1048 صرفاً متن نمونه بوده و وضعیت امضا مستقل تأیید نشده است.</p>
+  <div className="grid sm:grid-cols-3 gap-3"><label className="text-xs">جستجوی رخداد / مرجع<input aria-label="جستجوی رویداد ممیزی" className={input} value={search} onChange={e=>setSearch(e.target.value)}/></label><label className="text-xs">نوع رویداد<select className={input} value={kind} onChange={e=>setKind(e.target.value)}><option value="all">همه</option><option value="alert">هشدار</option><option value="task">وظیفه</option></select></label><label className="text-xs">دامنه جاری<input className={input} readOnly value={scope.siteName}/></label></div>
+  <p className="text-xs">نمایش {filtered.length} رویداد محصول (غیرقابل استناد به‌عنوان Audit)</p>
+  <div className="max-h-64 overflow-y-auto space-y-2">{filtered.length?filtered.map((e,i)=><p key={`${e.id}:${i}`} className="rounded border p-2 text-xs">{e.date} · {e.type} · {e.id}: {e.description}</p>):<p className="text-sm text-slate-500">رویدادی در داده‌های فعلی یافت نشد.</p>}</div>
+  <div className="rounded border p-3 space-y-2"><h2 className="font-semibold">بررسی تمامیت و خروجی کنترل‌شده</h2><p className="text-xs">وضعیت امضا: نامعلوم · digest و anchor مستقل: موجود نیست · احراز دسترسی export: متصل نیست.</p>
+- <label className="block text-xs">شناسه بازبین مستقل<input className={input} value={reviewer} onChange={e=>setReviewer(e.target.value)}/></label><label className="block text-xs">هدف قانونی/عملیاتی درخواست<input className={input} value={reason} onChange={e=>setReason(e.target.value)}/></label>
+- <button className={action} disabled={reviewer.trim().length===0||reviewer===current.id||reason.trim().length<10} onClick={()=>add('درخواست بررسی تمامیت/خروجی','بدون داده امضاشده و کنترل دسترسی، هیچ فایل ممیزی صادر نشده است.',{reviewer,reason,search,kind},current)}>ثبت درخواست بازبینی و خروجی</button><button className="ms-2 rounded border p-2 text-sm" onClick={()=>openWorkView({kind:'spec-page',path:'/settings/governance'})}>تصمیم‌ها و نگهداری سوابق</button>
+- </div><History rows={rows}/>
++ <label className="block text-xs">بازبین مستقل<select className={input} value={reviewer} onChange={e=>setReviewer(e.target.value)}><option value="">انتخاب بازبین</option>{DEMO_USERS.filter(u=>u.id!==current.id&&u.permittedSiteIds.includes(scope.siteId||'')).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label><label className="block text-xs">هدف قانونی/عملیاتی درخواست<input className={input} value={reason} onChange={e=>setReason(e.target.value)}/></label>
++ <button className={action} disabled={!DEMO_USERS.some(u=>u.id===reviewer&&u.id!==current.id&&u.permittedSiteIds.includes(scope.siteId||''))||reason.trim().length<10} onClick={()=>add('درخواست بررسی تمامیت/خروجی','بدون داده امضاشده و کنترل دسترسی، هیچ فایل ممیزی صادر نشده است.',{reviewer,reason,search,kind,eventsJson:JSON.stringify(filtered)},current)}>ثبت درخواست بازبینی و خروجی</button><button className="ms-2 rounded border p-2 text-sm" onClick={()=>openWorkView({kind:'spec-page',path:'/settings/governance'})}>تصمیم‌ها و نگهداری سوابق</button>
++ </div><div className="space-y-2" data-testid="audit-controlled-export"><h3 className="font-semibold">خروجی‌های بررسی‌شده و زنجیره محلی SHA-256</h3>{rows.filter(r=>r.type==='درخواست بررسی تمامیت/خروجی'&&r.actorId===current.id).map(r=><div className="rounded border p-2 text-xs" key={r.id}><span>{r.id} · {r.state==='approved_synthetic'?'تأیید نمایشی':'در انتظار بازبین مستقل'}</span><button className={`${action} ms-2`} disabled={r.state!=='approved_synthetic'} onClick={()=>void downloadApproved(r)}>محاسبه تمامیت و دریافت JSON نمایشی</button></div>)}{exportResult&&<p className="text-xs">{exportResult}</p>}</div><History rows={rows} current={current} onApprove={approve}/>
+  </section>;
+ }
+ export function CompensationRequest({actionId,code,executed}:{actionId:string;code:string;executed:boolean}) {
+@@ -121,8 +164,11 @@ export function CompensationRequest({actionId,code,executed}:{actionId:string;co
+ }
+ function CompensationContent({actionId,code,executed}:{actionId:string;code:string;executed:boolean}) {
+  const {scope,user}=useApp();const current={id:user?.id||'guest',name:user?.name||'کاربر ناشناس'};
+- const {rows,add}=useReviewRecords(`him.synthetic.compensation.v1:${scope.siteId}:${actionId}:${current.id}`);
++ const {rows,add,approve}=useReviewRecords(`him.synthetic.compensation.v2:${scope.siteId}:${actionId}`);
+  const [mode,setMode]=useState('review'),[owner,setOwner]=useState(''),[reason,setReason]=useState(''),[evidence,setEvidence]=useState(''),[reviewer,setReviewer]=useState('');
++ const [proposedDiff,setProposedDiff]=useState(''),[secondReviewer,setSecondReviewer]=useState(''),[gateEvidence,setGateEvidence]=useState('');
++ const approvedRequest=rows.find(r=>r.type==='درخواست بازیابی/جبران'&&r.actorId===current.id&&r.state==='approved_synthetic');
++ const compensationProposals=rows.filter(r=>r.type==='پیشنهاد مستقل جبران');
+  const valid=owner.trim()&&reason.trim().length>=20&&evidence.trim()&&reviewer.trim()&&reviewer!==current.id;
+  return <section data-testid="compensation-workflow" className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3 text-sm">
+   <h3 className="font-bold">جبران یا بازیابی کنترل‌شده پس از نهایی‌شدن اقدام</h3>
+@@ -130,12 +176,20 @@ function CompensationContent({actionId,code,executed}:{actionId:string;code:stri
+   <div className="grid sm:grid-cols-2 gap-3">
+    <label className="text-xs">نوع درخواست<select className={input} value={mode} onChange={e=>setMode(e.target.value)}><option value="review">بررسی امکان جبران با پیشنهاد جداگانه</option><option value="manual">فرایند بازیابی دستی توسط مالک منبع</option><option value="irreversible">ثبت وضعیت بالقوه برگشت‌ناپذیر</option></select></label>
+    <label className="text-xs">مسئول سامانه منبع *<input className={input} value={owner} onChange={e=>setOwner(e.target.value)} /></label>
+-   <label className="text-xs">شناسه بازبین مستقل *<input className={input} value={reviewer} onChange={e=>setReviewer(e.target.value)} /></label>
++   <label className="text-xs">بازبین مستقل *<select className={input} value={reviewer} onChange={e=>setReviewer(e.target.value)}><option value="">انتخاب بازبین</option>{DEMO_USERS.filter(u=>u.id!==current.id&&u.permittedSiteIds.includes(scope.siteId||'')).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
+    <label className="text-xs">مرجع نتیجه اجرا و شاهد *<input className={input} value={evidence} onChange={e=>setEvidence(e.target.value)}/></label>
+    <label className="text-xs sm:col-span-2">دلیل و دامنه اثر جبران (حداقل ۲۰ نویسه) *<textarea className={input} rows={3} value={reason} onChange={e=>setReason(e.target.value)}/></label>
+   </div>
+   <button className={action} disabled={!valid} onClick={()=>add('درخواست بازیابی/جبران','صرفاً درخواست داخلی غیرالزام‌آور؛ هیچ اثر جدیدی در مقصد انجام نشده است.',{originalAction:actionId,mode,owner,reviewer,evidence,reason},current)}>ثبت درخواست مستقل جبران/بازیابی</button>
+-  <p className="text-xs">هر پیشنهاد جبران واقعی باید شناسه مستقل، Diff مستقل، گیت و تأییدهای جدید داشته باشد؛ این درخواست جانشین مجوز T3 نیست.</p>
+-  <History rows={rows}/>
++  <div className="border-t border-amber-300 pt-3 space-y-2" data-testid="compensation-separated-proposal"><h4 className="font-bold">پیشنهاد جبران مستقل با Diff و گیت جداگانه</h4>
++   <p className="text-xs">ابتدا درخواست اولیه باید توسط بازبین تعیین‌شده تأیید نمایشی شود. پیشنهاد شناسه و بازبین دوم مستقل خواهد داشت.</p>
++   <label className="block text-xs">Diff مورد انتظار (قبل ← بعد) *<textarea className={input} value={proposedDiff} onChange={e=>setProposedDiff(e.target.value)}/></label>
++   <label className="block text-xs">شاهد امکان‌پذیری/گیت منبع *<input className={input} value={gateEvidence} onChange={e=>setGateEvidence(e.target.value)}/></label>
++   <label className="block text-xs">بازبین مستقل مرحله دوم *<select className={input} value={secondReviewer} onChange={e=>setSecondReviewer(e.target.value)}><option value="">انتخاب بازبین دوم</option>{DEMO_USERS.filter(u=>u.permittedSiteIds.includes(scope.siteId||'')&&u.id!==current.id&&u.id!==approvedRequest?.reviewerId).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
++   <button className={action} disabled={!approvedRequest||!proposedDiff.trim()||!gateEvidence.trim()||!secondReviewer||mode==='irreversible'} onClick={()=>add('پیشنهاد مستقل جبران','ثبت پیشنهاد مستقل؛ هیچ جبرانی اجرا نشده است.',{proposalId:`SYN-COMP-${actionId}-${rows.length+1}`,originalRequest:approvedRequest?.id||'',originalAction:actionId,diff:proposedDiff,gate:gateEvidence,reviewer:secondReviewer},current)}>ثبت پیشنهاد جبران مستقل برای گیت دوم</button>
++   {compensationProposals.map(r=><p key={r.id} className="rounded border p-2 text-xs">{r.fields.proposalId} · Diff: {r.fields.diff} · گیت: {r.fields.gate} · {r.state==='approved_synthetic'?'گیت دوم تأیید نمایشی شد؛ اجرا مجاز نیست.':'در انتظار بازبین دوم'}</p>)}
++  </div>
++  <p className="text-xs">این مسیر جانشین مجوز واقعی T3 نیست؛ حالت برگشت‌ناپذیر عمداً پیشنهاد جبران ایجاد نمی‌کند.</p>
++  <History rows={rows} current={current} onApprove={approve}/>
+  </section>;
+ }
+diff --git a/src/him/components/DomainWorkspaces.tsx b/src/him/components/DomainWorkspaces.tsx
+index 3a279ea..7523e0a 100644
+--- a/src/him/components/DomainWorkspaces.tsx
++++ b/src/him/components/DomainWorkspaces.tsx
+@@ -1,10 +1,13 @@
+ import React, {useEffect, useMemo, useState} from 'react';
+ import {useApp} from '../context/AppContext';
++import {SyntheticDataFlow} from './SyntheticDataFlow';
++import {SyntheticRetentionPlan} from './SyntheticRetentionPlan';
++import {compareOccupancyFixtures} from '../executive/dashboardStore';
+ 
+ /** Domain-specific, site-scoped synthetic workflow. No upstream writes or clinical decisions. */
+ type Kind='text'|'date'|'datetime-local'|'number'|'textarea'|'select';
+ type Field={key:string;label:string;kind?:Kind;required?:boolean;options?:string[];placeholder?:string};
+-type RecordItem={id:string;tab:number;values:Record<string,string>;at:string;state:string;note:string;originId?:string};
++type RecordItem={id:string;tab:number;values:Record<string,string>;at:string;state:string;note:string;originId?:string;createdBy?:string;reviewedBy?:string;reviewedAt?:string;publishedAt?:string};
+ type Definition={title:string;tabs:Array<{name:string;fields:Field[];help:string}>;warning:string};
+ const f=(key:string,label:string,kind:Kind='text',required=true,options?:string[]):Field=>({key,label,kind,required,options});
+ const definitions:Record<string,Definition>={
+@@ -81,7 +84,7 @@ export function validateDomain(path:string,tab:number,v:Record<string,string>,it
+   if(!root)errors.push('این مرحله باید به شناسه یک پیش‌نویس گزارش در همین دامنه متصل باشد.');
+   if(tab===2&&root&&v.reviewer===root.values.editor)errors.push('بازبین نباید همان ویرایشگر گزارش باشد.');
+   if(tab===3){
+-    if(!items.some(x=>x.tab===2&&x.values.brief===v.brief&&x.state==='awaiting_independent_review'))errors.push('درخواست انتشار فقط پس از ثبت پرونده بازبینی مستقل مجاز است؛ انتشار واقعی همچنان مسدود است.');
++    if(!items.some(x=>x.tab===2&&x.values.brief===v.brief&&x.state==='review_approved_synthetic'))errors.push('درخواست انتشار پس از تأیید نمایشی بازبینی مستقل مجاز است؛ انتشار واقعی همچنان مسدود است.');
+     if(root&&v.reviewer===root.values.editor)errors.push('بازبین انتشار باید از ویرایشگر مستقل باشد.');
+   }
+  }
+@@ -94,7 +97,12 @@ export function validateDomain(path:string,tab:number,v:Record<string,string>,it
+  if(path==='/data/ingestion'&&tab===2&&Number(v.checkpoint)>100)errors.push('پیشرفت از ۱۰۰ درصد بیشتر نیست.');
+  if(path==='/operations/forecasts'&&tab===0&&Number(v.horizon)<=0)errors.push('افق باید مثبت باشد.');
+  if(path==='/quality/workflows'&&tab===3&&!v.review_end)errors.push('پایان پنجره بررسی الزامی است.');
+- if(path==='/settings/modules'&&((tab===2&&v.target==='active')||(tab===0&&v.state==='active')))errors.push('انتقال به حالت active بدون تأیید واقعی دروازه‌های مستقل مسدود است.');
++ if(path==='/settings/modules'&&tab===0&&v.state==='active')errors.push('فعال‌سازی واقعی با فرم مستقیم ممنوع است؛ ابتدا shadow، گیت و بازبینی مستقل لازم است.');
++ if(path==='/settings/modules'&&tab===2&&v.target==='active'){
++   const gate=items.some(x=>x.tab===1&&x.values.module===v.module&&x.values.version===v.version&&['contract_gate','policy_gate','release_gate'].every(k=>x.values[k]==='verified_synthetic')&&['validated_synthetic','awaiting_independent_review','review_approved_synthetic'].includes(x.state));
++   const draft=items.some(x=>x.tab===0&&x.values.module===v.module&&x.values.version===v.version&&x.values.state==='shadow');
++   if(!gate||!draft)errors.push('در فیکسچر: برای درخواست فعال‌سازی، نسخه shadow و سه گیت معتبر مصنوعی لازم است.');
++ }
+  if(path==='/settings/agents'&&tab===1&&v.nodes&&v.edges&&v.tool_schema){try{
+  const nodes=JSON.parse(v.nodes),edges=JSON.parse(v.edges),schema=JSON.parse(v.tool_schema);
+  if(!Array.isArray(nodes)||!Array.isArray(edges)||!schema||typeof schema!=='object'||Array.isArray(schema))throw Error('ساختار JSON باید آرایه گره، آرایه یال و شیء schema باشد.');
+@@ -108,7 +116,10 @@ export function validateDomain(path:string,tab:number,v:Record<string,string>,it
+  if(Number(v.max_steps)<=0||Number(v.max_calls)<=0||Number(v.max_seconds)<=0)errors.push('بودجه گام، ابزار و زمان باید مثبت باشد.');}
+  return errors;
+ }
+-function storageKey(path:string,siteId:string,userId:string){return `him.synthetic.domain.v2:${path}:${siteId}:${userId}`;}
++function storageKey(path:string,siteId:string,userId:string){
++ const reviewable=['/executive/briefs','/settings/modules','/settings/governance','/data/contracts'];
++ return `him.synthetic.domain.v2:${path}:${siteId}:${reviewable.includes(path)?'shared-demo':userId}`;
++}
+ export function DomainWorkspace({path,siteName}:{path:string;siteName:string}){
+  const {scope,user}=useApp();
+  return <DomainWorkspaceContent key={`${path}:${scope.siteId}:${user?.id||'demo'}`} path={path} siteId={scope.siteId||'no-site'} siteName={siteName} userId={user?.id||'demo'}/>;
+@@ -122,7 +133,7 @@ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteI
+  const fields=def?.tabs[tab]?.fields||[];
+  const errors=useMemo(()=>validateDomain(path,tab,values,items),[path,tab,values,items]);
+  const update=(k:string,v:string)=>setValues(old=>({...old,[k]:v}));
+- const save=()=>{if(!fields.length||errors.length)return;const record:RecordItem={id:`SYN-${Math.random().toString(36).slice(2,9)}`,tab,values:{...values},at:iso(),state:path==='/operations/forecasts'?'awaiting_source':path==='/executive/briefs'&&tab===3?'publication_request_unapproved':'draft',note:'فقط پیش‌نویس در مرورگر؛ شواهد و تأیید واقعی موجود نیست.'};setItems(old=>[record,...old]);setValues({});};
++ const save=()=>{if(!fields.length||errors.length)return;const record:RecordItem={id:`SYN-${Math.random().toString(36).slice(2,9)}`,tab,values:{...values},at:iso(),state:path==='/operations/forecasts'?'awaiting_source':path==='/executive/briefs'&&tab===3?'publication_request_unapproved':'draft',note:'فقط پیش‌نویس در مرورگر؛ شواهد و تأیید واقعی موجود نیست.',createdBy:userId};setItems(old=>[record,...old]);setValues({});};
+  const transition=(record:RecordItem,action:'validate'|'review'|'cancel'|'retry'|'successor')=>{
+   let state=record.state,note=record.note;
+   if(action==='validate'){state='validated_synthetic';note='اعتبارسنجی فرم فقط با قواعد محلی؛ قرارداد و مرجع داده تأیید نشده‌اند.';}
+@@ -133,6 +144,32 @@ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteI
+   setItems(old=>old.map(x=>x.id===record.id?{...x,state,note}:x));
+  };
+  if(!def)return null;
++ const approve=(record:RecordItem)=>{
++  if(record.state!=='awaiting_independent_review'||record.createdBy===userId)return;
++  const linked=record.tab===2&&path==='/executive/briefs'?items.find(x=>x.id===record.values.brief&&x.tab===0):null;
++  if(path==='/executive/briefs'&&(record.values.reviewer!==userId||!linked||linked.createdBy===userId||!items.some(x=>x.tab===1&&x.values.brief===record.values.brief)))return;
++  if(path==='/settings/modules'&&record.tab===2&&record.values.reviewer!==userId)return;
++  if(!['/executive/briefs','/settings/modules'].includes(path))return;
++  setItems(old=>old.map(x=>x.id===record.id?{...x,state:'review_approved_synthetic',reviewedBy:userId,reviewedAt:iso(),note:'بازبینی مستقل در شبیه‌سازی محلی تأیید شد؛ امضای سازمانی نیست.'}:x));
++ };
++ const publish=(record:RecordItem)=>{
++  if(record.createdBy!==userId || record.state!=='publication_request_unapproved' || path!=='/executive/briefs')return;
++  const approved=items.find(x=>x.tab===2&&x.values.brief===record.values.brief&&x.state==='review_approved_synthetic');
++  if(!approved || !approved.reviewedBy || approved.reviewedBy===userId)return;
++  setItems(old=>old.map(x=>x.id===record.id?{...x,state:'published_synthetic',publishedAt:iso(),note:'نسخه نمایشی گزارش منتشر شد؛ هیچ گیرنده واقعی یا سرویس ارسال فراخوانی نشد.'}:x));
++ };
++ const promote=(record:RecordItem)=>{
++  if(path!=='/settings/modules'||record.tab!==2||record.values.target!=='active'||record.state!=='review_approved_synthetic'||record.createdBy!==userId||record.reviewedBy===userId)return;
++  setItems(old=>old.map(x=>x.id===record.id?{...x,state:'active_synthetic',publishedAt:iso(),note:'فعال‌سازی در مدل محلی؛ هیچ ماژول عملیاتی تغییر نکرد.'}:x));
++ };
++ const briefPreview=(ref:string)=>{
++  const root=items.find(x=>x.tab===0&&x.id===ref),evidence=items.find(x=>x.tab===1&&x.values.brief===ref);
++  if(!root||!evidence)return null;
++  const fixture=compareOccupancyFixtures([siteId],'day');
++  const row=fixture.rows[0];
++  const compatible=root.values.boundary==='last_complete_day'&&evidence.values.metric===fixture.definition&&row?.included&&evidence.values.evidence.includes(row.snapshot||'__missing__');
++  return {root,evidence,compatible:!!compatible,value:compatible?row.value:null,source:row?.snapshot||'unavailable',cutoff:fixture.cutoff};
++ };
+  const visible=items.filter(x=>(JSON.stringify(x.values)+' '+x.id).toLowerCase().includes(q.toLowerCase()));
+  return <section dir="rtl" data-testid="domain-workspace" className="space-y-4">
+   <header className="rounded-xl bg-white border p-5 space-y-1"><h1 className="font-bold text-xl">{def.title}</h1><p className="text-sm text-slate-500">سایت انتخابی: {siteName} · <bdi>{siteId}</bdi> · کاربر نمونه: <bdi>{userId}</bdi></p></header>
+@@ -145,16 +182,23 @@ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteI
+    <button type="button" className={primary} disabled={errors.length>0} onClick={save}>{path==='/operations/forecasts'&&tab===0?'ثبت درخواست پیش‌بینی (در انتظار منبع)':'ثبت نسخه پیش‌نویس نمونه'}</button>
+   </div>}
+   {path==='/operations/forecasts'&&tab===1&&<div className="rounded-lg bg-slate-50 p-3 text-sm" data-testid="forecast-results"><strong>نتیجه: unavailable</strong><p>point: ناموجود · p10: ناموجود · p50: ناموجود · p90: ناموجود</p><p>علت: مدل/نسخه و snapshot ورودی در دسترس نیست. عدد جایگزین تولید نمی‌شود.</p></div>}
++  {path==='/executive/briefs'&&<section data-testid="brief-preview" className="rounded-lg border p-3 text-sm space-y-2"><h3 className="font-bold">پیش‌نمایش نسخه‌دار گزارش مدیریتی · صرفاً آزمایشی</h3>{items.filter(x=>x.tab===0).map(root=>{const preview=briefPreview(root.id);return <div key={root.id} className="rounded border p-3"><p>گزارش: {root.values.title} · {root.values.template} · شناسه {root.id}</p><p>دوره: {root.values.boundary} · دامنه: {root.values.scope} · گیرندگان پیشنهادی: {root.values.recipients}</p>{preview?.compatible?<><p className="font-semibold">اشغال تخت مصنوعی: {preview.value}%</p><p>ارجاع: {preview.source} · نسخه: available_staffed_bed_occupancy@1 · cutoff: {preview.cutoff}</p><p>محدودیت: فیکسچر کهنه/محلی؛ گزارش بیرونی معتبر نیست.</p></>:<p role="alert">داده هم‌دوره و شواهد هماهنگ وجود ندارند؛ تولید شاخص عددی ممنوع است. برای پیش‌نمایش عددی باید متریک available_staffed_bed_occupancy@1 و مرجع snapshot همین سایت ثبت شود.</p>}</div>})}</section>}
++  {path==='/settings/governance'&&tab===2&&<SyntheticRetentionPlan/>}
++  {path==='/data/ingestion'&&<SyntheticDataFlow/>}
+   {path==='/data/ingestion'&&tab===2&&<p className="text-xs text-slate-600">نمایش Job شامل وضعیت اجرا، accepted/duplicate/quarantined، cutoff، consistency و checkpoint از داده واردشده مصنوعی است. هیچ پردازشی آغاز نمی‌شود.</p>}
+   {path==='/settings/modules'&&<div data-testid="module-activation-gates" className="border rounded-lg p-3 space-y-2 text-sm"><h3 className="font-semibold">نتیجه گیت‌های لازم برای فعال‌سازی سایت / نسخه</h3><div className="grid sm:grid-cols-3 gap-2">{['وابستگی‌ها و نسخه قرارداد','سیاست و دسترسی سازمانی','ارزیابی، بازگشت و تأیید مستقل'].map(x=><div className="rounded border p-2" key={x}><b>{x}</b><p className="text-amber-800">تأیید نشده — BLOCKED</p></div>)}</div><p className="text-xs">این جدول نشان‌دهنده عبور واقعی از گیت نیست؛ Promote و فعال‌سازی بدون اثبات کنترل‌ها مجاز نیست.</p></div>}
+-  {path==='/settings/modules'&&tab===2&&<p className="text-xs text-rose-800">در این محیط Promote to active ممنوع است؛ درخواست Suspend صرفاً یک پیش‌نویس است و اجرای جاری را متوقف نمی‌کند.</p>}
++  {path==='/settings/modules'&&tab===2&&<p className="text-xs text-rose-800">Promote فقط به حالت active_synthetic محلی، پس از گیت‌های synthetic و بازبینی کاربر مستقل انجام می‌شود؛ درخواست Suspend اجرای جاری را متوقف نمی‌کند.</p>}
+   <div className="space-y-2"><h3 className="font-semibold">سوابق محلی همین سایت و کاربر</h3><input aria-label="جستجوی سوابق" className={cls} value={q} onChange={e=>setQ(e.target.value)} placeholder="جستجو بر اساس شناسه یا اطلاعات"/>
+    {!visible.length?<p className="p-3 text-sm bg-slate-50">رکوردی برای این سایت ذخیره نشده است.</p>:visible.map(item=><details key={item.id} className="rounded-lg border p-3 text-sm"><summary className="cursor-pointer"><bdi dir="ltr">{item.id}</bdi> · {def.tabs[item.tab]?.name} · <bdi>{item.state}</bdi></summary><div className="mt-2 space-y-2"><p className="text-xs">{item.at} · {item.note}</p>{item.originId&&<p className="text-xs">مرجع نسخه پیشین: {item.originId}</p>}<dl className="grid sm:grid-cols-2 gap-1 text-xs">{Object.entries(item.values).map(([k,v])=><div key={k} className="break-words"><dt className="font-bold inline">{k}: </dt><dd className="inline">{v}</dd></div>)}</dl><div className="flex flex-wrap gap-2">
+     {item.state==='draft'&&<button className="border rounded p-2" onClick={()=>transition(item,'validate')}>اعتبارسنجی فرم</button>}
+     {(item.state==='draft'||item.state==='validated_synthetic')&&<button className="border rounded p-2" onClick={()=>transition(item,'review')}>درخواست بازبینی مستقل</button>}
+     {path==='/data/ingestion'&&!item.state.includes('cancel')&&<button className="border rounded p-2" onClick={()=>transition(item,'cancel')}>درخواست لغو (نمایشی)</button>}
+     {path==='/data/ingestion'&&<button className="border rounded p-2" onClick={()=>transition(item,'retry')}>تلاش مجدد پیونددار (نمایشی)</button>}
++    {item.state==='awaiting_independent_review'&&((path==='/executive/briefs'&&item.tab===2)||(path==='/settings/modules'&&item.tab===2))&&<button className="border rounded p-2" disabled={item.createdBy===userId||item.values.reviewer!==userId} onClick={()=>approve(item)}>تأیید مستقل در محیط نمایشی</button>}
++    {path==='/executive/briefs'&&item.tab===3&&<button className="border rounded p-2" disabled={item.state!=='publication_request_unapproved'||item.createdBy!==userId} onClick={()=>publish(item)}>تولید نسخه منتشرشده نمایشی</button>}
++    {path==='/settings/modules'&&item.tab===2&&item.values.target==='active'&&<button className="border rounded p-2" disabled={item.state!=='review_approved_synthetic'||item.createdBy!==userId} onClick={()=>promote(item)}>فعال‌سازی محلی (فیکسچر)</button>}
+     {path==='/data/identity'&&<button className="border rounded p-2" onClick={()=>transition(item,'successor')}>درخواست جانشین / Unmerge</button>}
++   {item.state==='published_synthetic'&&path==='/executive/briefs'&&<p>خروجی تأییدشده فقط برای این مرورگر: {item.id} · {item.publishedAt} · ارسال واقعی انجام نشد.</p>}
+    </div></div></details>)}</div>
+   </div>
+  </section>;
+diff --git a/src/him/components/KnowledgeWorkspace.tsx b/src/him/components/KnowledgeWorkspace.tsx
+index 8209aa7..e4d5737 100644
+--- a/src/him/components/KnowledgeWorkspace.tsx
++++ b/src/him/components/KnowledgeWorkspace.tsx
+@@ -9,18 +9,21 @@ type Document = {
+   title: string;
+   owner: string;
+   category: string;
++  language?: 'fa'|'en';
++  authority?:string; accessClass?:'synthetic_internal'|'synthetic_restricted';
+   version: number;
+   effectiveFrom: string;
+   effectiveTo: string;
+   retention: string;
+   fileLabel: string;
+   siteId: string;
+-  state: 'draft' | 'review_requested' | 'publication_requested';
++  state: 'draft' | 'review_requested' | 'review_approved_synthetic' | 'publication_requested' | 'published_synthetic' | 'withdrawn_synthetic';
+   createdAt: string;
+   parentId?: string;
+   reason?: string;
+   abstract?: string;
+   reviewerId?: string;
++  createdBy?: string; reviewedAt?:string; publishedAt?:string; withdrawnAt?:string;
+ };
+ const field = 'block w-full rounded-lg border border-slate-300 bg-white p-2 text-sm mt-1';
+ const btn = 'rounded-lg bg-teal-800 px-3 py-2 text-sm text-white disabled:opacity-40';
+@@ -35,17 +38,17 @@ const get = (key: string) => {
+ };
+ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName: string }) {
+   const { scope, user } = useApp();
+-  const key = scopedDraftKey(
+-    'him.knowledge.local.v1',
+-    'documents',
+-    scope.siteId || 'none',
+-    user?.id || 'guest',
+-  );
+-  const [items, setItems] = useState<Document[]>(() => get(key));
++  // Site-scoped only for isolated DEMO accounts in one browser; not an authorization system.
++  const key = `him.knowledge.demo.shared.v2:${scope.siteId||'none'}`;
++  const legacyKey = scopedDraftKey('him.knowledge.local.v1','documents',scope.siteId||'none',user?.id||'guest');
++  const [items, setItems] = useState<Document[]>(() => {const shared=get(key);return shared.length?shared:get(legacyKey);});
+   const [tab, setTab] = useState(0);
+   const [title, setTitle] = useState(''),
+     [owner, setOwner] = useState(''),
+     [category, setCategory] = useState('policy'),
++    [language,setLanguage]=useState<'fa'|'en'>('fa'),
++    [authority,setAuthority]=useState(''),
++    [accessClass,setAccessClass]=useState<'synthetic_internal'|'synthetic_restricted'>('synthetic_internal'),
+     [effectiveFrom, setFrom] = useState(''),
+     [effectiveTo, setTo] = useState(''),
+     [retention, setRetention] = useState(''),
+@@ -73,6 +76,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+     if (
+       !title.trim() ||
+       !owner.trim() ||
++      !authority.trim() ||
+       !effectiveFrom ||
+       !effectiveTo ||
+       effectiveTo < effectiveFrom ||
+@@ -83,7 +87,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+       id: `DOC-SYN-${Date.now()}`,
+       title: title.trim(),
+       owner: owner.trim(),
+-      category,
++      category,language,authority:authority.trim(),accessClass,
+       version: 1,
+       effectiveFrom,
+       effectiveTo,
+@@ -93,6 +97,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+       siteId: scope.siteId || '',
+       state: 'draft',
+       createdAt: new Date().toISOString(),
++      createdBy:user?.id||'guest',
+     };
+     if (saveItems([d, ...items])) {
+       setSelected(d.id);
+@@ -101,8 +106,10 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+     }
+   };
+   const change = (action: 'review_requested' | 'publication_requested' | 'successor') => {
+-    if (!selectedDoc || reason.trim().length < 10) return;
+-    if (action !== 'successor' && (!reviewerId.trim() || reviewerId.trim() === user?.id)) return;
++    if (!selectedDoc || selectedDoc.createdBy!==user?.id || reason.trim().length < 10) return;
++    if (action !== 'successor' && !DEMO_USERS.some(x=>x.id===reviewerId && x.id!==user?.id && x.permittedSiteIds.includes(scope.siteId||''))) return;
++    if (action==='publication_requested' && selectedDoc.state!=='review_approved_synthetic')return;
++    if (action==='review_requested' && selectedDoc.state!=='draft')return;
+     const d: Document =
+       action === 'successor'
+         ? {
+@@ -113,6 +120,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+             state: 'draft',
+             reason: reason.trim(),
+             reviewerId: undefined,
++            createdBy:user?.id||'guest',reviewedAt:undefined,publishedAt:undefined,withdrawnAt:undefined,
+             createdAt: new Date().toISOString(),
+           }
+         : { ...selectedDoc, state: action, reviewerId: reviewerId.trim(), reason: reason.trim() };
+@@ -123,6 +131,20 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+       setReviewerId('');
+     }
+   };
++  const approveReview=()=>{
++    if(!selectedDoc || selectedDoc.state!=='review_requested' || selectedDoc.reviewerId!==user?.id || selectedDoc.createdBy===user?.id)return;
++    saveItems(items.map(d=>d.id===selectedDoc.id?{...d,state:'review_approved_synthetic',reviewedAt:new Date().toISOString()}:d));
++  };
++  const finalize=(action:'published_synthetic'|'withdrawn_synthetic')=>{
++    if(!selectedDoc || !user || !reason.trim() || reason.trim().length<10)return;
++    if(action==='published_synthetic'&&(selectedDoc.state!=='publication_requested'||!selectedDoc.authority))return;
++    if(action==='withdrawn_synthetic'&&selectedDoc.state!=='published_synthetic')return;
++    if(selectedDoc.createdBy!==user.id)return;
++    const now=new Date().toISOString();
++    saveItems(items.map(d=>d.id===selectedDoc.id?{...d,state:action,publishedAt:action==='published_synthetic'?now:d.publishedAt,withdrawnAt:action==='withdrawn_synthetic'?now:d.withdrawnAt,reason:reason.trim()}:d));
++    setReason('');
++  };
++  const eligible=items.filter(d=>d.state==='published_synthetic' && d.siteId===scope.siteId && d.accessClass!=='synthetic_restricted' && (!asOf||(d.effectiveFrom<=asOf&&d.effectiveTo>=asOf)) && !items.some(v=>v.parentId===d.id&&v.state==='published_synthetic'));
+   const matched = useMemo(
+     () =>
+       items.filter(
+@@ -139,8 +161,8 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+       <section className="space-y-4" dir="rtl" data-testid="knowledge-retrieval">
+         <h1 className="text-xl font-bold">KNO-02 · جستجوی دانش و شواهد</h1>
+         <p className={info}>
+-          فقط کاتالوگ پیش‌نویس‌های همین سایت/کاربر جست‌وجو می‌شود؛ موتور بازیابی ACL، منبع رسمی و
+-          نسخه منتشرشده متصل نیست. هیچ متنی را به عنوان سیاست مصوب یا پاسخ قطعی ارائه نکنید.
++          نسخه‌هایی که در همین مرورگر با بازبین مستقل آزمایشی تأیید و منتشر شده‌اند می‌توانند
++          پاسخ مستند صرفاً نمایشی بسازند؛ ACL سازمانی، امضا و مخزن رسمی متصل نیستند. هیچ پاسخ محلی سیاست مصوب واقعی نیست.
+         </p>
+         <div className="grid sm:grid-cols-2 gap-3">
+           <label className="text-sm">
+@@ -219,18 +241,21 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+             ) : (
+               <>
+                 <p role="status" className="text-amber-900">
+-                  پاسخ قابل استناد موجود نیست (abstained): نمایه و ACL رسمی متصل نیستند.
++                  {matched.some(d=>eligible.some(e=>e.id===d.id)&&Boolean(d.abstract))
++                    ? 'نتیجه مثبت فقط در محیط مصنوعی: گزیده دارای ارجاع صفحه و نسخه؛ اعتبار عملیاتی تأیید نشده است.'
++                    : 'شواهد کافی نیست (abstained): متن منتشرشده نمایشی و واجد شرایط یافت نشد.'}
+                 </p>
+                 <p className="text-xs">
+-                  {matched.length} پیش‌نویس محلی با عنوان منطبق یافت شد؛ این‌ها منبع منتشرشده محسوب
+-                  نمی‌شوند.
++                  {matched.length} سند منطبق در سایت آزمایشی. فقط وضعیت published_synthetic
++                  می‌تواند برای پاسخ مثبت نمونه استفاده شود.
+                 </p>
+                 {matched.map((d) => (
+                   <div key={d.id} className="border p-2 text-xs">
+                     <b>{d.title}</b> · {d.id} · نسخه {d.version} · {d.state} · مالک {d.owner} · دوره{' '}
+                     {d.effectiveFrom} تا {d.effectiveTo}
+-                    {d.abstract?<blockquote className="mt-1 rounded bg-slate-50 p-2">گزیده متن آزمایشی و تأییدنشده: {d.abstract.slice(0,450)}{d.abstract.length>450?'…':''}</blockquote>:<p>متن قابل بازیابی ثبت نشده است.</p>}
+-                    <p>شناسه ارجاع محلی: <bdi dir="ltr">{d.id}@{d.version}</bdi> · وضعیت استناد معتبر: ناموجود (سند منتشر یا مجوز ارزیابی نشده)</p>
++                    {eligible.some(e=>e.id===d.id)&&d.abstract?<blockquote className="mt-1 rounded bg-slate-50 p-2">{d.abstract.slice(0,450)}{d.abstract.length>450?'…':''}</blockquote>:<p>متن برای پاسخ مثبت مجاز نیست یا منتشر نشده است.</p>}
++                    <p>ارجاع محلی: <bdi dir="ltr">{d.id}@{d.version}#page-1</bdi> · {eligible.some(e=>e.id===d.id)&&d.abstract?'پاسخ نمونه مجاز با ارجاع به صفحه ۱':'غیرمجاز برای پاسخ مثبت؛ وضعیت یا متن کافی نیست'}</p>
++                    {eligible.some(e=>e.id===d.id)&&d.abstract&&<details><summary className="cursor-pointer underline text-teal-700">بازکردن منبع · صفحه ۱ (نمایشی)</summary><p>نسخه {d.version} · از {d.effectiveFrom} تا {d.effectiveTo} · تأیید محلی {d.reviewedAt}</p><p className="mt-1 whitespace-pre-wrap">{d.abstract}</p></details>}
+                   </div>
+                 ))}
+               </>
+@@ -288,6 +313,9 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+               <option value="guidance">راهنما</option>
+             </select>
+           </label>
++          <label className="text-sm">زبان سند<select className={field} value={language} onChange={e=>setLanguage(e.target.value as 'fa'|'en')}><option value="fa">فارسی</option><option value="en">English</option></select></label>
++          <label className="text-sm">مرجع اختیار انتشار *<input className={field} value={authority} onChange={e=>setAuthority(e.target.value)} placeholder="شناسه مرجع نمونه؛ نه مجوز واقعی"/></label>
++          <label className="text-sm">سطح دسترسی نمونه<select className={field} value={accessClass} onChange={e=>setAccessClass(e.target.value as 'synthetic_internal'|'synthetic_restricted')}><option value="synthetic_internal">قابل جستجو در فیکسچر همان سایت</option><option value="synthetic_restricted">محدود، غیرقابل پاسخ</option></select></label>
+           <label className="text-sm">
+             فایل نمونه (فقط نام/فراداده)
+             <input
+@@ -332,6 +360,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+               disabled={
+                 !title.trim() ||
+                 !owner.trim() ||
++                !authority.trim() ||
+                 !effectiveFrom ||
+                 !effectiveTo ||
+                 effectiveTo < effectiveFrom ||
+@@ -373,10 +402,11 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+             {selectedDoc.fileLabel || 'ثبت نشده'}
+           </p>
+           <p className="text-sm">
+-            Retention پیشنهادی: {selectedDoc.retention} · حذف واقعی/Legal hold: متصل نیست
++            Retention پیشنهادی: {selectedDoc.retention} · زبان: {selectedDoc.language||'نامشخص'} · مرجع اختیار: {selectedDoc.authority||'ثبت نشده'} · دسترسی: {selectedDoc.accessClass||'نامشخص'} · حذف واقعی/Legal hold: متصل نیست
+           </p>
+           {selectedDoc.abstract&&<p className="rounded bg-slate-50 p-3 text-sm">گزیده متن نمایشی: {selectedDoc.abstract}</p>}
+-          {selectedDoc.reviewerId&&<p className="text-xs">بازبین پیشنهادی ثبت‌شده: {selectedDoc.reviewerId} · امضا/تأیید واقعی وجود ندارد</p>}
++          {selectedDoc.reviewerId&&<p className="text-xs">بازبین نمونه: {selectedDoc.reviewerId} · بازبینی: {selectedDoc.reviewedAt||'انجام‌نشده'}</p>}
++          {selectedDoc.publishedAt&&<p className="text-xs">انتشار صرفاً نمایشی: {selectedDoc.publishedAt}</p>}
+           <div className="text-xs">
+             {items
+               .filter(
+@@ -408,25 +438,28 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
+           <div className="flex gap-2 flex-wrap">
+             <button
+               className={btn}
+-              disabled={reason.trim().length < 10}
++              disabled={reason.trim().length < 10 || selectedDoc.createdBy!==user?.id}
+               onClick={() => change('successor')}
+             >
+               ساخت نسخه جانشین
+             </button>
+             <button
+               className={btn}
+-              disabled={reason.trim().length < 10 || !reviewerId.trim() || reviewerId.trim() === user?.id}
++              disabled={reason.trim().length < 10 || selectedDoc.createdBy!==user?.id || !reviewerId.trim() || reviewerId.trim() === user?.id}
+               onClick={() => change('review_requested')}
+             >
+               درخواست بازبینی مستقل
+             </button>
+             <button
+               className={btn}
+-              disabled={reason.trim().length < 10 || selectedDoc.state !== 'review_requested' || !reviewerId.trim() || reviewerId.trim() === user?.id}
++              disabled={reason.trim().length < 10 || selectedDoc.createdBy!==user?.id || selectedDoc.state !== 'review_approved_synthetic' || !reviewerId.trim() || reviewerId.trim() === user?.id}
+               onClick={() => change('publication_requested')}
+             >
+               درخواست انتشار
+             </button>
++            <button className={btn} disabled={selectedDoc.state!=='review_requested'||selectedDoc.reviewerId!==user?.id||selectedDoc.createdBy===user?.id} onClick={approveReview}>تأیید بازبینی مستقل (نمونه)</button>
++            <button className={btn} disabled={selectedDoc.state!=='publication_requested'||selectedDoc.createdBy!==user?.id||reason.trim().length<10} onClick={()=>finalize('published_synthetic')}>تکمیل انتشار نمایشی</button>
++            <button className={btn} disabled={selectedDoc.state!=='published_synthetic'||selectedDoc.createdBy!==user?.id||reason.trim().length<10} onClick={()=>finalize('withdrawn_synthetic')}>پس‌گرفتن نسخه (نمایشی)</button>
+           </div>
+           <p className={info}>
+             حالت «درخواست انتشار» گواه مجوز یا انتشار نیست؛ بدون بازبین مستقل و سند معتبر، جستجوی
+diff --git a/src/him/components/SpecializedWorkspaces.tsx b/src/him/components/SpecializedWorkspaces.tsx
+index ce678bc..d181ff3 100644
+--- a/src/him/components/SpecializedWorkspaces.tsx
++++ b/src/him/components/SpecializedWorkspaces.tsx
+@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
+ import { useApp } from '../context/AppContext';
+ import { validTimeWindow, validMaintenanceReason, normalizeWeights } from './domainDraftRules';
+ import {DEMO_AST_EVENTS,DEMO_AST_READINGS,inDateRange} from './assetSourceFixtures';
++import {SITES_DATA} from '../data/mockData';
+ 
+ /** Synthetic-only planning and request drafts: never grants permissions or dispatches source actions. */
+ type Draft = { id: string; category: string; title: string; createdAt: string; values: Record<string,string>; assessment: string };
+@@ -38,9 +39,10 @@ const samplePortfolio:SyntheticAsset[]=[
+ ];
+ function AssetPortfolio({select}:{select:(id:string)=>void}){
+  const {scope}=useApp();const [unit,setUnit]=useState('all'),[klass,setKlass]=useState('all'),[criticality,setCriticality]=useState('all'),[status,setStatus]=useState('all'),[freshness,setFreshness]=useState('all'),[risk,setRisk]=useState('all'),[query,setQuery]=useState(''),[selected,setSelected]=useState('');
+- const rows=samplePortfolio.map((asset,i)=>({...asset,id:`SYN-AST-${scope.siteId}-${String(i+1).padStart(3,'0')}`})).filter(a=>(unit==='all'||a.unit===unit)&&(klass==='all'||a.klass===klass)&&(criticality==='all'||a.criticality===criticality)&&(status==='all'||a.status===status)&&(freshness==='all'||a.freshness===freshness)&&(risk==='all'||a.risk===risk)&&(`${a.id} ${a.name} ${a.location}`.toLowerCase().includes(query.toLowerCase())));
++ const canonicalSite=SITES_DATA.find(s=>s.id===scope.siteId||s.code===scope.siteId)?.code;
++ const rows=samplePortfolio.map((asset,i)=>({...asset,id:`SYN-AST-${canonicalSite||scope.siteId}-${String(i+1).padStart(3,'0')}`})).filter(a=>(unit==='all'||a.unit===unit)&&(klass==='all'||a.klass===klass)&&(criticality==='all'||a.criticality===criticality)&&(status==='all'||a.status===status)&&(freshness==='all'||a.freshness===freshness)&&(risk==='all'||a.risk===risk)&&(`${a.id} ${a.name} ${a.location}`.toLowerCase().includes(query.toLowerCase())));
+  const filter=(label:string,val:string,set:(v:string)=>void,options:string[])=>field(label,<select className={inputClass} value={val} onChange={e=>set(e.target.value)}><option value="all">همه</option>{options.map(x=><option key={x}>{x}</option>)}</select>);
+- return <div className="space-y-4" data-testid="asset-portfolio"><h2 className="font-bold">AST-01 · پرتفوی دارایی‌های نمونه</h2><Blocked>این سه دارایی داده ثابت ساختگی مخصوص آزمون فرانت‌اند هستند؛ تعلق سازمانی، تازگی، خرابی، استفاده و امتیاز ریسک واقعی تأیید نشده است. همه ردیف‌ها فقط در سایت انتخابی به صورت نمونه قابل مرورند.</Blocked><p className="text-sm">سایت: {scope.siteName} · دوره پیش‌فرض: ۳۰ روز محلی کامل گذشته (بدون snapshot معتبر)</p><div className="grid grid-cols-2 md:grid-cols-4 gap-2">{filter('واحد',unit,setUnit,['ICU','Emergency','Facilities'])}{filter('کلاس',klass,setKlass,['monitor','pump','power'])}{filter('بحرانی بودن',criticality,setCriticality,['high','critical'])}{filter('وضعیت بهره‌برداری',status,setStatus,['in_service','maintenance_pending'])}{filter('تازگی',freshness,setFreshness,['fresh','stale','unknown'])}{filter('ریسک مصوب',risk,setRisk,['low','medium','high','not_evaluated'])}{field('شناسه / نام',<input className={inputClass} value={query} onChange={e=>setQuery(e.target.value)}/>)}</div><div className="overflow-x-auto"><table className="min-w-[850px] w-full text-right text-xs"><thead><tr className="border-b bg-slate-50">{['شناسه منبع','نام','واحد / مکان','کلاس','وضعیت','تازگی','مدت توقف','بهره‌برداری','ریسک','میزکار'].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(a=><tr key={a.id} className="border-b"><td className="p-2 font-mono" dir="ltr">{a.id}</td><td className="p-2">{a.name}</td><td className="p-2">{a.unit} / {a.location}</td><td className="p-2">{a.klass}</td><td className="p-2">{a.status}</td><td className="p-2">نامشخص</td><td className="p-2">نامشخص</td><td className="p-2">نامشخص</td><td className="p-2">ارزیابی نشده</td><td className="p-2"><button className="text-teal-800 underline" onClick={()=>{setSelected(a.id);select(a.id)}}>بازکردن دارایی</button></td></tr>)}</tbody></table></div>{!rows.length&&<p>موردی با این فیلترها یافت نشد.</p>}{selected&&<section className="border rounded-lg p-3 space-y-2" data-testid="asset-detail"><h3 className="font-bold">AST-02 · جزئیات {selected}</h3><p className="text-sm">آخرین نسخه همگام‌سازی: ناموجود · وضعیت هویت: نیازمند تأیید · تاریخچه منبع و تله‌متری: متصل نیست</p><button onClick={()=>select(selected)} className={btnClass}>استفاده از شناسه در بازبینی نگهداشت</button></section>}</div>;
++ return <div className="space-y-4" data-testid="asset-portfolio"><h2 className="font-bold">AST-01 · پرتفوی دارایی‌های نمونه</h2><Blocked>این سه دارایی داده ثابت ساختگی مخصوص آزمون فرانت‌اند هستند؛ تعلق سازمانی، تازگی، خرابی، استفاده و امتیاز ریسک واقعی تأیید نشده است. همه ردیف‌ها فقط در سایت انتخابی به صورت نمونه قابل مرورند.</Blocked><p className="text-sm">سایت: {scope.siteName} · دوره پیش‌فرض: ۳۰ روز محلی کامل گذشته (بدون snapshot معتبر)</p><div className="grid grid-cols-2 md:grid-cols-4 gap-2">{filter('واحد',unit,setUnit,['ICU','Emergency','Facilities'])}{filter('کلاس',klass,setKlass,['monitor','pump','power'])}{filter('بحرانی بودن',criticality,setCriticality,['high','critical'])}{filter('وضعیت بهره‌برداری',status,setStatus,['in_service','maintenance_pending'])}{filter('تازگی',freshness,setFreshness,['fresh','stale','unknown'])}{filter('ریسک مصوب',risk,setRisk,['low','medium','high','not_evaluated'])}{field('شناسه / نام',<input className={inputClass} value={query} onChange={e=>setQuery(e.target.value)}/>)}</div><div className="overflow-x-auto"><table className="min-w-[850px] w-full text-right text-xs"><thead><tr className="border-b bg-slate-50">{['شناسه منبع','نام','واحد / مکان','کلاس','وضعیت','تازگی','مدت توقف','بهره‌برداری','ریسک','میزکار'].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(a=><tr key={a.id} className="border-b"><td className="p-2 font-mono" dir="ltr">{a.id}</td><td className="p-2">{a.name}</td><td className="p-2">{a.unit} / {a.location}</td><td className="p-2">{a.klass}</td><td className="p-2">{a.status}</td><td className="p-2">نامشخص</td><td className="p-2">نامشخص</td><td className="p-2">نامشخص</td><td className="p-2">ارزیابی نشده</td><td className="p-2"><button className="text-teal-800 underline" onClick={()=>{setSelected(a.id);select(a.id)}}>بازکردن دارایی</button></td></tr>)}</tbody></table></div>{!rows.length&&<p>موردی با این فیلترها یافت نشد.</p>}{selected&&<section className="border rounded-lg p-3 space-y-2" data-testid="asset-detail"><h3 className="font-bold">AST-02 · جزئیات {selected}</h3><p className="text-sm">شواهد نمونه مرتبط: {DEMO_AST_EVENTS.filter(e=>e.assetId===selected).length} رخداد و {DEMO_AST_READINGS.filter(e=>e.assetId===selected).length} خوانش · داده واقعی CMMS متصل نیست</p><button onClick={()=>select(selected)} className={btnClass}>استفاده از شناسه در بازبینی نگهداشت</button></section>}</div>;
+ }
+ function MeterAnalysis({save,entries}:{save:ReturnType<typeof useLocalDrafts>['save'];entries:Draft[]}){
+  const [meter,setMeter]=useState(''),[interval,setInterval]=useState(''),[unit,setUnit]=useState('kWh'),[baseline,setBaseline]=useState(''),[peer,setPeer]=useState(''),[covariates,setCovariates]=useState(''),[exclusions,setExclusions]=useState(''),[reason,setReason]=useState(''),[reference,setReference]=useState('');
+@@ -92,12 +94,12 @@ function Assets({save,entries}:{save:ReturnType<typeof useLocalDrafts>['save'];e
+   <h2 className="font-bold">{tab===1?'AST-02 · تاریخچه همگام‌سازی منبع':'AST-02 · مرور تله‌متری تجهیزات'}</h2>
+   <div className="grid sm:grid-cols-2 gap-3">
+    {field('شناسه دارایی / منبع',<input className={inputClass} value={historyAsset||selectedAsset} onChange={e=>{setHistoryAsset(e.target.value);setSelectedAsset('');}} placeholder="شناسه دارایی"/>)}
+-   {tab===2?field('اندازه‌گیری / شاخص',<select className={inputClass} value={telemetryMetric} onChange={e=>setTelemetryMetric(e.target.value)}><option value="">انتخاب شاخص</option><option value="temperature">دما</option><option value="runtime">ساعات کارکرد</option><option value="energy">مصرف انرژی</option></select>):field('مرجع تغییر / نوع رخداد',<select className={inputClass} value={telemetryUnit} onChange={e=>setTelemetryUnit(e.target.value)}><option value="">همه رخدادها</option><option value="maintenance">نگهداشت</option><option value="status">وضعیت منبع</option><option value="sync">همگام‌سازی</option></select>)}
++   {tab===2?field('اندازه‌گیری / شاخص',<select className={inputClass} value={telemetryMetric} onChange={e=>setTelemetryMetric(e.target.value)}><option value="">انتخاب شاخص</option><option value="temperature">دما</option><option value="runtime">ساعات کارکرد</option><option value="energy">مصرف انرژی</option></select>):field('مرجع تغییر / نوع رخداد',<select className={inputClass} value={telemetryUnit} onChange={e=>setTelemetryUnit(e.target.value)}><option value="">همه رخدادها</option><option value="work_order">نگهداشت</option><option value="status">وضعیت منبع</option><option value="synchronization">همگام‌سازی</option></select>)}
+    {field('از تاریخ',<input type="date" className={inputClass} value={historyFrom} onChange={e=>setHistoryFrom(e.target.value)}/>)}
+    {field('تا تاریخ',<input type="date" className={inputClass} value={historyTo} onChange={e=>setHistoryTo(e.target.value)}/>)}
+   </div>
+   {historyFrom&&historyTo&&historyTo<historyFrom&&<p role="alert" className="text-rose-700 text-xs">پایان دوره قبل از شروع آن است.</p>}
+-  <Blocked>{tab===1?'رویدادهای ثبت‌شده در منبع و وضعیت همگام‌سازی تأیید نشده‌اند. سابقه‌ای جعل نمی‌شود.':'خوانش خام، واحد UCUM، کیفیت سنسور و زمان دریافت موجود نیست. روند و هشدار بدون داده معتبر محاسبه نمی‌شود.'}</Blocked>
++  <Blocked>{tab===1?'رخدادهای پایین فقط فیکسچر مصنوعی دارای زمان منبع و دریافت‌اند؛ وضعیت واقعی منبع تأیید نشده است.':'خوانش‌های پایین فقط فیکسچر مصنوعی با واحد UCUM و زمان‌های مجزا هستند؛ سنسور و کیفیت عملیاتی تأیید نشده است.'}</Blocked>
+   {tab===1?(()=>{const matched=DEMO_AST_EVENTS.filter(e=>e.assetId===(historyAsset||selectedAsset)&&(!telemetryUnit||e.kind===telemetryUnit)&&inDateRange(e.eventAt,historyFrom,historyTo));return matched.length?<div className="space-y-2"><h3 className="font-semibold text-sm">رخدادهای کاملاً مصنوعی برای کنترل نمای UI</h3>{matched.map(e=><details key={e.eventAt+e.kind} className="rounded border p-3 text-xs"><summary>{e.kind} · {e.status} · {e.eventAt}</summary><p>منبع نمایشی: {e.source} · نسخه: {e.version}</p><p>زمان رخداد: {e.eventAt} · زمان دریافت: {e.ingestedAt}</p><p>{e.detail}</p></details>)}</div>:<p className="rounded-lg bg-slate-50 p-3 text-sm">برای شناسه و بازه انتخاب‌شده رخداد مصنوعی موجود نیست. رخداد واقعی هم متصل نشده است.</p>})():(()=>{const matched=DEMO_AST_READINGS.filter(e=>e.assetId===(historyAsset||selectedAsset)&&(!telemetryMetric||e.metric===telemetryMetric)&&inDateRange(e.sourceAt,historyFrom,historyTo));return matched.length?<div className="space-y-2"><h3 className="font-semibold text-sm">خوانش‌های صرفاً نمایشی (بدون تشخیص ناهنجاری)</h3><div className="overflow-x-auto"><table className="min-w-[570px] w-full text-xs text-right"><thead><tr className="border-b">{['سنجش','مقدار','واحد UCUM','زمان منبع','زمان دریافت','کیفیت'].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead><tbody>{matched.map(e=><tr key={e.metric+e.sourceAt} className="border-b"><td className="p-2">{e.metric}</td><td className="p-2">{e.value}</td><td className="p-2">{e.unit}</td><td className="p-2">{e.sourceAt}</td><td className="p-2">{e.ingestedAt}</td><td className="p-2">{e.quality}</td></tr>)}</tbody></table></div></div>:<p className="rounded-lg bg-slate-50 p-3 text-sm">برای فیلتر فعلی خوانش ساختگی تعریف نشده است؛ داده معتبر واقعی هم وجود ندارد.</p>})()}
+ 
+  </section>:<><h2 className="font-bold">{tabs[tab]}</h2><Blocked>این بخش به داده مرجع، مجوز و قرارداد مربوط به CMMS نیاز دارد و هنوز گردش‌کار کاملش پیاده نشده است. داده خیالی به‌عنوان تاریخچه/شاهد تجهیزات نمایش داده نمی‌شود.</Blocked></>}</Panel></>;
+diff --git a/src/him/components/SyntheticDataFlow.tsx b/src/him/components/SyntheticDataFlow.tsx
+new file mode 100644
+index 0000000..79c5b8a
+--- /dev/null
++++ b/src/him/components/SyntheticDataFlow.tsx
+@@ -0,0 +1,55 @@
++import React,{useEffect,useState} from 'react';
++import {useApp} from '../context/AppContext';
++
++/** DAT-01/02/03/05: deterministic fake pipeline, deliberately isolated from operational endpoints. */
++export type DemoInput={eventId:string; entity:string;value:number;unit:string;contract:string;schemaVersion:string};
++export type DemoBatch={id:string;connector:string;contract:string;startedAt:string;status:'simulated'|'replayed';sourceCutoff:string;accepted:number;duplicate:number;quarantined:number;rows:DemoInput[];replayOf?:string};
++export const DEMO_DATA_INPUT:DemoInput[]=[
++ {eventId:'SYN-EVENT-1',entity:'SYN-ICU-1',value:80,unit:'beds',contract:'demo-bed-occupancy',schemaVersion:'1'},
++ {eventId:'SYN-EVENT-1',entity:'SYN-ICU-1',value:80,unit:'beds',contract:'demo-bed-occupancy',schemaVersion:'1'},
++ {eventId:'SYN-EVENT-2',entity:'SYN-ICU-2',value:-2,unit:'beds',contract:'demo-bed-occupancy',schemaVersion:'1'},
++ {eventId:'SYN-EVENT-3',entity:'SYN-ICU-2',value:85,unit:'beds',contract:'demo-bed-occupancy',schemaVersion:'1'},
++];
++export function runDemoBatch(input:DemoInput[],contract='demo-bed-occupancy',acceptedAlready=new Set<string>()) {
++ const seen=new Set(acceptedAlready),valid:DemoInput[]=[];let duplicate=0,quarantined=0;
++ for(const row of input){
++  if(row.contract!==contract||row.schemaVersion!=='1'||!Number.isFinite(row.value)||row.value<0||row.unit!=='beds'){quarantined++;continue;}
++  if(seen.has(row.eventId)){duplicate++;continue;}
++  seen.add(row.eventId);valid.push(row);
++ }
++ return {accepted:valid.length,duplicate,quarantined,rows:valid,checkpoint:[...seen].sort()};
++}
++export function demoSemanticOccupancy(batches:DemoBatch[]){
++ const unique=new Map<string,DemoInput>();
++ for(const batch of [...batches].reverse())for(const row of batch.rows)if(!unique.has(row.eventId))unique.set(row.eventId,row);
++ const rows=[...unique.values()];return {value:rows.reduce((sum,row)=>sum+row.value,0),count:rows.length,ids:rows.map(x=>x.eventId),version:'demo-bed-occupancy@1',unit:'beds',valid:rows.length>0};
++}
++const k=(site:string)=>`him.synthetic.data-pipeline.v1:${site}`;
++function read(key:string):DemoBatch[]{try{const value=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(value)?value:[];}catch{return [];}}
++const button='rounded-lg bg-teal-800 px-3 py-2 text-xs text-white disabled:opacity-40';
++export function SyntheticDataFlow(){
++ const {scope}=useApp();const key=k(scope.siteId||'none');
++ const [batches,setBatches]=useState<DemoBatch[]>(()=>read(key));
++ const [connector,setConnector]=useState('SYN-PACS-READONLY');const [contract,setContract]=useState('demo-bed-occupancy');const [version,setVersion]=useState('1');
++ const [replayId,setReplayId]=useState<string|null>(null);
++ useEffect(()=>{try{localStorage.setItem(key,JSON.stringify(batches));}catch{}},[key,batches]);
++ const compatible=contract==='demo-bed-occupancy'&&version==='1'&&connector.trim().startsWith('SYN-');
++ const simulate=()=>{
++  if(!compatible)return;
++  const previous=new Set(batches.flatMap(x=>x.rows.map(r=>r.eventId)));
++  const result=runDemoBatch(DEMO_DATA_INPUT,contract,previous);
++  const b:DemoBatch={id:`SYN-JOB-${Date.now()}`,connector,contract,startedAt:new Date().toISOString(),status:replayId?'replayed':'simulated',sourceCutoff:'2026-10-23T23:59:59+03:30',accepted:result.accepted,duplicate:result.duplicate,quarantined:result.quarantined,rows:result.rows,replayOf:replayId||undefined};
++  setBatches(x=>[b,...x]);setReplayId(null);
++ };
++ const metric=demoSemanticOccupancy(batches);
++ return <section data-testid="synthetic-data-flow" className="rounded-xl border p-4 space-y-3 bg-white">
++  <h3 className="font-bold">DAT · تست اتصال، دریافت، بازپخش و پرس‌وجوی صرفاً مصنوعی</h3>
++  <p className="text-xs text-amber-800">این فرایند هیچ fetch، اتصال PACS/HIS، اجرای ETL یا پرس‌وجوی بیمارستانی ندارد. فقط ۴ رخداد بدون داده بیمار را در حافظه مرورگر بررسی می‌کند.</p>
++  <div className="grid gap-3 sm:grid-cols-3 text-sm"><label>کانکتور نمونه<input className="w-full border rounded p-2" value={connector} onChange={e=>setConnector(e.target.value)}/></label><label>قرارداد نمونه<input className="w-full border rounded p-2" value={contract} onChange={e=>setContract(e.target.value)}/></label><label>نسخه Schema<input className="w-full border rounded p-2" value={version} onChange={e=>setVersion(e.target.value)}/></label></div>
++  <p className="text-xs">نتیجه سازگاری قراردادی در فیکسچر: {compatible?'PASS (mock)':'BLOCKED — قرارداد/نسخه/کانکتور ناسازگار'}. قرارداد `demo-bed-occupancy@1` فقط برای نمونه ساخته شده است.</p>
++  <button className={button} disabled={!compatible} onClick={simulate}>{replayId?`بازپخش مجدد ${replayId} (idempotent)`:'اجرای تست دریافت مصنوعی'}</button>
++  <div className="grid sm:grid-cols-3 gap-2 text-sm"><div className="border rounded p-2">پرس‌وجوی معنایی نمونه: {metric.valid?metric.value:'ناموجود'} {metric.unit}</div><div className="border rounded p-2">ردیف‌های یکتا: {metric.count}</div><div className="border rounded p-2">نسخه متریک: {metric.version}</div></div>
++  <p className="text-xs">فقط رخدادهای پذیرفته‌شده با eventId یکتا جمع می‌شوند؛ مقدار منفی قرنطینه و duplicate شمارش می‌شود. این «تخت اشغال» آمار مصوب نیست.</p>
++  {batches.map(x=><details key={x.id} className="rounded border p-2 text-xs"><summary className="cursor-pointer">{x.id} · {x.status} · accepted={x.accepted} duplicate={x.duplicate} quarantine={x.quarantined}</summary><p>connector={x.connector} contract={x.contract} cutoff={x.sourceCutoff} replayOf={x.replayOf||'—'}</p><p>lineage: {x.rows.map(r=>`${r.eventId} / ${r.entity} / ${r.value}`).join(' | ')||'no accepted new events'}</p><button className="mt-2 border rounded p-2" onClick={()=>setReplayId(x.id)}>انتخاب برای Replay (بدون اجرای خارجی)</button></details>)}
++ </section>;
++}
+diff --git a/src/him/components/SyntheticRetentionPlan.tsx b/src/him/components/SyntheticRetentionPlan.tsx
+new file mode 100644
+index 0000000..a0256ff
+--- /dev/null
++++ b/src/him/components/SyntheticRetentionPlan.tsx
+@@ -0,0 +1,36 @@
++import React,{useState,useEffect} from 'react';
++import {useApp} from '../context/AppContext';
++import {DEMO_USERS} from '../data/mockData';
++
++/** PLT-012: browser-only, non-destructive lifecycle/hold evaluation for synthetic identifiers. */
++type RetentionPlan={id:string;siteId:string;kind:string;days:number;hold:boolean;reviewer:string;author:string;reason:string;createdAt:string;state:'review_requested'|'review_approved_synthetic';reviewedAt?:string};
++export const decideRetention=(ageDays:number,recordHold:boolean,planHold:boolean,limitDays:number)=>planHold||recordHold?'PROTECT_LEGAL_HOLD':ageDays>=limitDays?'ELIGIBLE_FOR_REVIEW_ONLY':'RETAIN';
++const sample=[
++ {id:'SYN-AUD-OLD-01',kind:'audit',ageDays:95,hold:false},
++ {id:'SYN-AUD-HOLD-02',kind:'audit',ageDays:120,hold:true},
++ {id:'SYN-MEMO-03',kind:'memo',ageDays:40,hold:false},
++] as const;
++const load=(key:string):RetentionPlan[]=>{try{const x=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(x)?x:[]}catch{return []}};
++export function SyntheticRetentionPlan(){
++ const {scope,user}=useApp();const site=scope.siteId||'none',actor=user?.id||'guest',key=`him.synthetic.retention.v1:${site}`;
++ const [plans,setPlans]=useState<RetentionPlan[]>(()=>load(key));
++ const [kind,setKind]=useState('audit'),[days,setDays]=useState('90'),[hold,setHold]=useState(true),[reviewer,setReviewer]=useState(''),[reason,setReason]=useState('');
++ useEffect(()=>{try{localStorage.setItem(key,JSON.stringify(plans))}catch{}},[key,plans]);
++ const canSave=Number.isInteger(Number(days))&&Number(days)>=1&&Number(days)<=36500&&reason.trim().length>=10&&DEMO_USERS.some(u=>u.id===reviewer&&u.id!==actor&&u.permittedSiteIds.includes(site));
++ const add=()=>{if(!canSave)return;setPlans(x=>[{id:`SYN-RET-${Date.now()}`,siteId:site,kind,days:Number(days),hold,reviewer,author:actor,reason:reason.trim(),createdAt:new Date().toISOString(),state:'review_requested'},...x]);setReason('')};
++ const approve=(id:string)=>setPlans(x=>x.map(p=>p.id===id&&p.author!==actor&&p.reviewer===actor?{...p,state:'review_approved_synthetic',reviewedAt:new Date().toISOString()}:p));
++ const latest=plans.find(p=>p.state==='review_approved_synthetic');
++ const result=latest?sample.filter(r=>r.kind===latest.kind).map(r=>({...r,decision:decideRetention(r.ageDays,r.hold,latest.hold,latest.days)})):[];
++ return <section className="rounded-xl border border-amber-300 p-4 space-y-3 bg-white" data-testid="synthetic-retention-plan" dir="rtl">
++  <h3 className="font-semibold">طرح حذف/نگهداری و Legal Hold صرفاً نمایشی</h3><p className="text-xs text-amber-900">خروجی صرفاً dry-run روی سه شناسه مصنوعی است. حتی رکورد واجد شرایط هم حذف نمی‌شود؛ بررسی سازمانی و کنترل واقعی نگهداری وجود ندارد.</p>
++  <div className="grid sm:grid-cols-2 gap-3 text-xs">
++  <label>نوع سند<select className="w-full border rounded p-2" value={kind} onChange={e=>setKind(e.target.value)}><option value="audit">ممیزی</option><option value="memo">یادداشت</option></select></label>
++  <label>حداقل سن نگهداری (روز)<input className="w-full border rounded p-2" type="number" min="1" max="36500" value={days} onChange={e=>setDays(e.target.value)}/></label>
++  <label>بازبین مستقل<select className="w-full border rounded p-2" value={reviewer} onChange={e=>setReviewer(e.target.value)}><option value="">انتخاب بازبین</option>{DEMO_USERS.filter(u=>u.id!==actor&&u.permittedSiteIds.includes(site)).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
++  <label className="flex gap-2 items-center"><input type="checkbox" checked={hold} onChange={e=>setHold(e.target.checked)}/>قفل حقوقی کلی پیشنهادی (Legal Hold)</label>
++  <label className="sm:col-span-2">مبنای تغییر (حداقل ۱۰ نویسه)<textarea className="w-full border rounded p-2" value={reason} onChange={e=>setReason(e.target.value)}/></label>
++  </div><button className="rounded bg-teal-800 px-3 py-2 text-xs text-white disabled:opacity-40" disabled={!canSave} onClick={add}>درخواست طرح نگهداری با بازبینی مستقل</button>
++  {plans.map(p=><div key={p.id} className="border p-2 text-xs"><p>{p.id} · {p.kind} · {p.days} روز · hold={String(p.hold)} · {p.state}</p>{p.state==='review_requested'&&p.reviewer===actor&&p.author!==actor&&<button className="rounded border p-2" onClick={()=>approve(p.id)}>تأیید مستقل طرح آزمایشی</button>}</div>)}
++  {latest&&<div className="border-t pt-2 text-xs"><b>نتیجه dry-run طرح {latest.id}</b>{result.map(r=><p key={r.id}>{r.id} · سن {r.ageDays} روز · {r.decision}</p>)}<p className="text-amber-900">هیچ دکمه حذف یا API حذف وجود ندارد.</p></div>}
++ </section>
++}
+diff --git a/src/him/components/WorkViews.tsx b/src/him/components/WorkViews.tsx
+index 7cd4093..fa8f59c 100644
+--- a/src/him/components/WorkViews.tsx
++++ b/src/him/components/WorkViews.tsx
+@@ -12,6 +12,34 @@ import {demoStore} from '../phase6/store';
+ import {legacyAsPhase6} from '../phase6/Phase6';
+ import {canonicalTasks,unfinishedTask} from '../executive/taskProjection';
+ import { AlertOperations } from './ControlWorkflows';
++import {useShellLanguage} from './useShellLanguage';
++
++export const englishTaskStatus:Record<string,string>={open:'Open',assigned:'Assigned',in_progress:'In progress',blocked:'Blocked',submitted_for_review:'Awaiting review',completed:'Completed',canceled:'Canceled',done:'Done'};
++
++/** Translate only known, seeded demo content; never silently translate authored or unknown task text. */
++const demoTaskEnglish:Record<string,{title:string;description:string}>={
++ 'بازتوزیع بیماران ICU به بخش‌های مجاور':{title:'Redistribute ICU patients to adjacent wards',description:'Coordinate with head nurses to transfer stable patients and free ICU capacity.'},
++ 'ثبت سفارش فوری هپارین':{title:'Place urgent heparin order',description:'Submit an urgent purchase request to the pharmacy and therapeutics office.'},
++ 'تحلیل ریشه‌ای (RCA) خطای دارویی':{title:'Root cause analysis (RCA) of medication error',description:'Convene the safety committee and complete the RCA form.'},
++ 'برنامه‌ریزی کالیبراسیون ونتیلاتورها':{title:'Schedule ventilator calibration',description:'Coordinate with the service provider to calibrate three ventilators.'},
++ 'بازبینی اسناد کسورات بیمه':{title:'Review insurance deduction documents',description:'Review the reasons for deductions and correct service recording workflows.'},
++ 'تأیید فصلی دسترسی کاربران':{title:'Quarterly user access certification',description:'Review user roles and permissions for the current quarter.'},
++ 'سیاست اضافه‌کار — نسخه الف (نمونه)':{title:'Overtime policy — version A (demo)',description:'Version A: overtime needs approval before it is recorded (active demo document).'},
++ 'سیاست اضافه‌کار — نسخه ب (نمونه)':{title:'Overtime policy — version B (demo)',description:'Version B: overtime can be recorded before approval (active demo document).'},
++};
++const demoHistoryEnglish:Record<string,string>={
++ 'وظیفه از روی هشدار ایجاد شد.':'Task created from an alert.',
++ 'وضعیت به «در حال انجام» تغییر کرد.':'Status changed to In progress.',
++ 'وظیفه ایجاد شد.':'Task created.',
++ 'وظیفه انجام شد.':'Task completed.',
++ 'وظیفه دوره‌ای ایجاد شد.':'Recurring task created.',
++ 'سند سیاست اضافه‌کار نسخه الف بارگذاری شد.':'Overtime policy document version A uploaded.',
++ 'سند سیاست اضافه‌کار نسخه ب بارگذاری شد.':'Overtime policy document version B uploaded.',
++};
++export function demoTaskDisplay(title:string,description:string,en:boolean){
++ const translated=en?demoTaskEnglish[title]:undefined;
++ return {title:translated?.title||title,description:translated?.description||description};
++}
+ 
+ const moduleTitle = (k: string) => MODULES_CONFIG.find(m => m.key === k)?.shortTitle ?? k;
+ /** Readable identity for fixture tasks; never presents an unknown ID as an authenticated person. */
+@@ -37,11 +65,11 @@ const ALERT_STATUS_CLASS: Record<AlertStatus, string> = {
+   resolved: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+ };
+ 
+-const Header: React.FC<{ icon: React.ReactNode; title: string; subtitle: string; onBack?: () => void }> = ({ icon, title, subtitle, onBack }) => (
++const Header: React.FC<{ icon: React.ReactNode; title: string; subtitle: string; onBack?: () => void }> = ({ icon, title, subtitle, onBack }) => { const [language]=useShellLanguage();return (
+   <div className="mb-6">
+     {onBack && (
+       <button type="button" onClick={onBack} className="mb-3 inline-flex items-center gap-1 text-xs text-teal-700 hover:text-teal-900 font-semibold">
+-        <ArrowRight className="w-4 h-4" /> بازگشت به فهرست
++        <ArrowRight className="w-4 h-4" /> {language==='en'?'Back to list':'بازگشت به فهرست'}
+       </button>
+     )}
+     <div className="flex items-center gap-3">
+@@ -52,7 +80,7 @@ const Header: React.FC<{ icon: React.ReactNode; title: string; subtitle: string;
+       </div>
+     </div>
+   </div>
+-);
++);};
+ 
+ function Filters<T extends string>({ value, onChange, options }: { value: T | 'all'; onChange: (v: T | 'all') => void; options: Record<T, string> }) {
+   return (
+@@ -67,16 +95,17 @@ function Filters<T extends string>({ value, onChange, options }: { value: T | 'a
+   );
+ }
+ 
+-const SearchBox: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => (
++const SearchBox: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {const [language]=useShellLanguage();return (
+   <div className="relative w-full md:w-64">
+     <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+-    <input value={value} onChange={e => onChange(e.target.value)} placeholder="جستجو در عنوان یا کد..." aria-label="جستجو در عنوان یا کد" dir="rtl"
++    <input value={value} onChange={e => onChange(e.target.value)} placeholder={language==='en'?'Search title or code...':'جستجو در عنوان یا کد...'} aria-label={language==='en'?'Search title or code':'جستجو در عنوان یا کد'} dir={language==='en'?'ltr':'rtl'}
+       className="w-full text-right pr-9 pl-3 py-2 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/30" />
+   </div>
+-);
++);};
+ 
+ export const TaskListView: React.FC = () => {
+  const {tasks,scope,openWorkView,workView}=useApp();
++ const [language]=useShellLanguage(); const en=language==='en';
+  const routeFilter = workView?.kind === 'tasks' ? workView.filter : undefined;
+  const [status,setStatus]=useState(()=>sessionStorage.getItem('him.tasks.status')|| (routeFilter==='unfinished'?'unfinished':'all'));const [q,setQ]=useState(()=>sessionStorage.getItem('him.tasks.search')||'');const [pageSize,setPageSize]=useState<25|50|100>(()=>{const n=Number(sessionStorage.getItem('him.tasks.pageSize'));return n===50||n===100?n:25});const [page,setPage]=useState(1);
+  useEffect(()=>{sessionStorage.setItem('him.tasks.status',status);sessionStorage.setItem('him.tasks.search',q);sessionStorage.setItem('him.tasks.pageSize',String(pageSize));},[status,q,pageSize]);
+@@ -84,11 +113,11 @@ export const TaskListView: React.FC = () => {
+  // One list and one detail page for legacy and Copilot-created tasks.
+  const overrides=demoStore.tasks();
+  const rows=[...tasks.map(t=>overrides.find(o=>o.id===t.id)||legacyAsPhase6(t)),...overrides.filter(t=>!tasks.some(l=>l.id===t.id))]
+-  .filter(t=>t.siteId===scope.siteId&&(status==='all'||(status==='unfinished'?unfinishedTask(t.status):t.status===status))&&(!q||t.title.includes(q)||t.id.toLowerCase().includes(q.toLowerCase())));
+- const labels={open:'باز',assigned:'تخصیص‌یافته',in_progress:'در حال انجام',blocked:'مسدود',submitted_for_review:'در انتظار بررسی',completed:'تکمیل‌شده',canceled:'لغوشده'};
+- return <div data-testid="task-list"><Header icon={<ClipboardList className="w-5 h-5"/>} title="فهرست وظایف" subtitle={`وظایف عملیاتی «${scope.siteName}» · داده نمایشی`}/>
+- <div className="flex flex-wrap gap-3 mb-4"><select aria-label="فیلتر وضعیت" className="border rounded-lg p-2 text-sm" value={status} onChange={e=>setStatus(e.target.value)}><option value="all">همه وضعیت‌ها</option><option value="unfinished">انجام‌نشده</option>{Object.entries(labels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><SearchBox value={q} onChange={v=>{setQ(v);setPage(1)}}/><select aria-label="تعداد در صفحه" className="border rounded-lg p-2 text-sm" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value) as 25|50|100);setPage(1)}}><option value={25}>۲۵ در صفحه</option><option value={50}>۵۰ در صفحه</option><option value={100}>۱۰۰ در صفحه</option></select><button type="button" className="border rounded-lg p-2 text-sm" onClick={()=>{setQ('');setStatus('all');setPage(1)}}>پاک کردن فیلترها</button></div><p className="mb-2 text-xs text-slate-500">{rows.length} وظیفه · جست‌وجو: {q||'همه'} · وضعیت: {status==='all'?'همه':status}</p>
+- {rows.length===0?<EmptyState title="وظیفه‌ای یافت نشد"/>:<div className="bg-white border rounded-xl divide-y">{rows.slice((page-1)*pageSize,page*pageSize).map(t=><button key={t.id} className="w-full text-right flex justify-between p-4 hover:bg-slate-50 gap-3" onClick={()=>openWorkView({kind:'task',id:t.id})}><span><b>{t.title}</b><span className="block text-xs text-slate-500">{t.id} · {t.owner?displayTaskOwner(t.owner,t.siteId):t.queue||'بدون مسئول'}</span></span><span className="text-sm">{labels[t.status]}</span></button>)}</div>}{rows.length>pageSize&&<div className="mt-3 flex items-center gap-3 text-sm"><button className="border rounded p-2" disabled={page===1} onClick={()=>setPage(x=>x-1)}>قبلی</button><span>صفحه {page} از {Math.ceil(rows.length/pageSize)}</span><button className="border rounded p-2" disabled={page*pageSize>=rows.length} onClick={()=>setPage(x=>x+1)}>بعدی</button></div>}
++  .filter(t=>t.siteId===scope.siteId&&(status==='all'||(status==='unfinished'?unfinishedTask(t.status):t.status===status))&&(!q||demoTaskDisplay(t.title,t.description,en).title.toLowerCase().includes(q.toLowerCase())||t.title.includes(q)||t.id.toLowerCase().includes(q.toLowerCase())));
++ const labels=en?englishTaskStatus:{open:'باز',assigned:'تخصیص‌یافته',in_progress:'در حال انجام',blocked:'مسدود',submitted_for_review:'در انتظار بررسی',completed:'تکمیل‌شده',canceled:'لغوشده'};
++ return <div data-testid="task-list"><Header icon={<ClipboardList className="w-5 h-5"/>} title={en?'Task list':'فهرست وظایف'} subtitle={en?`Demo tasks · ${scope.siteName}`:`وظایف عملیاتی «${scope.siteName}» · داده نمایشی`}/>
++ <div className="flex flex-wrap gap-3 mb-4"><select aria-label={en?'Status filter':'فیلتر وضعیت'} className="border rounded-lg p-2 text-sm" value={status} onChange={e=>setStatus(e.target.value)}><option value="all">{en?'All statuses':'همه وضعیت‌ها'}</option><option value="unfinished">{en?'Unfinished':'انجام‌نشده'}</option>{Object.entries(labels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><SearchBox value={q} onChange={v=>{setQ(v);setPage(1)}}/><select aria-label={en?'Page size':'تعداد در صفحه'} className="border rounded-lg p-2 text-sm" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value) as 25|50|100);setPage(1)}}><option value={25}>{en?'25 per page':'۲۵ در صفحه'}</option><option value={50}>{en?'50 per page':'۵۰ در صفحه'}</option><option value={100}>{en?'100 per page':'۱۰۰ در صفحه'}</option></select><button type="button" className="border rounded-lg p-2 text-sm" onClick={()=>{setQ('');setStatus('all');setPage(1)}}>{en?'Clear filters':'پاک کردن فیلترها'}</button></div><p className="mb-2 text-xs text-slate-500">{rows.length} {en?'tasks':'وظیفه'} · {en?'Search':'جست‌وجو'}: {q||(en?'all':'همه')} · {en?'Status':'وضعیت'}: {status==='all'?(en?'all':'همه'):(labels[status]||status)}</p>
++ {rows.length===0?<EmptyState title={en?'No tasks found':'وظیفه‌ای یافت نشد'}/>:<div className="bg-white border rounded-xl divide-y">{rows.slice((page-1)*pageSize,page*pageSize).map(t=><button key={t.id} className="w-full text-right flex justify-between p-4 hover:bg-slate-50 gap-3" onClick={()=>openWorkView({kind:'task',id:t.id})}><span><b>{demoTaskDisplay(t.title,t.description,en).title}</b><span className="block text-xs text-slate-500">{t.id} · {t.owner?displayTaskOwner(t.owner,t.siteId):t.queue||(en?'Unassigned':'بدون مسئول')}</span></span><span className="text-sm">{labels[t.status]}</span></button>)}</div>}{rows.length>pageSize&&<div className="mt-3 flex items-center gap-3 text-sm"><button className="border rounded p-2" disabled={page===1} onClick={()=>setPage(x=>x-1)}>{en?'Previous':'قبلی'}</button><span>{en?'Page':'صفحه'} {page} {en?'of':'از'} {Math.ceil(rows.length/pageSize)}</span><button className="border rounded p-2" disabled={page*pageSize>=rows.length} onClick={()=>setPage(x=>x+1)}>{en?'Next':'بعدی'}</button></div>}
+  </div>;
+ };
+ 
+@@ -108,28 +137,29 @@ const NotFound: React.FC<{ onBack: () => void; text: string }> = ({ onBack, text
+ 
+ export const TaskDetailView: React.FC<{ id: string }> = ({ id }) => {
+   const { tasks, alerts, scope, openWorkView, updateTaskStatus } = useApp();
++  const [language]=useShellLanguage();const en=language==='en';
+   const t = tasks.find(x => x.id === id);
+   const back = () => openWorkView({ kind: 'tasks' });
+-  if (!t || t.siteId !== scope.siteId) return <NotFound onBack={back} text="این وظیفه در دامنه کاری فعلی یافت نشد." />;
++  if (!t || t.siteId !== scope.siteId) return <NotFound onBack={back} text={en?'Task is not available in the current scope.':'این وظیفه در دامنه کاری فعلی یافت نشد.'} />;
+   const alert = t.alertId ? alerts.find(a => a.id === t.alertId) : undefined;
+ 
+   return (
+     <div data-testid="task-detail">
+-      <Header icon={<ClipboardList className="w-5 h-5" />} title={t.title} subtitle={`وظیفه ${t.code} · ${moduleTitle(t.module)}`} onBack={back} />
++      <Header icon={<ClipboardList className="w-5 h-5" />} title={demoTaskDisplay(t.title,t.description,en).title} subtitle={en?`Task ${t.code} · ${t.module}`:`وظیفه ${t.code} · ${moduleTitle(t.module)}`} onBack={back} />
+       <div className="grid lg:grid-cols-3 gap-4">
+         <div className="lg:col-span-2 space-y-4">
+           <div className="bg-white border border-slate-200 rounded-2xl p-5">
+-            <h2 className="text-sm font-bold text-slate-800 mb-2">شرح وظیفه</h2>
+-            <p className="text-sm text-slate-600 leading-7">{t.description}</p>
++            <h2 className="text-sm font-bold text-slate-800 mb-2">{en?'Task description':'شرح وظیفه'}</h2>
++            <p className="text-sm text-slate-600 leading-7">{demoTaskDisplay(t.title,t.description,en).description}</p>
+           </div>
+           <div className="bg-white border border-slate-200 rounded-2xl p-5">
+-            <h2 className="text-sm font-bold text-slate-800 mb-3">تاریخچه</h2>
++            <h2 className="text-sm font-bold text-slate-800 mb-3">{en?'Activity history':'تاریخچه'}</h2>
+             <ol className="space-y-3">
+               {t.history.map((h, i) => (
+                 <li key={i} className="flex gap-3 text-xs">
+                   <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+                   <span className="text-slate-400 tabular-nums shrink-0">{h.at}</span>
+-                  <span className="text-slate-700">{h.text}</span>
++                  <span className="text-slate-700" dir="auto">{en?(demoHistoryEnglish[h.text]||h.text):h.text}</span>
+                 </li>
+               ))}
+             </ol>
+@@ -138,12 +168,12 @@ export const TaskDetailView: React.FC<{ id: string }> = ({ id }) => {
+         </div>
+         <div className="space-y-4">
+           <div className="bg-white border border-slate-200 rounded-2xl p-5 grid gap-3">
+-            <Field label="وضعیت"><Badge className={TASK_STATUS_CLASS[t.status]}>{TASK_STATUS_LABEL[t.status]}</Badge></Field>
+-            <Field label="اولویت"><Badge className={PRIORITY_CLASS[t.priority]}>{PRIORITY_LABEL[t.priority]}</Badge></Field>
+-            <Field label="مسئول"><span className="inline-flex items-center gap-1"><UserIcon className="w-4 h-4 text-slate-400" />{displayTaskOwner(demoStore.tasks().find(o=>o.id===t.id)?.owner||t.assignee,t.siteId)}</span></Field>
+-            <Field label="سررسید">{t.dueDate}</Field>
++            <Field label={en?'Status':'وضعیت'}><Badge className={TASK_STATUS_CLASS[t.status]}>{en?(englishTaskStatus[t.status]||t.status):TASK_STATUS_LABEL[t.status]}</Badge></Field>
++            <Field label={en?'Priority':'اولویت'}><Badge className={PRIORITY_CLASS[t.priority]}>{en?({critical:'Critical',high:'High',medium:'Medium',low:'Low'}[t.priority]||t.priority):PRIORITY_LABEL[t.priority]}</Badge></Field>
++            <Field label={en?'Owner':'مسئول'}><span className="inline-flex items-center gap-1"><UserIcon className="w-4 h-4 text-slate-400" />{displayTaskOwner(demoStore.tasks().find(o=>o.id===t.id)?.owner||t.assignee,t.siteId)}</span></Field>
++            <Field label={en?'Due date':'سررسید'}>{t.dueDate}</Field>
+             {alert && (
+-              <Field label="هشدار مرتبط">
++              <Field label={en?'Related alert':'هشدار مرتبط'}>
+                 <button type="button" onClick={() => openWorkView({ kind: 'alert', id: alert.id })} className="inline-flex items-center gap-1 text-teal-700 hover:underline text-start">
+                   <Link2 className="w-4 h-4 shrink-0" />{alert.title}
+                 </button>
+@@ -151,11 +181,11 @@ export const TaskDetailView: React.FC<{ id: string }> = ({ id }) => {
+             )}
+           </div>
+           <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-2">
+-            <h2 className="text-sm font-bold text-slate-800 mb-1">تغییر وضعیت</h2>
++            <h2 className="text-sm font-bold text-slate-800 mb-1">{en?'Change status':'تغییر وضعیت'}</h2>
+             {(Object.keys(TASK_STATUS_LABEL) as TaskStatus[]).map(s => (
+               <button key={s} type="button" disabled={t.status === s} onClick={() => updateTaskStatus(t.id, s)}
+                 className="w-full px-3 py-2 rounded-lg text-xs font-semibold border border-slate-200 hover:bg-slate-50 disabled:bg-teal-600 disabled:text-white disabled:border-teal-600">
+-                {TASK_STATUS_LABEL[s]}
++                {en?(englishTaskStatus[s]||s):TASK_STATUS_LABEL[s]}
+               </button>
+             ))}
+           </div>
+@@ -265,7 +295,7 @@ export const AlertDetailView: React.FC<{ id: string }> = ({ id }) => {
+           </div>
+           <button type="button" className="rounded-lg border border-teal-300 bg-white p-3 text-sm text-teal-800 w-full text-right" onClick={()=>openWorkView({kind:'spec-page',path:'/executive/investigations'})}>بازکردن میزکار مستقل تحقیق ناهنجاری و شواهد (EXE-05)</button>
+           <div className="bg-white border rounded-xl p-4 space-y-2"><h2 className="font-bold">خط زمانی هشدار</h2><p className="text-xs">ثبت اولیه: {a.raisedAt}</p>{(a.activity||[]).map((entry,i)=><p key={i} className="text-xs border-r-2 pr-2">{entry.text} · {entry.at} · عامل: {entry.actorName || 'نامشخص (ثبت قدیمی)'}{entry.actorId && <span dir="ltr"> ({entry.actorId})</span>}</p>)}{a.resolution&&<p className="text-xs">شاهد رفع: {a.resolution.comment}</p>}</div>
+-          <section className="rounded-xl border bg-white p-4 text-sm space-y-1" data-testid="anomaly-provenance"><h2 className="font-bold">زمینه تشخیص ناهنجاری · EXE-004</h2><p>نسخه آشکارساز: ثبت نشده / نیازمند تأیید</p><p>خط پایه و بازه مورد انتظار: ثبت نشده</p><p>بازه مقایسه و روند تاریخی: ثبت نشده</p><p>کیفیت داده و تازگی منبع بالادستی: نامشخص</p><p className="text-amber-800">آستانه هشدار جایگزین خط پایه آماری، مقایسه تاریخی یا مدل مصوب نیست.</p></section><EvidencePackage items={alertEvidence(a)} code={a.code} /><AlertOperations alert={a}/>
++          <section className="rounded-xl border bg-white p-4 text-sm space-y-1" data-testid="anomaly-provenance"><h2 className="font-bold">زمینه تشخیص ناهنجاری · EXE-004</h2>{a.id==='ALR-1050'?<><p>نسخه قاعده نمایشی: capacity-threshold@demo-2 (آستانه ثابت، نه مدل آماری)</p><p>خط پایه آماری: ناموجود · بازه مورد انتظار نمونه: ۰ تا ۹۰٪ صرفاً آستانه تمرینی</p><p>بازه مقایسه: ۲۰۲۶-۱۰-۲۳ (فیکسچر تک‌نقطه‌ای) · تاریخچه معتبر: موجود نیست</p><p>برش داده: 2026-10-23T23:59:59+03:30 · کیفیت منبع: synthetic/not-verified</p></>:<><p>نسخه آشکارساز: ثبت نشده / نیازمند تأیید</p><p>خط پایه و بازه مورد انتظار: ثبت نشده</p><p>بازه مقایسه و روند تاریخی: ثبت نشده</p><p>کیفیت داده و تازگی منبع بالادستی: نامشخص</p></>}<p className="text-amber-800">آستانه هشدار جایگزین خط پایه آماری، مقایسه تاریخی یا مدل مصوب نیست.</p></section><EvidencePackage items={alertEvidence(a)} code={a.code} /><AlertOperations alert={a}/>
+         </div>
+         <div className="space-y-4">
+           <div className="bg-white border border-slate-200 rounded-2xl p-5 grid gap-3">
+diff --git a/src/him/data/evidenceData.ts b/src/him/data/evidenceData.ts
+index 41872ce..dc76a9c 100644
+--- a/src/him/data/evidenceData.ts
++++ b/src/him/data/evidenceData.ts
+@@ -35,7 +35,15 @@ export function alertEvidence(a: WorkAlert): EvidenceItem[] {
+   if (a.metric) items.push({ id: `${a.id}-m`, kind: 'metric', title: `اندازه‌گیری ${a.metric.label}`, source: a.source, capturedAt: a.raisedAt, detail: `مقدار ${a.metric.value} در برابر آستانه ${a.metric.threshold}${a.module==='FIN'?' · نوع نرخ (تعداد پرونده ردشده یا مبلغ کسورات): نامشخص در داده نمایشی؛ صورت، مخرج، جامعه پرونده‌های رسیدگی‌شده و موارد مستثنا ارائه نشده‌اند. این شاهد برای نتیجه‌گیری درباره نرخ قابل اتکا نیست.':''}` });
+   items.push({ id: `${a.id}-r`, kind: 'record', title: 'رکورد خام دریافتی از منبع', source: a.source, capturedAt: a.raisedAt, detail: a.description });
+   items.push({ id: `${a.id}-l`, kind: 'log', title: 'گزارش موتور قواعد هشدار', source: 'HIM-OS Rules Engine', capturedAt: a.raisedAt, detail: `قاعده هشدار ${a.code} فعال شد و رخداد ثبت گردید.` });
+-  return items.map(i => ({ ...i, hash: hashOf(i.id + i.detail) }));
++  // Only this named alert has a dedicated synthetic provenance fixture. Never infer metadata from capturedAt.
++  const sample = a.id==='ALR-1050'?{
++    sourceVersion:'fixture-contract-bed-v1 [SYNTHETIC]',metricVersion:'bed-capacity-count@demo-1',
++    ruleVersion:'capacity-threshold@demo-2',snapshotCutoff:'2026-10-23T23:59:59+03:30',
++    sourceEventAt:'2026-10-23T23:58:00+03:30',ingestedAt:'2026-10-23T23:58:09+03:30',
++    assumptions:'فیکسچر آزمایشی: همه مقادیر و زمان‌ها غیرعملیاتی هستند.',
++    limitations:'فقط آزمایش رابط؛ شناسه قرارداد و زمان‌ها از منبع واقعی دریافت نشده‌اند.'
++  }:{};
++  return items.map(i => ({ ...i,...sample, hash: hashOf(i.id + i.detail) }));
+ }
+ 
+ /** Evidence for a task: its own records plus the linked alert's package. */
+diff --git a/src/him/phase6/MemoActionHandoff.tsx b/src/him/phase6/MemoActionHandoff.tsx
+index e1126e7..671e440 100644
+--- a/src/him/phase6/MemoActionHandoff.tsx
++++ b/src/him/phase6/MemoActionHandoff.tsx
+@@ -1,6 +1,7 @@
+ import React, { useState } from 'react';
+ import { useApp } from '../context/AppContext';
+ import type { Memo } from './store';
++import {DEMO_USERS} from '../data/mockData';
+ 
+ /** Only approved-for-demo template identifiers may be proposed; source manifests are not registered. */
+ export const MEMO_DEMO_ACTION_TEMPLATES=[
+@@ -17,13 +18,15 @@ type Request = {
+   reason: string;
+   createdAt: string;
+   state: string;
++  authorId?:string; reviewerId?:string; reviewerAt?:string; proposalId?:string; policyVersion?:string;
+ };
+ export function MemoActionHandoff({ memo }: { memo: Memo }) {
+   const { scope, user } = useApp();
+-  const key = `him.memo.action-request.v1:${scope.siteId}:${user?.id || 'guest'}:${memo.id}`;
++  const key = `him.memo.action-request.shared.v2:${scope.siteId}:${memo.id}`;
++  const legacyKey=`him.memo.action-request.v1:${scope.siteId}:${user?.id || 'guest'}:${memo.id}`;
+   const [items, setItems] = useState<Request[]>(() => {
+     try {
+-      const v = JSON.parse(localStorage.getItem(key) || '[]');
++      const v = JSON.parse(localStorage.getItem(key) || localStorage.getItem(legacyKey) || '[]');
+       return Array.isArray(v) ? v : [];
+     } catch {
+       return [];
+@@ -31,8 +34,11 @@ export function MemoActionHandoff({ memo }: { memo: Memo }) {
+   });
+   const [template, setTemplate] = useState('');
+   const [reason, setReason] = useState('');
++  const [reviewerId,setReviewerId]=useState('');
++  const [policyVersion,setPolicyVersion]=useState('demo-policy-v1');
++  const persist=(next:Request[])=>{try{localStorage.setItem(key,JSON.stringify(next));setItems(next);return true;}catch{return false;}};
+   const save = () => {
+-    if (!validMemoActionTemplate(template) || reason.trim().length < 20 || !memo.revision) return;
++    if (!validMemoActionTemplate(template) || reason.trim().length < 20 || !memo.revision || !reviewerId || reviewerId===user?.id || !policyVersion.trim()) return;
+     const record: Request = {
+       id: `request-${Date.now()}`,
+       memoId: memo.id,
+@@ -40,17 +46,19 @@ export function MemoActionHandoff({ memo }: { memo: Memo }) {
+       template: template.trim(),
+       reason: reason.trim(),
+       createdAt: new Date().toISOString(),
+-      state: 'awaiting_template_and_policy_review',
++      state: 'awaiting_template_and_policy_review',authorId:user?.id||'guest',reviewerId,policyVersion,
+     };
+     const next = [record, ...items];
+-    try {
+-      localStorage.setItem(key, JSON.stringify(next));
+-      setItems(next);
+-      setReason('');
+-      setTemplate('');
+-    } catch {
+-      /* Never claim durable persistence if storage failed. */
+-    }
++    if(persist(next)){setReason('');setTemplate('');setReviewerId('');}
++  };
++  const review=(r:Request)=>{
++    if(r.state!=='awaiting_template_and_policy_review'||r.reviewerId!==user?.id||r.authorId===user?.id||r.revision!==memo.revision||!validMemoActionTemplate(r.template))return;
++    persist(items.map(x=>x.id===r.id?{...x,state:'template_policy_reviewed_synthetic',reviewerAt:new Date().toISOString()}:x));
++  };
++  const materialize=(r:Request)=>{
++    if(r.state!=='template_policy_reviewed_synthetic'||r.authorId!==user?.id||r.revision!==memo.revision)return;
++    // Separate immutable mock proposal; NEVER hand it to the production Action Gateway.
++    persist(items.map(x=>x.id===r.id?{...x,state:'proposal_prepared_synthetic',proposalId:`SYN-PROP-${r.id}`}:x));
+   };
+   return (
+     <section className="rounded-xl border bg-white p-5 space-y-3" data-testid="memo-action-handoff">
+@@ -75,9 +83,13 @@ export function MemoActionHandoff({ memo }: { memo: Memo }) {
+           onChange={(e) => setReason(e.target.value)}
+         />
+       </label>
++      <label className="block text-sm">بازبین مستقل قالب و سیاست
++        <select className="mt-1 w-full rounded border p-2" value={reviewerId} onChange={e=>setReviewerId(e.target.value)}><option value="">انتخاب بازبین</option>{DEMO_USERS.filter(x=>x.id!==user?.id&&x.permittedSiteIds.includes(scope.siteId||'')).map(x=><option value={x.id} key={x.id}>{x.name}</option>)}</select>
++      </label>
++      <label className="block text-sm">نسخه سیاست نمایشی<input className="mt-1 w-full rounded border p-2" value={policyVersion} onChange={e=>setPolicyVersion(e.target.value)}/></label>
+       <button
+         className="rounded-lg bg-teal-800 px-4 py-2 text-white disabled:opacity-40"
+-        disabled={!validMemoActionTemplate(template) || reason.trim().length < 20 || !memo.revision}
++        disabled={!validMemoActionTemplate(template) || reason.trim().length < 20 || !memo.revision || !reviewerId || reviewerId===user?.id || !policyVersion.trim()}
+         onClick={save}
+       >
+         ثبت درخواست پیشنهاد اقدام T1
+@@ -91,6 +103,9 @@ export function MemoActionHandoff({ memo }: { memo: Memo }) {
+         <div key={r.id} className="rounded-lg border p-3 text-xs">
+           <bdi>{r.id}</bdi> · یادداشت {r.memoId} ویرایش {r.revision} · قالب {r.template} · {r.state}{' '}
+           · {r.createdAt} · {r.revision===memo.revision?'نسخه جاری یادداشت':'نسخه قبلی یادداشت؛ نیازمند بررسی دوباره'}
++          <p>سیاست {r.policyVersion||'نامشخص'} · بازبین {r.reviewerId||'ثبت نشده'} · بازبینی: {r.reviewerAt||'در انتظار'}</p>
++          {r.proposalId&&<p className="font-semibold">پیشنهاد مستقل فقط آزمایشی: {r.proposalId} · بدون ارسال/تصویب/اجرا</p>}
++          <div className="flex gap-2 mt-2"><button className="rounded border p-2 disabled:opacity-40" disabled={r.state!=='awaiting_template_and_policy_review'||r.reviewerId!==user?.id||r.authorId===user?.id||r.revision!==memo.revision} onClick={()=>review(r)}>تأیید نمایشی بازبینی قالب/سیاست</button><button className="rounded border p-2 disabled:opacity-40" disabled={r.state!=='template_policy_reviewed_synthetic'||r.authorId!==user?.id||r.revision!==memo.revision} onClick={()=>materialize(r)}>آماده‌سازی پیشنهاد مستقل (نمونه)</button></div>
+         </div>
+       ))}
+     </section>
+diff --git a/src/him/supply/SupplierPerformancePanel.tsx b/src/him/supply/SupplierPerformancePanel.tsx
+index 0860b16..6fc441e 100644
+--- a/src/him/supply/SupplierPerformancePanel.tsx
++++ b/src/him/supply/SupplierPerformancePanel.tsx
+@@ -1,10 +1,12 @@
+-import React from 'react';
+-import {DEMO_PURCHASE_LINES,inspectSupplier} from './supplierPerformance';
++import React,{useState} from 'react';
++import {DEMO_PURCHASE_LINES,inspectSupplier,inspectSupplierVariability} from './supplierPerformance';
+ 
+ /** Isolated fixture drilldown for SUP-005. Never labels synthetic OTIF as live supplier performance. */
+ export function SupplierPerformancePanel({riskId,supplier,item,siteName,leadTime,snapshot}:{riskId:string;supplier:string;item:string;siteName:string;leadTime:number;snapshot:string}) {
+   const available=riskId==='RISK-TAL-0003';
+   const result=inspectSupplier(DEMO_PURCHASE_LINES,'risk-supplier');
++  const variability=inspectSupplierVariability(DEMO_PURCHASE_LINES,'risk-supplier');
++  const [selectedLine,setSelectedLine]=useState<string|null>(null);
+   const rows=DEMO_PURCHASE_LINES.filter(x=>x.supplier==='risk-supplier');
+   return <section className="space-y-4 rounded-xl border bg-white p-4" data-testid="supplier-performance">
+     <h3 className="font-bold">تحلیل عملکرد تأمین‌کننده · SUP.4 / REQ-SUP-005</h3>
+@@ -16,8 +18,13 @@ export function SupplierPerformancePanel({riskId,supplier,item,siteName,leadTime
+         <div className="rounded-lg border p-3"><b>نمونه واجد شرایط</b><p>{result.eligible} خط · حداقل {result.minSample} خط</p><p className="text-amber-800">{result.insufficient?'نمونه ناکافی؛ رتبه‌بندی ممنوع':'آستانه تعداد نمونه برقرار است'}</p></div>
+         <div className="rounded-lg border p-3"><b>تمرکز مقداری فیکسچر</b><p>{result.concentration===null?'نامعلوم':(result.concentration*100).toFixed(1)+'٪'} از مقدار سفارش خطوط کامل فیکسچر</p></div>
+       </div>
++      <div className="grid sm:grid-cols-2 gap-2 text-sm" data-testid="supplier-variability">
++        <div className="rounded-lg border p-3"><b>زمان تأمین (روز) / پراکندگی جمعیت مصنوعی</b><p>میانگین: {variability.meanDays?.toFixed(2)??'ناموجود'} · انحراف معیار: {variability.stdDays?.toFixed(2)??'ناموجود'}</p><p>نمونه: {variability.leadSample} · فاقد داده: {variability.leadMissing}</p></div>
++        <div className="rounded-lg border p-3"><b>نرخ اقلام قبول‌شده در بازرسی</b><p>{variability.passRate===null?'ناموجود':(variability.passRate*100).toFixed(1)+'٪'} · {variability.inspected-variability.rejected}/{variability.inspected}</p><p>خط بازرسی معتبر: {variability.qualitySample} · فاقد داده: {variability.qualityMissing}</p></div>
++      </div>
+       <p className="text-xs">پوشش: {result.total} خط منتسب به تأمین‌کننده، {result.eligible} واجد شرایط، {result.missing} با ورودی ناقص. یک خط از تأمین‌کننده دیگر نیز فاقد فیلدهای الزامی است و از مخرج تحلیل کنار گذاشته شده است. بازه فیکسچر: ۱۷ تا ۲۴ اکتبر ۲۰۲۶؛ نسخه قرارداد، ارز و هزینه واقعی: نامعلوم.</p>
+-      <div className="overflow-x-auto"><table className="min-w-[640px] w-full text-right text-xs"><thead><tr className="bg-slate-50 border-b">{['شناسه خط آزمایشی','سفارش','تحویل','تاریخ توافق','تاریخ رسید','در موعد و کامل؟'].map(t=><th key={t} className="p-2">{t}</th>)}</tr></thead><tbody>{rows.map(r=><tr key={r.id} className="border-b"><td className="p-2" dir="ltr">{r.id}</td><td className="p-2">{r.ordered??'نامعلوم'}</td><td className="p-2">{r.delivered??'نامعلوم'}</td><td className="p-2">{r.agreedDate??'نامعلوم'}</td><td className="p-2">{r.receivedDate??'نامعلوم'}</td><td className="p-2">{r.delivered!==null&&r.ordered!==null&&r.receivedDate&&r.agreedDate?(r.delivered>=r.ordered&&r.receivedDate<=r.agreedDate?'بله':'خیر'):'غیرقابل محاسبه'}</td></tr>)}</tbody></table></div>
++      <div className="overflow-x-auto"><table className="min-w-[640px] w-full text-right text-xs"><thead><tr className="bg-slate-50 border-b">{['شناسه خط آزمایشی','سفارش','تحویل','تاریخ توافق','تاریخ رسید','در موعد و کامل؟'].map(t=><th key={t} className="p-2">{t}</th>)}</tr></thead><tbody>{rows.map(r=><tr key={r.id} className="border-b"><td className="p-2" dir="ltr"><button className="underline text-teal-700" onClick={()=>setSelectedLine(selectedLine===r.id?null:r.id)}>{r.id}</button></td><td className="p-2">{r.ordered??'نامعلوم'}</td><td className="p-2">{r.delivered??'نامعلوم'}</td><td className="p-2">{r.agreedDate??'نامعلوم'}</td><td className="p-2">{r.receivedDate??'نامعلوم'}</td><td className="p-2">{r.delivered!==null&&r.ordered!==null&&r.receivedDate&&r.agreedDate?(r.delivered>=r.ordered&&r.receivedDate<=r.agreedDate?'بله':'خیر'):'غیرقابل محاسبه'}</td></tr>)}</tbody></table></div>
++      {selectedLine&&(()=>{const line=rows.find(x=>x.id===selectedLine);return line?<div className="rounded-lg border p-3 text-xs" data-testid="supplier-line-detail"><strong>جزئیات ردیابی {line.id}</strong><p>ثبت سفارش: {line.placedDate||'ناموجود'} · رسید: {line.receivedDate||'ناموجود'}</p><p>بازرسی‌شده: {line.inspected??'ناموجود'} · رد کیفیت: {line.rejected??'ناموجود'}</p><p>باقی‌مانده تحویل: {line.ordered!==null&&line.delivered!==null?Math.max(0,line.ordered-line.delivered):'ناموجود'} · صرفاً فیکسچر SYN-PO</p></div>:null})()}
+       <p className="text-xs text-amber-800">برای استفاده عملیاتی باید جمعیت خرید واجد شرایط، قرارداد مؤثر، تاریخ توافق منجمد، رسیدهای نسخه‌دار، استثناها و مجوزهای دسترسی از منبع معتبر دریافت شوند.</p>
+     </>}
+   </section>;
+diff --git a/src/him/supply/supplierPerformance.ts b/src/him/supply/supplierPerformance.ts
+index 55a34de..ef1dde8 100644
+--- a/src/him/supply/supplierPerformance.ts
++++ b/src/him/supply/supplierPerformance.ts
+@@ -6,11 +6,12 @@ export type OrderLine = {
+   delivered: number | null;
+   agreedDate: string | null;
+   receivedDate: string | null;
++  placedDate?:string | null; inspected?:number|null; rejected?:number|null;
+ };
+ export const DEMO_PURCHASE_LINES: OrderLine[] = [
+-  {id:'SYN-PO-01',supplier:'risk-supplier',ordered:10,delivered:10,agreedDate:'2026-10-18',receivedDate:'2026-10-17'},
+-  {id:'SYN-PO-02',supplier:'risk-supplier',ordered:20,delivered:20,agreedDate:'2026-10-20',receivedDate:'2026-10-20'},
+-  {id:'SYN-PO-03',supplier:'risk-supplier',ordered:30,delivered:10,agreedDate:'2026-10-22',receivedDate:'2026-10-24'},
++  {id:'SYN-PO-01',supplier:'risk-supplier',ordered:10,delivered:10,agreedDate:'2026-10-18',receivedDate:'2026-10-17',placedDate:'2026-10-10',inspected:10,rejected:0},
++  {id:'SYN-PO-02',supplier:'risk-supplier',ordered:20,delivered:20,agreedDate:'2026-10-20',receivedDate:'2026-10-20',placedDate:'2026-10-15',inspected:20,rejected:1},
++  {id:'SYN-PO-03',supplier:'risk-supplier',ordered:30,delivered:10,agreedDate:'2026-10-22',receivedDate:'2026-10-24',placedDate:'2026-10-15',inspected:10,rejected:2},
+   {id:'SYN-PO-04',supplier:'other-supplier',ordered:40,delivered:40,agreedDate:'2026-10-22',receivedDate:'2026-10-22'},
+   {id:'SYN-PO-05',supplier:'other-supplier',ordered:null,delivered:null,agreedDate:null,receivedDate:null},
+ ];
+@@ -26,3 +27,14 @@ export function inspectSupplier(lines:OrderLine[],supplier:string,minSample=10){
+     concentration:orderedAll>0?orderedSupplier/orderedAll:null,
+     insufficient:eligible.length<minSample,minSample};
+ }
++
++/** Duration and quality analysis excludes missing/invalid rows instead of imputing values. */
++export function inspectSupplierVariability(lines:OrderLine[],supplier:string){
++ const rows=lines.filter(x=>x.supplier===supplier);
++ const validLead=rows.map(x=>({id:x.id,days:x.placedDate&&x.receivedDate?(Date.parse(x.receivedDate)-Date.parse(x.placedDate))/86400000:null})).filter((x):x is {id:string;days:number}=>x.days!==null&&Number.isFinite(x.days)&&x.days>=0);
++ const mean=validLead.length?validLead.reduce((a,x)=>a+x.days,0)/validLead.length:null;
++ const std=mean!==null?Math.sqrt(validLead.reduce((sum,x)=>sum+(x.days-mean)**2,0)/validLead.length):null;
++ const qualityRows=rows.filter(x=>x.inspected!==undefined&&x.inspected!==null&&x.inspected>0&&x.rejected!==undefined&&x.rejected!==null&&x.rejected>=0&&x.rejected<=x.inspected);
++ const inspected=qualityRows.reduce((a,x)=>a+x.inspected!,0),rejected=qualityRows.reduce((a,x)=>a+x.rejected!,0);
++ return {meanDays:mean,stdDays:std,leadSample:validLead.length,leadMissing:rows.length-validLead.length,inspected,rejected,qualitySample:qualityRows.length,qualityMissing:rows.length-qualityRows.length,passRate:inspected>0?(inspected-rejected)/inspected:null};
++}

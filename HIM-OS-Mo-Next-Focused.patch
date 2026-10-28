@@ -1,0 +1,100 @@
+diff --git a/src/him/components/MainContent.tsx b/src/him/components/MainContent.tsx
+index 504ff85..e317e66 100644
+--- a/src/him/components/MainContent.tsx
++++ b/src/him/components/MainContent.tsx
+@@ -496,7 +496,7 @@ export const MainContent: React.FC = () => {
+             <div className="text-2xl font-black text-slate-900 tabular-nums">
+               ۹۲.۴٪
+             </div>
+-            <span className="text-[11px] text-emerald-700 block">سنجه‌های دارای شواهد معتبر</span>
++            <span className="text-[11px] text-amber-700 block">مقدار نمایشی؛ بدون داده قابل ممیزی</span><details className="text-xs"><summary className="cursor-pointer">تعریف و منشأ شاخص</summary><p>صورت، مخرج، جامعه، موارد استثنا و زمان آخرین به‌روزرسانی در داده نمایشی موجود نیست؛ این درصد تأییدشده تلقی نمی‌شود.</p></details>
+           </div>
+ 
+           <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
+@@ -504,7 +504,7 @@ export const MainContent: React.FC = () => {
+             <div className="text-2xl font-black text-slate-900 tabular-nums">
+               ۸۶.۰٪
+             </div>
+-            <span className="text-[11px] text-slate-400 block">نظرسنجی ترخیص ماهانه</span>
++            <span className="text-[11px] text-slate-400 block">نظرسنجی ترخیص ماهانه · داده نمایشی</span><details className="text-xs"><summary className="cursor-pointer">تعریف و کیفیت داده</summary><p>تعداد پاسخ‌های معتبر، تعداد کل، پاسخ‌های نامطمئن یا مستثنا، جامعه نمونه و تازگی داده ارائه نشده‌اند؛ این مقدار قابل تأیید نیست.</p></details>
+           </div>
+         </div>
+       </div>
+diff --git a/src/him/context/AppContext.tsx b/src/him/context/AppContext.tsx
+index 39f0af0..2f2ca45 100644
+--- a/src/him/context/AppContext.tsx
++++ b/src/him/context/AppContext.tsx
+@@ -43,7 +43,7 @@ export function pathForWorkView(v: WorkView | null): string {
+ /** Inverse of pathForWorkView: the work view a browser path stands for (null = dashboard). */
+ export function workViewForPath(path: string): WorkView | null {
+   const p = path.replace(/\/+$/, '') || '/';
+-  if (p === '/copilot') return { kind: 'copilot', answerId: typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('answer') || undefined : undefined };
++  if (p === '/copilot' || p === '/assistant') return { kind: 'copilot', answerId: typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('answer') || undefined : undefined };
+   if(p==='/knowledge/stewardship')return {kind:'stewardship'};
+   if(p==='/knowledge/stewardship/issues')return {kind:'stewardship-issues'};
+   const qualityIssue=/^\/knowledge\/stewardship\/issues\/([^/]+)$/.exec(p);if(qualityIssue)return {kind:'stewardship-issue',id:decodeURIComponent(qualityIssue[1]!)};
+diff --git a/src/him/data/evidenceData.ts b/src/him/data/evidenceData.ts
+index c574474..188fe00 100644
+--- a/src/him/data/evidenceData.ts
++++ b/src/him/data/evidenceData.ts
+@@ -24,7 +24,7 @@ const hashOf = (s: string) => {
+ /** Sample evidence package for an alert; same alert always yields the same items. */
+ export function alertEvidence(a: WorkAlert): EvidenceItem[] {
+   const items: Omit<EvidenceItem, 'hash'>[] = [];
+-  if (a.metric) items.push({ id: `${a.id}-m`, kind: 'metric', title: `اندازه‌گیری ${a.metric.label}`, source: a.source, capturedAt: a.raisedAt, detail: `مقدار ${a.metric.value} در برابر آستانه ${a.metric.threshold}` });
++  if (a.metric) items.push({ id: `${a.id}-m`, kind: 'metric', title: `اندازه‌گیری ${a.metric.label}`, source: a.source, capturedAt: a.raisedAt, detail: `مقدار ${a.metric.value} در برابر آستانه ${a.metric.threshold}${a.module==='FIN'?' · نوع نرخ (تعداد پرونده ردشده یا مبلغ کسورات): نامشخص در داده نمایشی؛ صورت، مخرج، جامعه پرونده‌های رسیدگی‌شده و موارد مستثنا ارائه نشده‌اند. این شاهد برای نتیجه‌گیری درباره نرخ قابل اتکا نیست.':''}` });
+   items.push({ id: `${a.id}-r`, kind: 'record', title: 'رکورد خام دریافتی از منبع', source: a.source, capturedAt: a.raisedAt, detail: a.description });
+   items.push({ id: `${a.id}-l`, kind: 'log', title: 'گزارش موتور قواعد هشدار', source: 'HIM-OS Rules Engine', capturedAt: a.raisedAt, detail: `قاعده هشدار ${a.code} فعال شد و رخداد ثبت گردید.` });
+   return items.map(i => ({ ...i, hash: hashOf(i.id + i.detail) }));
+diff --git a/src/him/phase6/Phase6.tsx b/src/him/phase6/Phase6.tsx
+index 9bc22d7..83ac300 100644
+--- a/src/him/phase6/Phase6.tsx
++++ b/src/him/phase6/Phase6.tsx
+@@ -6,12 +6,14 @@ import type {AnswerArtifact} from '../data/copilotData';
+ import type {WorkTask} from '../data/workData';
+ import {demoStore,freshMemo,newTask,uid,type Memo,type DemoTask} from './store';
+ import {supplyRisks} from '../supply/store';
++import {DEMO_USERS} from '../data/mockData';
+ const field='w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900';
+ const labels:Record<DemoTask['status'],string>={open:'باز',assigned:'تخصیص‌یافته',in_progress:'در حال انجام',blocked:'مسدود',submitted_for_review:'در انتظار بررسی',completed:'تکمیل‌شده',canceled:'لغوشده'};
+ const priorities:Record<DemoTask['priority'],string>={low:'کم',normal:'عادی',high:'بالا',urgent:'فوری'};
+ function Field({label,value,change,multi=false,required=false}:{label:string;value:string;change:(s:string)=>void;multi?:boolean;required?:boolean}){return <label className="block space-y-1 text-sm font-medium"><span>{label}{required?' *':''}</span>{multi?<textarea className={field+' min-h-24'} value={value} onChange={e=>change(e.target.value)}/>:<input className={field} value={value} onChange={e=>change(e.target.value)} required={required}/>}</label>}
+ const Panel=({title,children}:{title:string;children:React.ReactNode})=><section className="rounded-xl border border-slate-200 bg-white p-5 space-y-4"><h2 className="font-bold text-base border-b pb-3">{title}</h2>{children}</section>;
+ const today=()=>new Date().toISOString().slice(0,10);
++const eligibleOwners=(siteId:string)=>DEMO_USERS.filter(u=>u.permittedSiteIds.includes(siteId));
+ // Legacy fixtures are projected into the same editable UI; user modifications are stored
+ // as Phase 6 overrides by original ID. Original IDs, evidence and history are retained.
+ export function legacyAsPhase6(t:WorkTask):DemoTask {
+@@ -21,8 +23,8 @@ export function TaskDrawer({source,defaults,close,created}:{source:{memo?:Memo;a
+  const {scope}=useApp();const [task,setTask]=useState<DemoTask>(()=>newTask(scope.siteId||'',source||{}));const [error,setError]=useState('');const [busy,setBusy]=useState(false);
+  useEffect(()=>{if(source){setTask({...newTask(scope.siteId||'',source),...defaults});setError('')}},[source,scope.siteId]);
+  const patch=(p:Partial<DemoTask>)=>setTask(x=>({...x,...p}));
+- const submit=()=>{if(busy)return;if(!task.title.trim()||task.title.length>200||task.description.length>5000||(!task.owner&&!task.queue)||task.owner&&task.queue||task.dueDate&&task.dueDate<today()){setError('عنوان، مسئول یا صف و تاریخ معتبر را بررسی کنید.');return}setBusy(true);try{const saved=demoStore.saveTask({...task,status:task.owner?'assigned':'open',history:[{at:new Date().toISOString(),text:'ایجاد وظیفه در حالت نمایشی'}]});created(saved);close()}catch{setError('ذخیره نمایشی ناموفق بود.')}finally{setBusy(false)}};
+- return <Dialog open={!!source} onOpenChange={o=>{if(!o)close()}}><DialogContent dir="rtl" className="sm:max-w-xl max-h-[90vh] overflow-y-auto text-right"><DialogHeader><DialogTitle>ایجاد وظیفه</DialogTitle></DialogHeader><div className="space-y-4"><p className="rounded bg-slate-50 p-3 text-xs">ایجادشده از {source?.supplyCaseId?'پرونده کمبود':source?.memo?'یادداشت تصمیم':'پاسخ کوپایلت'} · فقط داده نمایشی</p><Field label="عنوان" required value={task.title} change={title=>patch({title})}/><Field label="شرح" multi value={task.description} change={description=>patch({description})}/><Field label="نوع وظیفه" value={task.kind} change={kind=>patch({kind})}/><Field label="مسئول" value={task.owner} change={owner=>patch({owner,queue:owner?'':task.queue})}/><Field label="صف واگذاری (به جای مسئول)" value={task.queue} change={queue=>patch({queue,owner:queue?'':task.owner})}/><label className="block text-sm">اولویت<select className={field} value={task.priority} onChange={e=>patch({priority:e.target.value as DemoTask['priority']})}>{Object.entries(priorities).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label><label className="block text-sm">موعد<input type="date" className={field} value={task.dueDate} onChange={e=>patch({dueDate:e.target.value})}/></label><p className="text-xs text-slate-500">شواهد مرتبط: {task.evidenceIds.join('، ')||'ندارد'}</p>{error&&<p role="alert" className="text-red-700">{error}</p>}<div className="flex gap-2"><Button variant="outline" onClick={close}>انصراف</Button><Button disabled={busy} onClick={submit}>{busy?'در حال ذخیره…':'ایجاد وظیفه'}</Button></div></div></DialogContent></Dialog>
++ const submit=()=>{if(busy)return;if(task.owner&&!eligibleOwners(task.siteId).some(u=>u.id===task.owner)){setError('مسئول را از فهرست کاربران مجاز همین بیمارستان انتخاب کنید.');return}if(!task.title.trim()||task.title.length>200||task.description.length>5000||(!task.owner&&!task.queue)||task.owner&&task.queue||task.dueDate&&task.dueDate<today()){setError('عنوان، مسئول یا صف و تاریخ معتبر را بررسی کنید.');return}setBusy(true);try{const saved=demoStore.saveTask({...task,status:task.owner?'assigned':'open',history:[{at:new Date().toISOString(),text:'ایجاد وظیفه در حالت نمایشی'}]});created(saved);close()}catch{setError('ذخیره نمایشی ناموفق بود.')}finally{setBusy(false)}};
++ return <Dialog open={!!source} onOpenChange={o=>{if(!o)close()}}><DialogContent dir="rtl" className="sm:max-w-xl max-h-[90vh] overflow-y-auto text-right"><DialogHeader><DialogTitle>ایجاد وظیفه</DialogTitle></DialogHeader><div className="space-y-4"><p className="rounded bg-slate-50 p-3 text-xs">ایجادشده از {source?.supplyCaseId?'پرونده کمبود':source?.memo?'یادداشت تصمیم':'پاسخ کوپایلت'} · فقط داده نمایشی</p><Field label="عنوان" required value={task.title} change={title=>patch({title})}/><Field label="شرح" multi value={task.description} change={description=>patch({description})}/><Field label="نوع وظیفه" value={task.kind} change={kind=>patch({kind})}/><label className="block text-sm">مسئول مجاز<select className={field} value={task.owner} onChange={e=>patch({owner:e.target.value,queue:e.target.value?'':task.queue})}><option value="">بدون مسئول؛ ارجاع به صف</option>{eligibleOwners(task.siteId).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label><Field label="صف واگذاری (به جای مسئول)" value={task.queue} change={queue=>patch({queue,owner:queue?'':task.owner})}/><label className="block text-sm">اولویت<select className={field} value={task.priority} onChange={e=>patch({priority:e.target.value as DemoTask['priority']})}>{Object.entries(priorities).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label><label className="block text-sm">موعد<input type="date" className={field} value={task.dueDate} onChange={e=>patch({dueDate:e.target.value})}/></label><p className="text-xs text-slate-500">شواهد مرتبط: {task.evidenceIds.join('، ')||'ندارد'}</p>{error&&<p role="alert" className="text-red-700">{error}</p>}<div className="flex gap-2"><Button variant="outline" onClick={close}>انصراف</Button><Button disabled={busy} onClick={submit}>{busy?'در حال ذخیره…':'ایجاد وظیفه'}</Button></div></div></DialogContent></Dialog>
+ }
+ export function Phase6View({mode,id}:{mode:'list'|'new'|'edit'|'detail'|'task';id?:string}){
+  const {scope,user,tasks:legacyTasks,openWorkView,switchSite,showNotification}=useApp();const [tick,setTick]=useState(0);const refresh=()=>setTick(t=>t+1);const [search,setSearch]=useState('');const [filter,setFilter]=useState('all');const [source,setSource]=useState<{memo?:Memo;answer?:AnswerArtifact}|null>(null);const [memo,setMemo]=useState<Memo>(()=>id?demoStore.memos().find(m=>m.id===id)||freshMemo(scope.siteId||'',scope.siteName,user?.name||'کاربر'):freshMemo(scope.siteId||'',scope.siteName,user?.name||'کاربر'));const [dirty,setDirty]=useState(false);const [error,setError]=useState('');const [showHistory,setShowHistory]=useState(false);const [saving,setSaving]=useState(false);const bypassSaveNavigationGuard=useRef(false);
+@@ -44,7 +46,7 @@ export function Phase6View({mode,id}:{mode:'list'|'new'|'edit'|'detail'|'task';i
+   }
+   openWorkView({kind:'supply-case',id:caseId});
+  };
+- const updateTask=(p:Partial<DemoTask>,event:string)=>{if(!taskForm)return;try{const result={...taskForm,...p,history:[...taskForm.history,{at:new Date().toISOString(),text:event}]};demoStore.saveTask(result);setTaskForm(result);refresh();showNotification('تغییرات وظیفه ذخیره شد')}catch{setError('ذخیره تغییرات ناموفق بود')}};
++ const updateTask=(p:Partial<DemoTask>,event:string)=>{if(!taskForm)return;setError('');if(p.owner && !eligibleOwners(taskForm.siteId).some(u=>u.id===p.owner)){setError('شناسه مسئول معتبر یا در محدوده بیمارستان مجاز نیست.');return}if(p.status==='blocked' && (!(p.blocker??taskForm.blocker).trim() || !(p.nextReview??taskForm.nextReview) || (p.nextReview??taskForm.nextReview)<today())){setError('برای وضعیت مسدود، دلیل مانع و تاریخ بازبینی امروز یا آینده الزامی است.');return}try{const result={...taskForm,...p,history:[...taskForm.history,{at:new Date().toISOString(),text:event}]};demoStore.saveTask(result);setTaskForm(result);refresh();showNotification('تغییرات وظیفه ذخیره شد')}catch{setError('ذخیره تغییرات ناموفق بود')}};
+  if(mode==='task')return !task?<p role="alert">وظیفه یافت نشد یا به این بیمارستان تعلق ندارد.</p>:<div className="space-y-5"><Button variant="outline" onClick={()=>go({kind:'tasks'})}>بازگشت به وظایف</Button><Panel title={taskForm?.title||task.title}>
+  <p className="text-xs text-slate-500">مدیریت وظیفه · ذخیره‌سازی نمایشی محلی</p>
+  <Field label="ویرایش عنوان" required value={taskForm?.title||''} change={title=>setTaskForm(x=>x?{...x,title}:x)}/>
+@@ -53,9 +55,9 @@ export function Phase6View({mode,id}:{mode:'list'|'new'|'edit'|'detail'|'task';i
+  <p>وضعیت: {labels[taskForm?.status||task.status]} · اولویت: {priorities[taskForm?.priority||task.priority]} · مسئول: {taskForm?.owner||task.queue||'نامشخص'}</p>
+  <p>موعد: {task.dueDate||'نامشخص'}</p><p>مرجع پیوند: {task.supplyCaseId?<a href={`/supply/cases/${encodeURIComponent(task.supplyCaseId)}`} className="inline-flex rounded text-teal-700 underline underline-offset-2 hover:text-teal-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600" onClick={e=>{e.preventDefault();openLinkedSupplyCase(task.supplyCaseId!)}} aria-label={`باز کردن پرونده ${task.supplyCaseId}`}><bdi dir="ltr">{task.supplyCaseId}</bdi></a>:task.memoId||task.answerId||'ندارد'}</p><p className="text-xs">مراجع شواهد: {task.evidenceIds.join('، ')||'ندارد'}</p>
+  {task.memoId&&<Button variant="outline" onClick={()=>go({kind:'memo',id:task.memoId!})}>یادداشت مرتبط</Button>}{task.answerId&&<Button variant="outline" onClick={()=>go({kind:'copilot',answerId:task.answerId})}>پاسخ کوپایلت</Button>}
+- <label className="block">تغییر وضعیت<select className={field} value={taskForm?.status||task.status} onChange={e=>{const status=e.target.value as DemoTask['status'];if(status==='completed'&&task.reviewRequired){setError('تکمیل فقط با تأیید نتیجه در مرحله بررسی انجام می‌شود.');return}if(taskForm?.status==='submitted_for_review'){setError('ابتدا نتیجه را تأیید یا رد کنید.');return}setError('');updateTask({status},`تغییر وضعیت به ${labels[status]}`)}}>{Object.entries(labels).filter(([k])=>k!=='completed'||!task.reviewRequired).map(([k,v])=><option key={k} value={k}>{v}</option>)}{taskForm?.status==='completed'&&<option value="completed">تکمیل‌شده</option>}</select></label>
+- <Field label="واگذاری مجدد" value={taskForm?.owner||''} change={owner=>setTaskForm(x=>x?{...x,owner}:x)}/><Button variant="outline" disabled={!taskForm?.owner.trim()} onClick={()=>updateTask({owner:taskForm?.owner||'',queue:'',status:'assigned'},'واگذاری مجدد')}>ثبت مسئول</Button>
+- {taskForm?.status==='blocked'&&<><Field label="دلیل انسداد" value={taskForm.blocker} change={blocker=>setTaskForm(x=>x?{...x,blocker}:x)}/><label>تاریخ بررسی مجدد<input type="date" className={field} value={taskForm.nextReview} onChange={e=>setTaskForm(x=>x?{...x,nextReview:e.target.value}:x)}/></label><Button disabled={!taskForm.blocker.trim()||!taskForm.nextReview} onClick={()=>updateTask({blocker:taskForm.blocker,nextReview:taskForm.nextReview},'ثبت مانع')}>ثبت مانع</Button></>}
++ <label className="block">تغییر وضعیت<select className={field} value={taskForm?.status||task.status} onChange={e=>{const status=e.target.value as DemoTask['status'];if(status==='blocked'){setTaskForm(x=>x?{...x,status}:x);setError('برای ثبت وضعیت مسدود، دلیل مانع و تاریخ بازبینی را وارد و سپس ثبت کنید.');return}if(status==='completed'&&task.reviewRequired){setError('تکمیل فقط با تأیید نتیجه در مرحله بررسی انجام می‌شود.');return}if(taskForm?.status==='submitted_for_review'){setError('ابتدا نتیجه را تأیید یا رد کنید.');return}setError('');updateTask({status},`تغییر وضعیت به ${labels[status]}`)}}>{Object.entries(labels).filter(([k])=>k!=='completed'||!task.reviewRequired).map(([k,v])=><option key={k} value={k}>{v}</option>)}{taskForm?.status==='completed'&&<option value="completed">تکمیل‌شده</option>}</select></label>
++ <label className="block text-sm">واگذاری به کاربر مجاز<select className={field} value={eligibleOwners(taskForm?.siteId||'').some(u=>u.id===taskForm?.owner)?taskForm?.owner:''} onChange={e=>setTaskForm(x=>x?{...x,owner:e.target.value}:x)}><option value="">انتخاب کاربر معتبر</option>{eligibleOwners(taskForm?.siteId||'').map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label><Button variant="outline" disabled={!taskForm?.owner||!eligibleOwners(taskForm.siteId).some(u=>u.id===taskForm.owner)} onClick={()=>updateTask({owner:taskForm!.owner,queue:'',status:'assigned'},'واگذاری مجدد')}>ثبت مسئول</Button>
++ {taskForm?.status==='blocked'&&<><Field label="دلیل انسداد" value={taskForm.blocker} change={blocker=>setTaskForm(x=>x?{...x,blocker}:x)}/><label>تاریخ بررسی مجدد<input type="date" className={field} value={taskForm.nextReview} onChange={e=>setTaskForm(x=>x?{...x,nextReview:e.target.value}:x)}/></label><Button disabled={!taskForm.blocker.trim()||!taskForm.nextReview||taskForm.nextReview<today()} onClick={()=>updateTask({status:'blocked',blocker:taskForm.blocker,nextReview:taskForm.nextReview},'ثبت مانع')}>ثبت مانع</Button></>}
+  <Field label="نتیجه" value={taskForm?.outcome||''} multi change={outcome=>setTaskForm(x=>x?{...x,outcome}:x)}/>
+  <Button disabled={!taskForm?.outcome.trim()||taskForm.status==='submitted_for_review'||taskForm.status==='completed'} onClick={()=>updateTask({outcome:taskForm?.outcome||'',status:'submitted_for_review'},'ثبت نتیجه و ارسال برای بررسی')}>ثبت نتیجه و ارسال برای بررسی</Button>
+  {taskForm?.status==='submitted_for_review'&&<div className="rounded border border-amber-300 bg-amber-50 p-4 space-y-3"><p className="font-bold">بررسی نتیجه (نمایشی)</p><p className="text-sm">تأیید و رد صرفاً در مرورگر ثبت می‌شود و تأیید واقعی سازمانی نیست.</p><div className="flex gap-2"><Button onClick={()=>{setError('');updateTask({status:'completed'},'نتیجه توسط بازبین نمایشی تأیید شد')}}>تأیید نتیجه</Button><Button variant="outline" onClick={()=>{setError('');updateTask({status:'in_progress'},'نتیجه توسط بازبین نمایشی رد و برای اصلاح بازگردانده شد')}}>رد و بازگشت برای اصلاح</Button></div></div>}
