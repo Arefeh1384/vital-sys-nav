@@ -57,6 +57,12 @@ const definitions:Record<string,Definition>={
  {name:'درخواست',help:'درخواست با سایت، بازه، متریک و افق ذخیره می‌شود؛ وضعیت «در انتظار منبع» می‌ماند.',fields:[f('metric','متریک ظرفیت','select',true,['available_staffed_beds','occupancy','ed_wait','ward_demand']),f('start','شروع بازه مبنا','datetime-local'),f('end','پایان بازه مبنا','datetime-local'),f('horizon','افق پیش‌بینی (ساعت)','number'),f('granularity','دانه‌بندی','select',true,['hour','day']),f('model','نسخه مدل پیشنهادی'),f('assumptions','فرض‌ها','textarea')]},
  {name:'نتایج و بازه‌های عدم قطعیت',help:'برای هر درخواست، point / p10 / p50 / p90 فقط پس از اتصال مدل و شواهد معتبر قابل محاسبه‌اند.',fields:[]},
  {name:'پیشینه و بازبینی',help:'تاریخچه و ارجاع درخواست بازبینی؛ هیچ پیش‌بینی معتبر یا تصمیم اجرایی وجود ندارد.',fields:[f('request','شناسه درخواست'),f('reviewer','بازبین'),f('comment','شرح بررسی','textarea')] }]},
+ '/operations/scenarios':{title:'سناریوهای ظرفیت · OPS-03',warning:'خط پایه و فرضیات صرفاً پیش‌نویس ساختگی در مرورگر هستند؛ مدل سناریو و داده معتبر وجود ندارد و هیچ تغییری در پذیرش، تخت یا شیفت واقعی اعمال نمی‌شود.',tabs:[
+ {name:'خط پایه',help:'ابتدا شناسه و مرجع خط پایه پیشنهادی را ثبت و شناسه رکورد SYN- را برای مرحله بعد کپی کنید. این مرجع به معنای معتبر بودن داده نیست.',fields:[f('name','عنوان خط پایه'),f('metric','سنجه ظرفیت','select',true,['available_staffed_beds','occupancy','ed_wait','ward_demand']),f('source_ref','ارجاع به منبع / Snapshot مصنوعی'),f('as_of','زمان برش داده','datetime-local'),f('quality','وضعیت داده','select',true,['unverified','synthetic'])]},
+ {name:'تغییر پارامترها',help:'شناسه SYN- خط پایه را وارد کنید؛ تغییرات فقط فرضیه‌اند و هیچ محاسبه یا عملیاتی انجام نمی‌شود.',fields:[f('scenario_name','نام سناریو'),f('baseline_ref','شناسه خط پایه ثبت‌شده'),f('horizon_hours','افق سناریو (ساعت)','number'),f('bed_direction','جهت تغییر تخت','select',true,['increase','decrease','unchanged']),f('bed_count','مقدار تغییر تخت','number'),f('admission_direction','جهت تغییر پذیرش','select',true,['increase','decrease','unchanged']),f('admission_percent','درصد تغییر پذیرش','number'),f('assumptions','فرضیات و توجیه سناریو','textarea')]},
+ {name:'محدودیت‌ها',help:'شناسه SYN- سناریوی ثبت‌شده را وارد کنید و محدودیت‌ها را به‌عنوان پیش‌نویس ثبت کنید.',fields:[f('scenario_ref','شناسه سناریوی ثبت‌شده'),f('staffing','محدودیت نیروی انسانی','textarea'),f('physical_beds','محدودیت تخت و امکانات','textarea'),f('risk','ریسک و محدودیت کیفیت داده','textarea')]},
+ {name:'خروجی سناریو',help:'تا زمانی که داده معتبر، مدل شبیه‌سازی و بازبینی مستقل موجود نباشند، هیچ نتیجه عددی یا پیشنهاد اجرایی تولید نمی‌شود.',fields:[]}
+ ]},
  '/quality/workflows':{title:'کیفیت، ایمنی و اعتباربخشی · QLT-01–06',warning:'تمام داده‌ها مصنوعی و غیرقابل استفاده بالینی‌اند؛ رسیدگی، افشا و تأیید واقعی به مجوز سازمانی نیاز دارند.',tabs:[
  {name:'ثبت رخداد',help:'در وضعیت خطر فوری، گزارش‌دهنده باید فوراً از مسیر اضطراری مصوب استفاده کند؛ این فرم سامانه فوریت نیست.',fields:[f('category','دسته رخداد'),f('occurred','زمان رخداد','datetime-local'),f('location','محل'),f('mode','نوع ثبت','select',true,['identified','confidential','anonymous']),f('narrative','شرح رخداد','textarea'),f('immediate','اقدام ایمنی فوری','textarea')]},
  {name:'صف تریاژ',help:'طبقه‌بندی و ارجاع داخلی پیش‌نویس؛ رسیدگی واقعی صورت نمی‌گیرد.',fields:[f('incident','شناسه رخداد'),f('severity','شدت','select',true,['low','medium','high','critical']),f('category','رده'),f('queue','صف رسیدگی'),f('reason','توضیح طبقه‌بندی','textarea')]},
@@ -97,6 +103,12 @@ export function validateDomain(path:string,tab:number,v:Record<string,string>,it
  if(path==='/data/contracts'&&tab===1&&v.prior_version===v.next_version)errors.push('نسخه جانشین باید متفاوت از نسخه قبلی باشد.');
  if(path==='/data/ingestion'&&tab===2&&Number(v.checkpoint)>100)errors.push('پیشرفت از ۱۰۰ درصد بیشتر نیست.');
  if(path==='/operations/forecasts'&&tab===0&&Number(v.horizon)<=0)errors.push('افق باید مثبت باشد.');
+ if(path==='/operations/scenarios'&&tab===1){
+   if(Number(v.horizon_hours)<=0)errors.push('افق سناریو باید مثبت باشد.');
+   if(Number(v.admission_percent)>100)errors.push('درصد تغییر پذیرش نباید بیش از ۱۰۰ باشد.');
+   if(!items.some(x=>x.tab===0&&x.id===v.baseline_ref))errors.push('ابتدا خط پایه را در همین سایت و کاربر ثبت کنید و شناسه آن را وارد کنید.');
+ }
+ if(path==='/operations/scenarios'&&tab===2&&!items.some(x=>x.tab===1&&x.id===v.scenario_ref))errors.push('شناسه سناریوی ثبت‌شده در همین سایت و کاربر معتبر نیست.');
  if(path==='/quality/workflows'&&tab===3&&!v.review_end)errors.push('پایان پنجره بررسی الزامی است.');
  if(path==='/settings/modules'&&tab===0&&v.state==='active')errors.push('فعال‌سازی واقعی با فرم مستقیم ممنوع است؛ ابتدا shadow، گیت و بازبینی مستقل لازم است.');
  if(path==='/settings/modules'&&tab===2&&v.target==='active'){
@@ -121,12 +133,13 @@ function storageKey(path:string,siteId:string,userId:string){
  const reviewable=['/executive/briefs','/settings/modules','/settings/governance','/data/contracts'];
  return `him.synthetic.domain.v2:${path}:${siteId}:${reviewable.includes(path)?'shared-demo':userId}`;
 }
-export function DomainWorkspace({path,siteName}:{path:string;siteName:string}){
+export function DomainWorkspace({path,siteName,initialTab=0}:{path:string;siteName:string;initialTab?:number}){
  const {scope,user}=useApp();
- return <DomainWorkspaceContent key={`${path}:${scope.siteId}:${user?.id||'demo'}`} path={path} siteId={scope.siteId||'no-site'} siteName={siteName} userId={user?.id||'demo'}/>;
+ return <DomainWorkspaceContent key={`${path}:${scope.siteId}:${user?.id||'demo'}:${initialTab}`} path={path} siteId={scope.siteId||'no-site'} siteName={siteName} userId={user?.id||'demo'} initialTab={initialTab}/>;
 }
-function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteId:string;siteName:string;userId:string}){
- const def=definitions[path];const [tab,setTab]=useState(0);
+function DomainWorkspaceContent({path,siteId,siteName,userId,initialTab}:{path:string;siteId:string;siteName:string;userId:string;initialTab:number}){
+ const {setActiveModule}=useApp();
+ const def=definitions[path];const [tab,setTab]=useState(initialTab >= 0 && initialTab < (def?.tabs.length ?? 0) ? initialTab : 0);
  const [values,setValues]=useState<Record<string,string>>({});const [q,setQ]=useState('');
  const [reviewReason,setReviewReason]=useState('');
  const key=storageKey(path,siteId,userId);
@@ -196,15 +209,16 @@ function DomainWorkspaceContent({path,siteId,siteName,userId}:{path:string;siteI
  };
  const visible=items.filter(x=>(JSON.stringify(x.values)+' '+x.id).toLowerCase().includes(q.toLowerCase()));
  return <section dir="rtl" data-testid="domain-workspace" className="space-y-4">
-  <header className="rounded-xl bg-white border p-5 space-y-1"><h1 className="font-bold text-xl">{def.title}</h1><p className="text-sm text-slate-500">سایت انتخابی: {siteName} · <bdi>{siteId}</bdi> · کاربر نمونه: <bdi>{userId}</bdi></p></header>
+  <header className="rounded-xl bg-white border p-5 space-y-1">{path.startsWith('/operations/')&&<button type="button" onClick={()=>setActiveModule('OPS')} className="mb-2 rounded-lg border border-teal-300 px-3 py-2 text-xs font-bold text-teal-800 hover:bg-teal-50">بازگشت به عملیات (OPS)</button>}<h1 className="font-bold text-xl">{def.title}</h1><p className="text-sm text-slate-500">سایت انتخابی: {siteName} · <bdi>{siteId}</bdi> · کاربر نمونه: <bdi>{userId}</bdi></p></header>
   <p role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{def.warning}</p>
-  <nav role="tablist" className="flex flex-wrap gap-2" aria-label={def.title}>{def.tabs.map((x,i)=><button key={x.name} type="button" role="tab" aria-selected={tab===i} onClick={()=>{setTab(i);setValues({});}} className={`rounded-lg border px-3 py-2 text-sm ${i===tab?'bg-teal-800 text-white':'bg-white'}`}>{x.name}</button>)}</nav>
+  <nav role="tablist" className="flex flex-wrap gap-2" aria-label={def.title}>{def.tabs.map((x,i)=><button key={x.name} type="button" role="tab" aria-selected={tab===i} onClick={()=>{setTab(i);setValues({});if(path.startsWith('/operations/')&&typeof window!=='undefined')window.history.replaceState(null,'',`${path}?tab=${i}`);}} className={`rounded-lg border px-3 py-2 text-sm ${i===tab?'bg-teal-800 text-white':'bg-white'}`}>{x.name}</button>)}</nav>
   <div role="tabpanel" className="bg-white rounded-xl border p-5 space-y-4"><h2 className="font-bold text-lg">{def.tabs[tab].name}</h2><p className="text-sm text-slate-600">{def.tabs[tab].help}</p>
   {!!fields.length&&<div className="space-y-3"><div className="grid sm:grid-cols-2 gap-3">{fields.map(field=><label key={field.key} className="block text-sm text-slate-700">{field.label}{field.required?' *':''}
    {field.kind==='textarea'?<textarea className={cls} rows={3} value={values[field.key]||''} onChange={e=>update(field.key,e.target.value)}/>:field.kind==='select'?<select className={cls} value={values[field.key]||''} onChange={e=>update(field.key,e.target.value)}><option value="">انتخاب کنید</option>{field.options?.map(o=><option key={o} value={o}>{o}</option>)}</select>:<input className={cls} type={field.kind||'text'} value={values[field.key]||''} onChange={e=>update(field.key,e.target.value)} placeholder={field.placeholder}/>}</label>)}</div>
    {errors.length>0&&<p role="status" className="text-xs text-amber-800">{errors.slice(0,4).join(' · ')}</p>}
-   <button type="button" className={primary} disabled={errors.length>0} onClick={save}>{path==='/operations/forecasts'&&tab===0?'ثبت درخواست پیش‌بینی (در انتظار منبع)':'ثبت نسخه پیش‌نویس نمونه'}</button>
+   <button type="button" className={primary} disabled={errors.length>0} onClick={save}>{path==='/operations/forecasts'&&tab===0?'ثبت درخواست پیش‌بینی (در انتظار منبع)':path==='/operations/scenarios'&&tab===1?'ثبت فرضیات سناریو (پیش‌نویس)':'ثبت نسخه پیش‌نویس نمونه'}</button>
   </div>}
+  {path==='/operations/scenarios'&&tab===3&&<div role="status" data-testid="scenario-results" className="rounded-lg bg-slate-50 p-3 text-sm"><strong>خروجی سناریو: unavailable</strong><p>خط پایه تأییدشده، مدل اعتبارسنجی‌شده و داده منبع در دسترس نیست. هیچ عدد، اثر بر تخت یا تصمیم بالینی ایجاد نشده است.</p></div>}
   {path==='/operations/forecasts'&&tab===1&&<div className="rounded-lg bg-slate-50 p-3 text-sm" data-testid="forecast-results"><strong>نتیجه: unavailable</strong><p>point: ناموجود · p10: ناموجود · p50: ناموجود · p90: ناموجود</p><p>علت: مدل/نسخه و snapshot ورودی در دسترس نیست. عدد جایگزین تولید نمی‌شود.</p></div>}
   {path==='/executive/briefs'&&<section data-testid="brief-preview" className="rounded-lg border p-3 text-sm space-y-2"><h3 className="font-bold">پیش‌نمایش نسخه‌دار گزارش مدیریتی · صرفاً آزمایشی</h3>{items.filter(x=>x.tab===0).map(root=>{const preview=briefPreview(root.id);return <div key={root.id} className="rounded border p-3"><p>گزارش: {root.values.title} · {root.values.template} · شناسه {root.id}</p><p>دوره: {root.values.boundary} · دامنه: {root.values.scope} · گیرندگان پیشنهادی: {root.values.recipients}</p>{(()=>{const checks=briefChecks(root.id);return <div data-testid="brief-compliance" className="my-2 rounded bg-slate-50 p-2 space-y-1"><p>قالب ارائه: {checks.rendition==='plain_text'?'متن ساده':'HTML (نمایش مرورگری)'}</p><p>کنترل تازگی منبع: {checks.fresh?'PASS (فیکسچر حداکثر ۲۴ساعت)':'STALE / UNKNOWN'} · سیاست: {checks.policy} · {checks.freshnessAllowed?'مجاز در شبیه‌سازی با هشدار':'BLOCKED'}</p><p>کنترل گیرندگان در فهرست کاربران مجاز همین سایت (فقط فیکسچر): {checks.recipientAllowed?'PASS (demo allowlist)':'BLOCKED — شناسه‌های usr-… را با ویرگول وارد کنید'}</p><p className="text-amber-800">این بررسی مجوز سازمانی یا ارسال واقعی را تأیید نمی‌کند.</p></div>})()}{preview?.compatible?root.values.rendition==='plain_text'?<pre className="whitespace-pre-wrap rounded bg-slate-50 p-3" data-testid="brief-plain-text-rendition">{`DEMO BRIEF / ${root.values.title}\nSynthetic occupancy: ${preview.value}%\nMetric: available_staffed_bed_occupancy@1\nSnapshot: ${preview.source}\nCutoff: ${preview.cutoff}\nNOT AUTHORISED FOR EXTERNAL DISTRIBUTION`}</pre>:<><p className="font-semibold">اشغال تخت مصنوعی: {preview.value}%</p><p>ارجاع: {preview.source} · نسخه: available_staffed_bed_occupancy@1 · cutoff: {preview.cutoff}</p><p>محدودیت: فیکسچر کهنه/محلی؛ گزارش بیرونی معتبر نیست.</p></>:<p role="alert">داده هم‌دوره و شواهد هماهنگ وجود ندارند؛ تولید شاخص عددی ممنوع است. برای پیش‌نمایش عددی باید متریک available_staffed_bed_occupancy@1 و مرجع snapshot همین سایت ثبت شود.</p>}</div>})}</section>}
   {path==='/settings/governance'&&tab===2&&<SyntheticRetentionPlan/>}

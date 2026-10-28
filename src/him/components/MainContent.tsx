@@ -86,7 +86,7 @@ export const MainContent: React.FC = () => {
               siteId={scope.siteId || ''}
             />
           )}
-          {workView.kind === 'spec-page' && <SpecificationWorkspace key={workView.path} path={workView.path} siteName={scope.siteName} />}
+          {workView.kind === 'spec-page' && <SpecificationWorkspace key={`${workView.path}:${workView.tab ?? 0}`} path={workView.path} initialTab={workView.tab} siteName={scope.siteName} />}
           {workView.kind === 'tasks' && <TaskListView />}
           {workView.kind === 'task' && <Phase6View mode="task" id={workView.id}/>}
           {workView.kind === 'alerts' && <AlertListView />}
@@ -373,6 +373,35 @@ export const MainContent: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Entry points to the existing OPS workflows. No source-side operation is triggered. */}
+      <section aria-labelledby="ops-planning-heading" data-testid="ops-planning-tools" className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 space-y-4 shadow-xs" dir="rtl">
+        <div className="space-y-1">
+          <h3 id="ops-planning-heading" className="flex items-center gap-2 text-sm sm:text-base font-bold text-slate-900">
+            <SlidersHorizontal className="h-5 w-5 text-teal-700" aria-hidden="true" />
+            ابزارهای برنامه‌ریزی ظرفیت
+          </h3>
+          <p className="text-xs text-amber-800">این ابزارها صرفاً پیش‌نویس آزمایشی ثبت می‌کنند. مدل و داده معتبر برای پیش‌بینی یا شبیه‌سازی عملیاتی متصل نیست.</p>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <article className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 min-w-0">
+            <div className="flex items-center gap-2 font-bold text-slate-900 text-sm"><TrendingUp className="h-4 w-4 text-teal-700" aria-hidden="true" />پیش‌بینی ظرفیت</div>
+            <p className="text-xs text-slate-600 flex-1">درخواست پیش‌بینی را ثبت کنید یا نتیجه و بازه‌های عدم قطعیت را بررسی کنید. بدون مدل معتبر، نتیجه unavailable خواهد بود.</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" data-testid="ops-forecast-request" className="rounded-lg bg-teal-800 px-3 py-2 text-xs font-bold text-white hover:bg-teal-900 focus-visible:ring-2 focus-visible:ring-teal-500" onClick={() => openWorkView({kind:'spec-page',path:'/operations/forecasts',tab:0})}>ثبت درخواست پیش‌بینی</button>
+              <button type="button" data-testid="ops-forecast-results" className="rounded-lg border border-teal-300 bg-white px-3 py-2 text-xs font-bold text-teal-800 hover:bg-teal-50 focus-visible:ring-2 focus-visible:ring-teal-500" onClick={() => openWorkView({kind:'spec-page',path:'/operations/forecasts',tab:1})}>نتایج و بازه عدم قطعیت</button>
+            </div>
+          </article>
+          <article className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 min-w-0">
+            <div className="flex items-center gap-2 font-bold text-slate-900 text-sm"><SlidersHorizontal className="h-4 w-4 text-teal-700" aria-hidden="true" />سناریوهای ظرفیت</div>
+            <p className="text-xs text-slate-600 flex-1">خط پایه آزمایشی، فرضیات تغییر ظرفیت و محدودیت‌ها را ثبت کنید؛ خروجی محاسباتی تا اتصال داده و مدل معتبر ناموجود است.</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" data-testid="ops-scenario-baseline" className="rounded-lg border border-teal-300 bg-white px-3 py-2 text-xs font-bold text-teal-800 hover:bg-teal-50 focus-visible:ring-2 focus-visible:ring-teal-500" onClick={() => openWorkView({kind:'spec-page',path:'/operations/scenarios',tab:0})}>تعریف خط پایه</button>
+              <button type="button" data-testid="ops-scenario-assumptions" className="rounded-lg bg-teal-800 px-3 py-2 text-xs font-bold text-white hover:bg-teal-900 focus-visible:ring-2 focus-visible:ring-teal-500" onClick={() => openWorkView({kind:'spec-page',path:'/operations/scenarios',tab:1})}>ثبت فرضیات سناریو</button>
+            </div>
+          </article>
+        </div>
+      </section>
 
       {/* Ward Occupancy List */}
       <div className="p-5 sm:p-6 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4">

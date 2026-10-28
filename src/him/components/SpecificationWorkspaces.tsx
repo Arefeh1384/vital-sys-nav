@@ -45,7 +45,7 @@ const SCREENS: Record<string,{title:string;intro:string;tabs:string[];warning:st
 };
 export const specPaths = Object.keys(SCREENS);
 const STATE_KEY = 'him.spec-workspaces.demo.v2';
-export function SpecificationWorkspace({path,siteName}:{path:string;siteName:string}) {
+export function SpecificationWorkspace({path,siteName,initialTab}:{path:string;siteName:string;initialTab?:number}) {
  const {scope,user}=useApp();
  if(path==='/executive/investigations')return <InvestigationWorkspace/>;
  if(path==='/audit')return <AuditWorkspace/>;
@@ -53,7 +53,7 @@ export function SpecificationWorkspace({path,siteName}:{path:string;siteName:str
  if(path==='/data/connectors')return <ConnectorWorkspace/>;
  if(path==='/knowledge/documents'||path==='/knowledge/search')return <KnowledgeWorkspace key={`${path}:${scope.siteId}:${user?.id}`} path={path} siteName={siteName}/>;
  if(['/assets/workflows','/workforce','/settings/access'].includes(path))return <SpecializedWorkspace path={path} siteName={siteName}/>;
- if(domainPaths.includes(path)||path==='/settings/governance'||path==='/executive/briefs')return <DomainWorkspace path={path} siteName={siteName}/>;
+ if(domainPaths.includes(path)||path==='/settings/governance'||path==='/executive/briefs')return <DomainWorkspace path={path} siteName={siteName} initialTab={initialTab}/>;
  return <GenericSpecificationWorkspace key={`${path}:${scope.siteId}:${user?.id||'guest'}`} path={path} siteName={siteName}/>;
 }
 function GenericSpecificationWorkspace({path,siteName}:{path:string;siteName:string}) {
