@@ -250,6 +250,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?
     }));
     return [...fromAlerts, ...fromTasks];
   }, [alerts, tasks, scope.siteId]);
+  /** Lets open editors veto leaving (unsaved edits); site and identity changes discard context too (REQ-PLT-006). */
+  const confirmLeave = () => typeof window === 'undefined' || window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }));
   const setActiveModule = (m: ModuleKey) => { if (typeof window !== 'undefined' && !window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) return; setActiveModuleRaw(m); setWorkView(null); setViewState('normal'); };
   const openWorkView = (v: WorkView | null) => { if (typeof window !== 'undefined' && !window.dispatchEvent(new Event('him:before-navigation', { cancelable: true }))) return; setWorkView(v); setViewState('normal'); };
   const updateTaskStatus = (id: string, status: TaskStatus) => {
@@ -319,6 +321,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?
       showNotification('خطای دسترسی: شما مجوز مشاهده این سایت بیمارستانی را ندارید.');
       return false;
     }
+    if (siteId !== scope.siteId && !confirmLeave()) return false;
 
     const targetSite = SITES_DATA.find(s => s.id === siteId);
     if (!targetSite) return false;
@@ -389,6 +392,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?
   };
 
   const loginAsDemoUser = (demoUser: User, siteId?: string) => {
+    if (user && user.id !== demoUser.id && !confirmLeave()) return;
     setUser(demoUser);
     // Switching mock identity keeps the current hospital when the new user may also see it.
     const chosenSiteId = siteId && demoUser.permittedSiteIds.includes(siteId)
@@ -413,6 +417,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; initialWorkView?
   };
 
   const logout = () => {
+    if (!confirmLeave()) return;
     setUser(null);
     setWorkView(null);
     setViewState('normal');

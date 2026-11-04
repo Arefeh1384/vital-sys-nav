@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { 
   Building2, 
   ChevronDown, 
@@ -13,6 +13,13 @@ import {
 import { useApp } from '../context/AppContext';
 import { DEMO_USERS } from '../data/mockData';
 import {useShellLanguage} from './useShellLanguage';
+import {useModalFocus} from './useModalFocus';
+import {normalizeFaSearch} from './faSearch';
+import {toEnglishText} from '../i18n/translate';
+
+const COMMANDS=[{name:'داشبورد اجرایی',kind:'executive-dashboard'},{name:'فهرست وظایف',kind:'tasks'},{name:'فهرست هشدارها',kind:'alerts'},{name:'مرکز اعلان‌ها',kind:'notifications'},{name:'پیشنهادهای اقدام',kind:'proposals'},{name:'یادداشت‌های تصمیم',kind:'memos'},{name:'کوپایلت',kind:'copilot'}] as const;
+/** Command search matches the Persian name and its English label in either UI language (REQ-PLT-005). */
+export function matchCommands(query:string){const q=query.trim();if(!q)return [...COMMANDS];const fa=normalizeFaSearch(q);const en=q.toLowerCase();return COMMANDS.filter(x=>normalizeFaSearch(x.name).includes(fa)||toEnglishText(x.name).toLowerCase().includes(en)||x.kind.replace('-',' ').includes(en));}
 
 export const Header: React.FC = () => {
   const { 
@@ -40,7 +47,11 @@ export const Header: React.FC = () => {
   const unreadCount = notifications.filter(n => !readNotificationIds.includes(n.id)).length;
 
   const [commandOpen,setCommandOpen]=useState(false);
+  const commandRef=useRef<HTMLDivElement>(null);
+  useModalFocus(commandRef,commandOpen,()=>setCommandOpen(false));
   const [commandQuery,setCommandQuery]=useState('');
+  const commandResults=useMemo(()=>matchCommands(commandQuery),[commandQuery]);
+  const runCommand=(kind:typeof COMMANDS[number]['kind'])=>{if(kind==='executive-dashboard')setActiveModule('EXE');else openWorkView({kind});setCommandOpen(false);setCommandQuery('');};
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isStateMenuOpen, setIsStateMenuOpen] = useState(false);
 
@@ -104,7 +115,7 @@ export const Header: React.FC = () => {
       </div>
 
       <button type="button" data-testid="global-command-search" onClick={()=>setCommandOpen(true)} aria-label="جستجوی سراسری و فرمان" className="hidden xl:inline-flex rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700 hover:bg-teal-50">جستجوی سراسری / فرمان</button>
-      {commandOpen&&<div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/50 p-3 pt-16" role="dialog" aria-modal="true" aria-label="جستجوی سراسری و فرمان" onClick={()=>setCommandOpen(false)}><div className="w-full max-w-lg rounded-xl border bg-white p-4 space-y-3 shadow-lg" onClick={e=>e.stopPropagation()}><div className="flex justify-between"><h2 className="font-bold">جستجوی مسیرهای برنامه</h2><button type="button" onClick={()=>setCommandOpen(false)}>بستن</button></div><input autoFocus className="w-full rounded-lg border p-2 text-sm" placeholder="جستجوی نام بخش یا فرمان…" value={commandQuery} onChange={e=>setCommandQuery(e.target.value)}/><p className="text-xs text-amber-900">فقط جستجوی فرمان‌ها و مسیرهای همین نمونه؛ این کادر متن پرونده بیمار، اسناد محرمانه یا داده فراتر از دامنه مجاز را جست‌وجو نمی‌کند.</p><div className="max-h-64 overflow-auto space-y-1">{([{name:'داشبورد اجرایی',kind:'executive-dashboard'},{name:'فهرست وظایف',kind:'tasks'},{name:'فهرست هشدارها',kind:'alerts'},{name:'مرکز اعلان‌ها',kind:'notifications'},{name:'پیشنهادهای اقدام',kind:'proposals'},{name:'یادداشت‌های تصمیم',kind:'memos'},{name:'کوپایلت',kind:'copilot'}] as const).filter(x=>x.name.includes(commandQuery.trim())).map(x=><button type="button" key={x.kind} onClick={()=>{if(x.kind==='executive-dashboard')setActiveModule('EXE');else openWorkView({kind:x.kind});setCommandOpen(false);setCommandQuery('')}} className="block w-full rounded border p-2 text-start text-sm hover:bg-slate-50">{x.name}</button>)}</div></div></div>}
+      {commandOpen&&<div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/50 p-3 pt-16" role="dialog" aria-modal="true" aria-label="جستجوی سراسری و فرمان" onClick={()=>setCommandOpen(false)}><div ref={commandRef} className="w-full max-w-lg rounded-xl border bg-white p-4 space-y-3 shadow-lg" onClick={e=>e.stopPropagation()}><div className="flex justify-between"><h2 className="font-bold">جستجوی مسیرهای برنامه</h2><button type="button" onClick={()=>setCommandOpen(false)}>بستن</button></div><input autoFocus className="w-full rounded-lg border p-2 text-sm" placeholder="جستجوی نام بخش یا فرمان…" value={commandQuery} onChange={e=>setCommandQuery(e.target.value)} onKeyDown={e=>{if(e.key!=='Enter')return;const first=commandResults[0];if(first){e.preventDefault();runCommand(first.kind);}}} aria-label="جستجوی نام بخش یا فرمان"/><p className="text-xs text-amber-900">فقط جستجوی فرمان‌ها و مسیرهای همین نمونه؛ این کادر متن پرونده بیمار، اسناد محرمانه یا داده فراتر از دامنه مجاز را جست‌وجو نمی‌کند.</p><div className="max-h-64 overflow-auto space-y-1">{commandResults.length===0&&<p className="text-sm text-slate-500" role="status">مسیری با این عبارت یافت نشد.</p>}{commandResults.map(x=><button type="button" key={x.kind} onClick={()=>runCommand(x.kind)} className="block w-full rounded border p-2 text-start text-sm hover:bg-slate-50">{x.name}</button>)}</div></div></div>}
       {/* Zone 3: Date, State Tester & User Profile */}
       <div className="order-2 sm:order-3 flex items-center gap-1 sm:gap-2 md:gap-3 shrink-0">
         {/* Persian Calendar */}

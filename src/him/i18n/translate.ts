@@ -119,7 +119,8 @@ function byTemplate(key: string, depth: number): string | null {
         ok = false;
         break;
       }
-      values.push(tv);
+      // Keep the capture's own surrounding spaces ("80% (Range: …)").
+      values.push(/^\s*/.exec(v)![0] + tv.trim() + /\s*$/.exec(v)![0]);
     }
     if (ok) return t.en.replace(/\u0000(\d+)\u0000/g, (_, i) => values[Number(i)] ?? '');
   }

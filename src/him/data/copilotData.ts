@@ -2,6 +2,9 @@ import { ACTIONS_DATA, HEPARIN_AFTER, HEPARIN_BEFORE } from './actionData';
 import { ALERTS_DATA, TASKS_DATA } from './workData';
 import { alertEvidence, taskEvidence } from './evidenceData';
 import { SITES_DATA } from './mockData';
+import { toEnglishText } from '../i18n/translate';
+
+const EN_UNAVAILABLE_NOTE = 'ترجمه‌ی انگلیسی پاسخ در نسخه‌ی نمونه ارائه نمی‌شود؛ متن پاسخ فارسی است.';
 
 export type AnswerStatus = 'answered' | 'partial' | 'clarification_required' | 'abstained';
 export type RunState = 'queued' | 'running' | 'validating' | 'completed' | 'completed_partial' | 'awaiting_input' | 'abstained' | 'canceled' | 'timed_out' | 'failed';
@@ -111,7 +114,26 @@ export function jobStateForRun(state: RunState): CopilotTurn['jobState'] {
 const SITE_ALIASES: Record<string, string[]> = {
   'SITE-TALEGHANI': ['طالقانی'], 'SITE-IMAM-HOSSEIN': ['امام حسین'], 'SITE-SHOHADA': ['شهدا', 'تجریش'], 'SITE-MOFID': ['مفید'], 'SITE-HQ': ['ستاد'],
 };
+/**
+ * Answers in the selected answer language (REQ-AIM-006). The sample answers are authored in Persian;
+ * for English the reviewed Persian→English UI dictionary renders them. Identifiers, numbers and
+ * evidence links are unchanged, and clarification options stay as submitted values.
+ */
 export function answerQuestion(question: string, siteId: string, userPermittedSiteIds: string[], now: string, ctx?: { range?: string; language?: 'fa' | 'en' }): AnswerArtifact {
+  const answer = answerQuestionFa(question, siteId, userPermittedSiteIds, now, ctx);
+  if (ctx?.language !== 'en') return answer;
+  const en = (text: string) => toEnglishText(text);
+  return {
+    ...answer,
+    blocks: answer.blocks.map(b => ({ ...b, text: en(b.text) })),
+    limitations: answer.limitations.filter(l => l !== EN_UNAVAILABLE_NOTE).map(en),
+    evidence: answer.evidence.map(e => ({ ...e, title: en(e.title), excerpt: en(e.excerpt) })),
+    ...(answer.clarification ? { clarification: { ...answer.clarification, question: en(answer.clarification.question) } } : {}),
+    ...(answer.nextStep ? { nextStep: en(answer.nextStep) } : {}),
+  };
+}
+
+function answerQuestionFa(question: string, siteId: string, userPermittedSiteIds: string[], now: string, ctx?: { range?: string; language?: 'fa' | 'en' }): AnswerArtifact {
   const q = normalizeQuestion(question);
   const id = `answer-${hash(siteId + q + now)}`;
   const base: AnswerArtifact = { id, runId: `run-${hash(siteId + q + now)}`, revision: 1, status: 'abstained', reasonCodes: [], blocks: [], limitations: [], evidence: [],
@@ -202,7 +224,7 @@ export function answerQuestion(question: string, siteId: string, userPermittedSi
     const notComputable = result.status === 'not_computable';
     const rangeText = stale ? ' (تاریخ منبع: ۲۰۲۶-۱۰-۱۲)' : (ctx?.range ? ` (بازه: ${ctx.range})` : '');
     return validateAnswer({ ...base, status: stale || notComputable ? 'partial' : 'answered', reasonCodes: stale ? ['source_stale'] : notComputable ? ['missing_evidence'] : [], dataAsOf, evidence: [e, policy, rec],
-      blocks: [{ text: result.status === 'not_computable' ? 'اشغال تخت قابل محاسبه نیست (not_computable).' : `اشغال کل تخت‌های بیمارستان فعلی ${result.value.toLocaleString('fa-IR')}٪ است${rangeText}.`, evidenceIds: [e.id, policy.id] }, { text: rec.excerpt, evidenceIds: [rec.id] }], limitations: [...(stale ? ['داده‌ی تازه‌ی گزارش ICU در دسترس نیست؛ این پاسخ فقط بخش تاریخی معتبر را نشان می‌دهد.'] : []), ...(notComputable ? ['مخرج (تخت‌های فعال) صفر است؛ اشغال تخت قابل محاسبه نیست و ۰٪ فرض نمی‌شود.'] : []), ...(ctx?.language === 'en' ? ['ترجمه‌ی انگلیسی پاسخ در نسخه‌ی نمونه ارائه نمی‌شود؛ متن پاسخ فارسی است.'] : [])], relatedTaskIds: [task.id], relatedAlertIds: [alert.id] });
+      blocks: [{ text: result.status === 'not_computable' ? 'اشغال تخت قابل محاسبه نیست (not_computable).' : `اشغال کل تخت‌های بیمارستان فعلی ${result.value.toLocaleString('fa-IR')}٪ است${rangeText}.`, evidenceIds: [e.id, policy.id] }, { text: rec.excerpt, evidenceIds: [rec.id] }], limitations: [...(stale ? ['داده‌ی تازه‌ی گزارش ICU در دسترس نیست؛ این پاسخ فقط بخش تاریخی معتبر را نشان می‌دهد.'] : []), ...(notComputable ? ['مخرج (تخت‌های فعال) صفر است؛ اشغال تخت قابل محاسبه نیست و ۰٪ فرض نمی‌شود.'] : []), ...(ctx?.language === 'en' ? [EN_UNAVAILABLE_NOTE] : [])], relatedTaskIds: [task.id], relatedAlertIds: [alert.id] });
   }
   if (/سیاست|policy/.test(q)) return abstain('missing_evidence', 'مالک سیاست را مطلع کنید.');
   return abstain('unsupported_task', 'یکی از پرسش‌های پشتیبانی‌شده درباره‌ی اشغال تخت یا موجودی دارو را انتخاب کنید.');

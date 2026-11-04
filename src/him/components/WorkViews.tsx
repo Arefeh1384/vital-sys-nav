@@ -13,6 +13,9 @@ import {legacyAsPhase6} from '../phase6/Phase6';
 import {canonicalTasks,unfinishedTask} from '../executive/taskProjection';
 import { AlertOperations } from './ControlWorkflows';
 import {useShellLanguage} from './useShellLanguage';
+import {formatDatesIn,useDisplayPreferencesRevision} from './datePreferences';
+/** Demo dates follow the user's language, calendar and time zone (REQ-PLT-005); stored values stay unchanged. */
+const When: React.FC<{ v: string }> = ({ v }) => { const [language] = useShellLanguage(); useDisplayPreferencesRevision(); return <>{formatDatesIn(v, language)}</>; };
 import {demoDetectorSummary} from './syntheticDetector';
 
 export const englishTaskStatus:Record<string,string>={open:'Open',assigned:'Assigned',in_progress:'In progress',blocked:'Blocked',submitted_for_review:'Awaiting review',completed:'Completed',canceled:'Canceled',done:'Done'};
@@ -172,7 +175,7 @@ export const TaskDetailView: React.FC<{ id: string }> = ({ id }) => {
             <Field label={en?'Status':'وضعیت'}><Badge className={TASK_STATUS_CLASS[t.status]}>{en?(englishTaskStatus[t.status]||t.status):TASK_STATUS_LABEL[t.status]}</Badge></Field>
             <Field label={en?'Priority':'اولویت'}><Badge className={PRIORITY_CLASS[t.priority]}>{en?({critical:'Critical',high:'High',medium:'Medium',low:'Low'}[t.priority]||t.priority):PRIORITY_LABEL[t.priority]}</Badge></Field>
             <Field label={en?'Owner':'مسئول'}><span className="inline-flex items-center gap-1"><UserIcon className="w-4 h-4 text-slate-400" />{displayTaskOwner(demoStore.tasks().find(o=>o.id===t.id)?.owner||t.assignee,t.siteId)}</span></Field>
-            <Field label={en?'Due date':'سررسید'}>{t.dueDate}</Field>
+            <Field label={en?'Due date':'سررسید'}><When v={t.dueDate}/></Field>
             {alert && (
               <Field label={en?'Related alert':'هشدار مرتبط'}>
                 <button type="button" onClick={() => openWorkView({ kind: 'alert', id: alert.id })} className="inline-flex items-center gap-1 text-teal-700 hover:underline text-start">
@@ -245,7 +248,7 @@ const SiteAlertList:React.FC = () => {
                 </div>
               </div>
               <div className="text-sm font-bold text-slate-800">{a.title}</div>
-              <div className="text-[11px] text-slate-500 mt-1">{moduleTitle(a.module)} · {a.raisedAt}</div>
+              <div className="text-[11px] text-slate-500 mt-1">{moduleTitle(a.module)} · <When v={a.raisedAt}/></div>
             </button>
           ))}
         </div>
@@ -295,14 +298,14 @@ export const AlertDetailView: React.FC<{ id: string }> = ({ id }) => {
             )}
           </div>
           <button type="button" className="rounded-lg border border-teal-300 bg-white p-3 text-sm text-teal-800 w-full text-start" onClick={()=>openWorkView({kind:'spec-page',path:'/executive/investigations'})}>بازکردن میزکار مستقل تحقیق ناهنجاری و شواهد (EXE-05)</button>
-          <div className="bg-white border rounded-xl p-4 space-y-2"><h2 className="font-bold">خط زمانی هشدار</h2><p className="text-xs">ثبت اولیه: {a.raisedAt}</p>{(a.activity||[]).map((entry,i)=><p key={i} className="text-xs border-s-2 ps-2">{entry.text} · {entry.at} · عامل: {entry.actorName || 'نامشخص (ثبت قدیمی)'}{entry.actorId && <span dir="ltr"> ({entry.actorId})</span>}</p>)}{a.resolution&&<p className="text-xs">شاهد رفع: {a.resolution.comment}</p>}</div>
+          <div className="bg-white border rounded-xl p-4 space-y-2"><h2 className="font-bold">خط زمانی هشدار</h2><p className="text-xs">ثبت اولیه: <When v={a.raisedAt}/></p>{(a.activity||[]).map((entry,i)=><p key={i} className="text-xs border-s-2 ps-2">{entry.text} · {entry.at} · عامل: {entry.actorName || 'نامشخص (ثبت قدیمی)'}{entry.actorId && <span dir="ltr"> ({entry.actorId})</span>}</p>)}{a.resolution&&<p className="text-xs">شاهد رفع: {a.resolution.comment}</p>}</div>
           <section className="rounded-xl border bg-white p-4 text-sm space-y-1" data-testid="anomaly-provenance"><h2 className="font-bold">زمینه تشخیص ناهنجاری · EXE-004</h2>{a.code==='ALR-1050'?<><p>نسخه قاعده نمایشی: capacity-threshold@demo-2 (آستانه ثابت، نه مدل آماری)</p>{(()=>{const detector=demoDetectorSummary();return <><p>نسخه خط پایه آزمایشی: {detector.baselineVersion} · میانگین ۷ مقدار تمرینی: {detector.baselineMean.toFixed(2)}٪</p><p>بازه مورد انتظار صرفاً ساختگی: {detector.lower} تا {detector.upper}٪ · داده‌های مرجع: {detector.reference.join('، ')}</p><p>نسخه مقایسه: {detector.comparisonVersion} · مشاهده تمرینی {detector.observed}٪ · اختلاف با سقف: {detector.observed-detector.upper} واحد درصد · نتیجه: {detector.comparison}</p><p>زمان رخداد تمرینی: {detector.observedAt} · cutoff: {detector.cutoff}</p><p>کیفیت: {detector.quality} · تازگی: {detector.freshness} · سیاست {detector.sourceFreshnessPolicyHours} ساعت</p></>})()}</>:<><p>نسخه آشکارساز: ثبت نشده / نیازمند تأیید</p><p>خط پایه و بازه مورد انتظار: ثبت نشده</p><p>بازه مقایسه و روند تاریخی: ثبت نشده</p><p>کیفیت داده و تازگی منبع بالادستی: نامشخص</p></>}<p className="text-amber-800">نسخه قاعده و مقایسه بالا فقط درباره ALR-1050 و فیکسچر تمرینی است؛ خط پایه آماری، تاریخچه معتبر، و تأیید موتور تشخیص موجود نیست. آستانه را با baseline اشتباه نگیرید.</p></section><EvidencePackage items={alertEvidence(a)} code={a.code} /><AlertOperations alert={a}/>
         </div>
         <div className="space-y-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-5 grid gap-3">
             <Field label="وضعیت"><Badge className={ALERT_STATUS_CLASS[a.status]}>{ALERT_STATUS_LABEL[a.status]}</Badge></Field>
             <Field label="شدت"><Badge className={PRIORITY_CLASS[a.severity]}>{PRIORITY_LABEL[a.severity]}</Badge></Field>
-            <Field label="زمان ثبت">{a.raisedAt}</Field>
+            <Field label="زمان ثبت"><When v={a.raisedAt}/></Field>
             <Field label="منبع">{a.source}</Field>
           </div>
           <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-2">
@@ -394,7 +397,7 @@ export const NotificationCenterView: React.FC = () => {
                     <span className={`block text-sm ${isRead ? 'text-slate-600' : 'text-slate-900 font-bold'}`}>{n.title}</span>
                     <span className="block text-xs text-slate-500 mt-0.5">{n.body}</span>
                   </span>
-                  <span className="text-[11px] text-slate-400 shrink-0">{n.at}</span>
+                  <span className="text-[11px] text-slate-400 shrink-0"><When v={n.at}/></span>
                 </button>
               </li>
             );

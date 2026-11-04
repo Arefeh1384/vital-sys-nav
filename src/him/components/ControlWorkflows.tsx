@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { DEMO_USERS } from '../data/mockData';
 import type { WorkAlert } from '../data/workData';
 import { demoStore } from '../phase6/store';
+import { ACTION_STATUS_LABEL } from '../data/actionData';
 import { TaskDrawer } from '../phase6/Phase6';
 
 /** These drafts are strictly browser-local. They never change source, authorization or an alert's authoritative status. */
@@ -123,11 +124,13 @@ export function AuditWorkspace() {
  return <AuditContent key={`${scope.siteId}:${user?.id}`} />;
 }
 function AuditContent() {
- const {scope,user,openWorkView,alerts,tasks}=useApp();const current={id:user?.id||'guest',name:user?.name||'کاربر ناشناس'};
+ const {scope,user,openWorkView,alerts,tasks,actions}=useApp();const current={id:user?.id||'guest',name:user?.name||'کاربر ناشناس'};
  const {rows,add,approve}=useReviewRecords(`him.synthetic.audit-request.v2:${scope.siteId}`);
  const [exportResult,setExportResult]=useState('');
  const [search,setSearch]=useState(''),[kind,setKind]=useState('all'),[reason,setReason]=useState(''),[reviewer,setReviewer]=useState('');
- const events=[...alerts.filter(x=>x.siteId===scope.siteId).flatMap(x=>(x.activity||[]).map(v=>({id:x.id,type:'alert',date:v.at,description:v.text}))),...tasks.filter(x=>x.siteId===scope.siteId).flatMap(x=>x.history.map(v=>({id:x.id,type:'task',date:v.at,description:v.text})))];
+ // Local audit view covers alert activity, legacy and managed task history (edits, reassignment, review) and action transitions.
+ const seen=new Set<string>();
+ const events=[...alerts.filter(x=>x.siteId===scope.siteId).flatMap(x=>(x.activity||[]).map(v=>({id:x.id,type:'alert',date:v.at,description:v.text}))),...tasks.filter(x=>x.siteId===scope.siteId).flatMap(x=>x.history.map(v=>({id:x.id,type:'task',date:v.at,description:v.text}))),...demoStore.tasks().filter(x=>x.siteId===scope.siteId).flatMap(x=>x.history.map(v=>({id:x.id,type:'task',date:v.at,description:`${x.title} · ${v.text}`}))),...actions.filter(x=>x.siteId===scope.siteId).flatMap(x=>x.history.map(v=>({id:`${x.code} (${x.id})`,type:'action',date:v.at,description:`${ACTION_STATUS_LABEL[v.status]??v.status}${v.note?` · ${v.note}`:''} · ${v.actor}`})))].filter(e=>{const k=`${e.type}|${e.id}|${e.date}|${e.description}`;if(seen.has(k))return false;seen.add(k);return true;});
  const filtered=events.filter(e=>(kind==='all'||e.type===kind)&&(`${e.id} ${e.description}`.toLowerCase().includes(search.toLowerCase())));
  const downloadApproved=async(r:ReviewRecord)=>{
   if(r.actorId!==current.id||r.state!=='approved_synthetic')return;
@@ -149,7 +152,7 @@ function AuditContent() {
  };
  return <section className="space-y-4" data-testid="audit-workspace"><h1 className="text-xl font-bold">ممیزی و بازبینی تمامیت · PLT-04</h1>
  <p className={note}>فقط تاریخچه وقایع نمایشی این مرورگر قابل جست‌وجو است. این اطلاعات مهر دیجیتال، زنجیره custody یا خروجی Audit رسمی ندارند؛ Batch #1048 صرفاً متن نمونه بوده و وضعیت امضا مستقل تأیید نشده است.</p>
- <div className="grid sm:grid-cols-3 gap-3"><label className="text-xs">جستجوی رخداد / مرجع<input aria-label="جستجوی رویداد ممیزی" className={input} value={search} onChange={e=>setSearch(e.target.value)}/></label><label className="text-xs">نوع رویداد<select className={input} value={kind} onChange={e=>setKind(e.target.value)}><option value="all">همه</option><option value="alert">هشدار</option><option value="task">وظیفه</option></select></label><label className="text-xs">دامنه جاری<input className={input} readOnly value={scope.siteName}/></label></div>
+ <div className="grid sm:grid-cols-3 gap-3"><label className="text-xs">جستجوی رخداد / مرجع<input aria-label="جستجوی رویداد ممیزی" className={input} value={search} onChange={e=>setSearch(e.target.value)}/></label><label className="text-xs">نوع رویداد<select className={input} value={kind} onChange={e=>setKind(e.target.value)}><option value="all">همه</option><option value="alert">هشدار</option><option value="task">وظیفه</option><option value="action">اقدام</option></select></label><label className="text-xs">دامنه جاری<input className={input} readOnly value={scope.siteName}/></label></div>
  <p className="text-xs">نمایش {filtered.length} رویداد محصول (غیرقابل استناد به‌عنوان Audit)</p>
  <div className="max-h-64 overflow-y-auto space-y-2">{filtered.length?filtered.map((e,i)=><p key={`${e.id}:${i}`} className="rounded border p-2 text-xs">{e.date} · {e.type} · {e.id}: {e.description}</p>):<p className="text-sm text-slate-500">رویدادی در داده‌های فعلی یافت نشد.</p>}</div>
  <div className="rounded border p-3 space-y-2"><h2 className="font-semibold">بررسی تمامیت و خروجی کنترل‌شده</h2><p className="text-xs">وضعیت امضا: نامعلوم · digest و anchor مستقل: موجود نیست · احراز دسترسی export: متصل نیست.</p>

@@ -18,9 +18,17 @@ function useLocalDrafts(path:string,siteId:string,userId:string) {
  const key = `him.synthetic.specialized.v1:${path}:${siteId}:${userId}`;
  const [entries,setEntries] = useState<Draft[]>(()=>{try {const data=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(data)?data:[];}catch{return [];}});
  useEffect(()=>{try{localStorage.setItem(key,JSON.stringify(entries));}catch{/* Local-only drafts are best effort. */}},[key,entries]);
- const save=(category:string,title:string,values:Record<string,string>,assessment:string)=>{
+ /**
+  * Saves a local draft. With dedupeKeys, a draft with the same values for those keys (e.g. same
+  * asset + recommendation) is not duplicated; the existing draft is returned instead.
+  */
+ const save=(category:string,title:string,values:Record<string,string>,assessment:string,dedupeKeys?:string[]):{saved:true}|{saved:false;existing:Draft}=>{
+  const norm=(v:Record<string,string>,keys?:string[])=>JSON.stringify((keys??Object.keys(v).sort()).map(k=>[k,(v[k]??'').trim()]));
+  const existing=dedupeKeys?.length?entries.find(e=>e.category===category&&(norm(e.values)===norm(values)||norm(e.values,dedupeKeys)===norm(values,dedupeKeys))):undefined;
+  if(existing)return {saved:false,existing};
   const next={id:`demo-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,category,title,createdAt:new Date().toISOString(),values,assessment};
   setEntries(prev=>[next,...prev]);
+  return {saved:true};
  };
  return {entries,save};
 }
@@ -68,6 +76,7 @@ function Assets({save,entries}:{save:ReturnType<typeof useLocalDrafts>['save'];e
  const [urgency,setUrgency]=useState('normal'); const [queue,setQueue]=useState('');
  const [estimate,setEstimate]=useState(''); const [currency,setCurrency]=useState('IRR'); const [assumption,setAssumption]=useState('');
  const [prepared,setPrepared]=useState(false);
+ const [duplicateNotice,setDuplicateNotice]=useState('');
  const [selectedAsset,setSelectedAsset]=useState('');
  const [historyAsset,setHistoryAsset]=useState(''),[historyFrom,setHistoryFrom]=useState(''),[historyTo,setHistoryTo]=useState(''),[telemetryUnit,setTelemetryUnit]=useState(''),[telemetryMetric,setTelemetryMetric]=useState('');
  const errors = [!str(asset||selectedAsset)?'شناسه دارایی الزامی است.':'',!str(recommendation)?'مرجع پیشنهاد نگهداشت الزامی است.':'',!validMaintenanceReason(reason)?'شرح دلیل باید بین ۲۰ تا ۲۰۰۰ نویسه باشد.':'',!validTimeWindow(start,end)?'پایان بازه باید پس از شروع بازه باشد.':'',!queue?'صف نگهداشت الزامی است.':'',estimate!==''&&(!Number.isFinite(Number(estimate))||Number(estimate)<0)?'برآورد هزینه معتبر نیست.':'',estimate!==''&&!str(assumption)?'برای برآورد هزینه، منبع فرض الزامی است.':''].filter(Boolean);
@@ -88,7 +97,7 @@ function Assets({save,entries}:{save:ReturnType<typeof useLocalDrafts>['save'];e
    <div className="sm:col-span-2">{field('منبع/فرض برآورد',<input className={inputClass} value={assumption} onChange={e=>{setAssumption(e.target.value);setPrepared(false)}} placeholder="فقط فرض نمایشی، نه قیمت معتبر"/>)}</div>
    <div className="sm:col-span-2 space-y-2">{errors.length>0&&<ul role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{errors.map(err=><li key={err}>{err}</li>)}</ul>}<button type="submit" className={btnClass} disabled={errors.length>0}>آماده‌سازی اقدام (پیش‌نویس)</button></div>
   </form>
-  {prepared&&<section className="space-y-3 rounded-xl border border-teal-300 p-4" role="region" aria-label="مقایسه با سفارش‌های فعال"><h3 className="font-semibold">پیش‌نمایش و مقایسه با سفارش‌های منبع</h3><p className="text-sm">دارایی {asset||selectedAsset}، پیشنهاد {recommendation}، بازه {start} تا {end}، صف {queue}.</p><Blocked>مقایسه با سفارش‌های فعال: نامشخص — اتصال خواندنی CMMS وجود ندارد. نبود تداخل یا امکان اجرا تأیید نشده است؛ تأیید/ارسال غیرفعال است.</Blocked><button className={btnClass} type="button" onClick={()=>{save('maintenance',`نگهداشت ${asset||selectedAsset}`,values,'پیش‌نویس داخلی؛ تطبیق CMMS و بازبینی مستقل انجام نشده است.');setPrepared(false)}}>ذخیره پیش‌نویس نمایشی</button></section>}
+  {prepared&&<section className="space-y-3 rounded-xl border border-teal-300 p-4" role="region" aria-label="مقایسه با سفارش‌های فعال"><h3 className="font-semibold">پیش‌نمایش و مقایسه با سفارش‌های منبع</h3><p className="text-sm">دارایی {asset||selectedAsset}، پیشنهاد {recommendation}، بازه {start} تا {end}، صف {queue}.</p><Blocked>مقایسه با سفارش‌های فعال: نامشخص — اتصال خواندنی CMMS وجود ندارد. نبود تداخل یا امکان اجرا تأیید نشده است؛ تأیید/ارسال غیرفعال است.</Blocked><button className={btnClass} type="button" onClick={()=>{const r=save('maintenance',`نگهداشت ${asset||selectedAsset}`,values,'پیش‌نویس داخلی؛ تطبیق CMMS و بازبینی مستقل انجام نشده است.',['شناسه دارایی','پیشنهاد مرجع']);if(!r.saved){setDuplicateNotice(`پیش‌نویس نگهداشت برای همین دارایی و پیشنهاد مرجع قبلاً ذخیره شده است (${new Date(r.existing.createdAt).toLocaleString('fa-IR')}). پیش‌نویس تکراری ایجاد نشد؛ همان پیش‌نویس را در فهرست زیر بررسی کنید.`);return;}setDuplicateNotice('');setPrepared(false)}}>ذخیره پیش‌نویس نمایشی</button></section>}{duplicateNotice&&<p role="alert" data-testid="maintenance-duplicate" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{duplicateNotice}</p>}
   <DraftHistory entries={entries} category="maintenance"/>
  </>:tab===1||tab===2?<section className="space-y-3" data-testid={tab===1?'asset-source-history':'asset-telemetry'}>
   <h2 className="font-bold">{tab===1?'AST-02 · تاریخچه همگام‌سازی منبع':'AST-02 · مرور تله‌متری تجهیزات'}</h2>

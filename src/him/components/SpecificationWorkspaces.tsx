@@ -1,4 +1,5 @@
 import {InvestigationWorkspace} from './InvestigationWorkspace';
+import {AssistantRunsWorkspace} from './AssistantRunsWorkspace';
 import { SpecializedWorkspace } from './SpecializedWorkspaces';
 import {ConnectorWorkspace} from './ConnectorWorkspace';
 import {AuditWorkspace, NotificationPolicyWorkspace} from './ControlWorkflows';
@@ -47,6 +48,7 @@ export const specPaths = Object.keys(SCREENS);
 const STATE_KEY = 'him.spec-workspaces.demo.v2';
 export function SpecificationWorkspace({path,siteName,initialTab}:{path:string;siteName:string;initialTab?:number}) {
  const {scope,user}=useApp();
+ if(path==='/assistant/runs')return <AssistantRunsWorkspace/>;
  if(path==='/executive/investigations')return <InvestigationWorkspace/>;
  if(path==='/audit')return <AuditWorkspace/>;
  if(path==='/settings/notification-policy')return <NotificationPolicyWorkspace/>;
@@ -66,7 +68,8 @@ function GenericSpecificationWorkspace({path,siteName}:{path:string;siteName:str
   try {return JSON.parse(localStorage.getItem(scopedDraftKey(STATE_KEY,path,scope.siteId||'none',user?.id||'guest'))||'{}');}catch{return {};}
  });
  const items=useMemo(()=> (records[path]||[]).filter(x=>(x.title+' '+x.detail).includes(query)),[records,path,query]);
- if(!page)return null;
+ // Never render a blank page for a routed path (REQ-PLT-006 state taxonomy).
+ if(!page)return <section className="rounded-xl border border-dashed bg-white p-6 space-y-2" data-testid="spec-unavailable"><h1 className="text-lg font-bold">این صفحه در نسخه نمایشی در دسترس نیست</h1><p className="text-sm text-slate-600">مسیر <bdi dir="ltr">{path}</bdi> هنوز صفحه فرانت ندارد. از منوی کناری یا جستجوی فرمان بخش دیگری را باز کنید.</p></section>;
  const current=page.tabs[Math.min(tab,page.tabs.length-1)];
  const isClinical=path.startsWith('/clinical/');
  const add=()=>{

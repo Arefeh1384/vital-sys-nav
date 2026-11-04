@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { 
   Building2, 
   Search, 
@@ -13,6 +13,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { SITES_DATA, CURRENT_ORGANIZATION } from '../data/mockData';
 import { normalizeFaSearch } from './faSearch';
+import { useModalFocus } from './useModalFocus';
 
 export const ScopeModal: React.FC = () => {
   const { 
@@ -24,6 +25,8 @@ export const ScopeModal: React.FC = () => {
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const panelRef = useRef<HTMLDivElement>(null);
+  useModalFocus(panelRef, isScopeModalOpen, () => setIsScopeModalOpen(false));
 
   if (!isScopeModalOpen) return null;
 
@@ -46,8 +49,10 @@ export const ScopeModal: React.FC = () => {
       onClick={() => setIsScopeModalOpen(false)}
       role="dialog"
       aria-modal="true"
+      aria-labelledby="scope-modal-title"
     >
       <div 
+        ref={panelRef}
         className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] min-w-0"
         onClick={(e) => e.stopPropagation()}
       >
@@ -58,7 +63,7 @@ export const ScopeModal: React.FC = () => {
               <Building2 className="w-5 h-5" />
             </span>
             <div className="min-w-0">
-              <h2 className="text-sm sm:text-base font-bold text-slate-900 truncate">
+              <h2 id="scope-modal-title" className="text-sm sm:text-base font-bold text-slate-900 truncate">
                 انتخاب دامنه کاری (Scope Selection)
               </h2>
               <p className="text-[11px] text-slate-500 truncate hidden sm:block">

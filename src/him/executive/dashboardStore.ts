@@ -8,7 +8,11 @@ export type Period='day'|'week'|'month';
 export type DashboardMetricKey='occupancy'|'alerts'|'criticalAlerts'|'supply'|'quality'|'tasks';
 export type MetricQuality='fresh'|'stale'|'unavailable'|'not_computable';
 export interface MetricEvidence {id:string;title:string;source:string;snapshot:string;metricVersion:string;asOf:string;sourceEventAt?:string|null;ingestedAt?:string|null;scope:string;excerpt:string;limitations:string;}
-export interface DashboardMetric {key:DashboardMetricKey;title:string;value:number|null;unit:string;quality:MetricQuality;description:string;formula?:string;numerator?:number;denominator?:number;version:string;asOf:string;evidence:MetricEvidence[];target:string;}
+export interface DashboardMetric {key:DashboardMetricKey;title:string;value:number|null;unit:string;quality:MetricQuality;description:string;formula?:string;numerator?:number;denominator?:number;version:string;asOf:string;evidence:MetricEvidence[];target:string;
+ /** Why value is null (REQ-EXE-002): shown on the card and in the calculation tab. */
+ reason?:string;
+ /** 'period' = aggregated over the selected range; 'current' = live count independent of the range. */
+ basis:'period'|'current';}
 export interface DashboardSnapshot {siteId:string;siteName:string;period:Period;cutoff:string;refreshedAt:string;metrics:DashboardMetric[];alerts:WorkAlert[];tasks:ReturnType<typeof canonicalTasks>;issues:ReturnType<typeof listQualityIssues>;risks:typeof supplyRisks;}
 const OCCUPANCY_FIXTURE:Record<string,{occupied:number;staffed:number;snapshot:string;syntheticSourceEventAt:string;syntheticIngestedAt:string}>= {
  [SITES_DATA[0]?.id||'none']:{occupied:80,staffed:100,snapshot:'SYN-OPS-TAL-20261023-v1',syntheticSourceEventAt:'2026-10-23T23:48:00+03:30',syntheticIngestedAt:'2026-10-23T23:50:00+03:30'},
@@ -48,13 +52,15 @@ export function getExecutiveDashboard(siteId:string,period:Period,alerts:WorkAle
  const sourceTime='2026-10-23T23:59:59+03:30';
  const evidence:MetricEvidence[]=occupancy?[{id:`EVD-${occupancy.snapshot}`,title:'شواهد ظرفیت و اشغال نمونه',source:'فیکسچر مصنوعی عملیات',snapshot:occupancy.snapshot,metricVersion:'available_staffed_bed_occupancy@1',asOf:sourceTime,sourceEventAt:occupancy.syntheticSourceEventAt,ingestedAt:occupancy.syntheticIngestedAt,scope:siteId,excerpt:`${occupancy.occupied} تخت اشغال‌شده / ${occupancy.staffed} تخت فعال دارای نیروی انسانی`,limitations:'ارقام و هر دو timestamp صرفاً فیکسچر ساختگی مستقل از as-of هستند؛ این زمان‌ها از HIS/سامانه واقعی دریافت یا راستی‌آزمایی نشده‌اند.'}]:[];
  const definitions:[DashboardMetricKey,string,number|null,string,string,string,string][]=[
-  ['occupancy','نرخ اشغال تخت',occupancy?calculateOccupancy(occupancy.occupied,occupancy.staffed):null,'٪','نسبت تخت اشغال‌شده به تخت فعال دارای نیروی انسانی','/operations','available_staffed_bed_occupancy@1'],
+  ['occupancy','نرخ اشغال تخت',occupancy&&period==='day'?calculateOccupancy(occupancy.occupied,occupancy.staffed):null,'٪','نسبت تخت اشغال‌شده به تخت فعال دارای نیروی انسانی','/operations','available_staffed_bed_occupancy@1'],
   ['alerts','هشدارهای فعال',scopedAlerts.filter(activeAlert).length,'مورد','هشدارهای حل‌نشده در محدوده جاری','/alerts','alert-lifecycle@1'],
   ['criticalAlerts','هشدارهای بحرانی',scopedAlerts.filter(a=>activeAlert(a)&&a.severity==='critical').length,'مورد','هشدارهای فعال با شدت بحرانی','/alerts','alert-lifecycle@1'],
   ['supply','ریسک‌های کمبود',activeRisk.length,'مورد','ریسک‌های موجود در داده مشترک Supply با پرونده باز','/supply','supply-risk@1'],
   ['quality','مشکلات کیفیت داده',issues.filter(i=>activeIssue(i.state)).length,'مورد','پرونده‌های کیفیت داده به‌جز حل‌شده و بسته‌شده','/knowledge/stewardship/issues','quality-issue@1'],
   ['tasks','وظایف پیگیری',scopedTasks.filter(t=>unfinishedTask(t.status)).length,'مورد','وظایف مشترک با وضعیت انجام‌نشده','/tasks','task-lifecycle@1'],
  ];
- const metrics=definitions.map(([key,title,value,unit,description,target,version]):DashboardMetric=>({key,title,value,unit,description,target,version,quality:key==='occupancy'?!occupancy?'unavailable':occupancy.staffed===0?'not_computable':'stale':'fresh',asOf:key==='occupancy'?sourceTime:now.toISOString(),evidence:key==='occupancy'?evidence:[],...(key==='occupancy'&&occupancy?{formula:'تخت اشغال‌شده واجدشرایط ÷ تخت فعال دارای نیروی انسانی × ۱۰۰',numerator:occupancy.occupied,denominator:occupancy.staffed}:{})}));
+  // The fixture holds one day (2026-10-23). A 7/30-day value must not be relabelled from it (REQ-EXE-002).
+ const occupancyReason=!occupancy?'Snapshot معتبر برای این سایت وجود ندارد':period!=='day'?'داده هم‌دوره برای بازه انتخاب‌شده موجود نیست؛ فقط Snapshot تک‌روزه ۲۰۲۶-۱۰-۲۳ در دسترس است (PERIOD_NOT_COVERED)':occupancy.staffed===0?'مخرج صفر است (DENOMINATOR_ZERO)':undefined;
+ const metrics=definitions.map(([key,title,value,unit,description,target,version]):DashboardMetric=>({key,title,value,unit,description,target,version,basis:key==='occupancy'?'period':'current',quality:key==='occupancy'?!occupancy?'unavailable':occupancyReason?'not_computable':'stale':'fresh',...(key==='occupancy'&&occupancyReason?{reason:occupancyReason}:{}),asOf:key==='occupancy'?sourceTime:now.toISOString(),evidence:key==='occupancy'?evidence:[],...(key==='occupancy'&&occupancy?{formula:'تخت اشغال‌شده واجدشرایط ÷ تخت فعال دارای نیروی انسانی × ۱۰۰',...(occupancyReason?{}:{numerator:occupancy.occupied,denominator:occupancy.staffed})}:{})}));
  return {siteId,siteName:site?.name??'نامشخص',period,cutoff,refreshedAt:now.toISOString(),metrics,alerts:scopedAlerts.filter(activeAlert),tasks:scopedTasks.filter(t=>unfinishedTask(t.status)),issues:issues.filter(i=>activeIssue(i.state)),risks:activeRisk};
 }
