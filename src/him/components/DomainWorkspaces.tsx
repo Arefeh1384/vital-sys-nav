@@ -221,7 +221,7 @@ function DomainWorkspaceContent({path,siteId,siteName,userId,initialTab}:{path:s
   return issues;
  };
  const visible=items.filter(x=>(JSON.stringify(x.values)+' '+x.id).toLowerCase().includes(q.toLowerCase()));
- return <section dir="rtl" data-testid="domain-workspace" className="space-y-4">
+ return <section data-testid="domain-workspace" className="space-y-4">
   <header className="rounded-xl bg-white border p-5 space-y-1">{path.startsWith('/operations/')&&<button type="button" onClick={()=>setActiveModule('OPS')} className="mb-2 rounded-lg border border-teal-300 px-3 py-2 text-xs font-bold text-teal-800 hover:bg-teal-50">بازگشت به عملیات (OPS)</button>}<h1 className="font-bold text-xl">{def.title}</h1><p className="text-sm text-slate-500">سایت انتخابی: {siteName} · <bdi>{siteId}</bdi> · کاربر نمونه: <bdi>{userId}</bdi></p></header>
   <p role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{def.warning}</p>
   <nav role="tablist" className="flex flex-wrap gap-2" aria-label={def.title}>{def.tabs.map((x,i)=><button key={x.name} type="button" role="tab" aria-selected={tab===i} onClick={()=>{setTab(i);setValues({});if(path.startsWith('/operations/')&&typeof window!=='undefined')window.history.replaceState(null,'',`${path}?tab=${i}`);}} className={`rounded-lg border px-3 py-2 text-sm ${i===tab?'bg-teal-800 text-white':'bg-white'}`}>{x.name}</button>)}</nav>

@@ -104,7 +104,7 @@ function NotificationPolicyContent() {
  const dueTime=effective&&scenarioAt?new Date(scenarioAt).getTime()+Number(effective.fields.minutes)*60000:NaN;
  const triggered=Number.isFinite(dueTime)&&!scenarioAck&&Date.now()>=dueTime;
  const okay=version.trim()&&Number.isInteger(Number(minutes))&&Number(minutes)>0&&Number(minutes)<=10080&&fallback.trim()&&DEMO_USERS.some(u=>u.id===reviewer&&u.id!==current.id&&u.permittedSiteIds.includes(scope.siteId||''))&&reason.trim().length>=10;
- return <section dir="rtl" className="space-y-4" data-testid="notification-policy"><h1 className="text-xl font-bold">سیاست اعلان و مهلت تشدید · CTL-009</h1><p className={note}>بازبینی مستقل، اعمال سیاست و مهلت ارجاع فقط شبیه‌سازی محلی هستند. هیچ اعلان، سرور یا زمان‌بند عملیاتی اجرا نمی‌شود.</p>
+ return <section className="space-y-4" data-testid="notification-policy"><h1 className="text-xl font-bold">سیاست اعلان و مهلت تشدید · CTL-009</h1><p className={note}>بازبینی مستقل، اعمال سیاست و مهلت ارجاع فقط شبیه‌سازی محلی هستند. هیچ اعلان، سرور یا زمان‌بند عملیاتی اجرا نمی‌شود.</p>
   <p className="text-sm">بیمارستان: {scope.siteName} · کانال مجاز نمونه: اعلان داخلی</p><div className="grid sm:grid-cols-2 gap-3">
    <label className="text-xs">نسخه سیاست *<input className={input} value={version} onChange={e=>setVersion(e.target.value)}/></label>
    <label className="text-xs">شدت هدف<select className={input} value={severity} onChange={e=>setSeverity(e.target.value)}><option value="critical">بحرانی</option><option value="high">بالا</option><option value="medium">متوسط</option><option value="low">پایین</option></select></label>
@@ -147,7 +147,7 @@ function AuditContent() {
    setExportResult(`تمامیت محلی ${evidence.length} رکورد بررسی و فایل JSON نمایشی ساخته شد؛ بدون امضای دیجیتال یا anchor مستقل.`);
   }catch(e){setExportResult(`خروجی تولید نشد: ${String(e)}`)}
  };
- return <section dir="rtl" className="space-y-4" data-testid="audit-workspace"><h1 className="text-xl font-bold">ممیزی و بازبینی تمامیت · PLT-04</h1>
+ return <section className="space-y-4" data-testid="audit-workspace"><h1 className="text-xl font-bold">ممیزی و بازبینی تمامیت · PLT-04</h1>
  <p className={note}>فقط تاریخچه وقایع نمایشی این مرورگر قابل جست‌وجو است. این اطلاعات مهر دیجیتال، زنجیره custody یا خروجی Audit رسمی ندارند؛ Batch #1048 صرفاً متن نمونه بوده و وضعیت امضا مستقل تأیید نشده است.</p>
  <div className="grid sm:grid-cols-3 gap-3"><label className="text-xs">جستجوی رخداد / مرجع<input aria-label="جستجوی رویداد ممیزی" className={input} value={search} onChange={e=>setSearch(e.target.value)}/></label><label className="text-xs">نوع رویداد<select className={input} value={kind} onChange={e=>setKind(e.target.value)}><option value="all">همه</option><option value="alert">هشدار</option><option value="task">وظیفه</option></select></label><label className="text-xs">دامنه جاری<input className={input} readOnly value={scope.siteName}/></label></div>
  <p className="text-xs">نمایش {filtered.length} رویداد محصول (غیرقابل استناد به‌عنوان Audit)</p>

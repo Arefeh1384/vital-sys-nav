@@ -24,9 +24,9 @@ function Heading({ title, journal = false }: { title: string; journal?: boolean 
   </>;
 }
 function JournalEntries({ action }: { action: ActionProposal }) {
-  return <ol className="border-r border-border mr-2 space-y-5 py-2">{action.history.map((event, i) => {
+  return <ol className="border-s border-border ms-2 space-y-5 py-2">{action.history.map((event, i) => {
     const time = formatEventTime(event.at);
-    return <li key={`${i}-${event.at}`} className="relative pr-6" data-testid="journal-event"><span className="absolute -right-1.5 top-2 size-3 rounded-full bg-action-brand border-2 border-background" />
+    return <li key={`${i}-${event.at}`} className="relative ps-6" data-testid="journal-event"><span className="absolute -start-1.5 top-2 size-3 rounded-full bg-action-brand border-2 border-background" />
       <div className="flex flex-wrap items-center gap-2">
         {event.from ? <><Status status={event.from} /><ArrowLeft className="size-3 text-muted-foreground" aria-label="به" /></> : <span className="text-xs text-muted-foreground">آغاز ←</span>}
         <Status status={event.status} />
@@ -62,14 +62,14 @@ export function ActionProposalListView() {
   return <div data-testid="action-list"><Heading title="فهرست پیشنهادهای اقدام" />
     <div className="flex flex-wrap gap-1 mb-3">{(['all', ...Object.keys(ACTION_STATUS_LABEL)] as (ActionStatus | 'all')[]).map(s => <Button size="sm" variant={status === s ? 'secondary' : 'ghost'} className={status === s ? 'text-action-brand' : ''} aria-pressed={status === s} key={s} onClick={() => setStatus(s)}>{s === 'all' ? 'همه' : ACTION_STATUS_LABEL[s]}</Button>)}</div>
     <div className="flex flex-col md:flex-row gap-3 mb-5">
-      <div className="relative w-full md:w-64 shrink-0"><Search className="absolute right-3 top-3 size-4 text-muted-foreground" /><input aria-label="جستجوی پیشنهاد اقدام" placeholder="جستجو در عنوان یا کد…" dir="rtl" value={q} onChange={e => setQ(e.target.value)} className="w-full text-right border border-input bg-background rounded-md pr-9 pl-3 h-10 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+      <div className="relative w-full md:w-64 shrink-0"><Search className="absolute start-3 top-3 size-4 text-muted-foreground" /><input aria-label="جستجوی پیشنهاد اقدام" placeholder="جستجو در عنوان یا کد…" dir="auto" value={q} onChange={e => setQ(e.target.value)} className="w-full text-start border border-input bg-background rounded-md ps-9 pe-3 h-10 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
       <select aria-label="فیلتر سطح تأیید" value={tier} onChange={e => setTier(e.target.value as ActionTier | 'all')} className={selectClass}><option value="all">همه سطح‌ها</option>{(Object.keys(TIER_LABEL) as ActionTier[]).map(t => <option key={t} value={t}>{TIER_LABEL[t]}</option>)}</select>
       <select aria-label="فیلتر انقضا" value={expiry} onChange={e => setExpiry(e.target.value as typeof expiry)} className={selectClass}><option value="all">همه مهلت‌ها</option><option value="soon">انقضا تا ۲۴ ساعت</option><option value="later">بیش از ۲۴ ساعت</option><option value="expired">منقضی‌شده</option></select>
     </div>
     {rows.length ? <div className="border-y border-border" role="table" aria-label="فهرست پیشنهادهای اقدام">
       <div role="row" className="hidden md:grid grid-cols-[7rem_minmax(0,1fr)_9rem_7rem_8rem_9rem_1.5rem] gap-3 px-2 py-2 text-xs text-muted-foreground bg-muted"><span role="columnheader">کد</span><span role="columnheader">عنوان</span><span role="columnheader">سطح</span><span role="columnheader">وضعیت</span><span role="columnheader">سازنده</span><span role="columnheader">انقضا</span><span /></div>
-      <div className="divide-y divide-border">{rows.map(a => <Button key={a.id} role="row" variant="ghost" onClick={() => openWorkView({ kind: 'proposal', id: a.id })} className="w-full h-auto min-h-16 rounded-none px-2 py-3 text-right whitespace-normal md:grid md:grid-cols-[7rem_minmax(0,1fr)_9rem_7rem_8rem_9rem_1.5rem] md:gap-3 flex flex-wrap items-center justify-between gap-2 font-normal">
-        <bdi dir="ltr" className="text-xs font-mono text-muted-foreground text-right">{a.code}</bdi>
+      <div className="divide-y divide-border">{rows.map(a => <Button key={a.id} role="row" variant="ghost" onClick={() => openWorkView({ kind: 'proposal', id: a.id })} className="w-full h-auto min-h-16 rounded-none px-2 py-3 text-start whitespace-normal md:grid md:grid-cols-[7rem_minmax(0,1fr)_9rem_7rem_8rem_9rem_1.5rem] md:gap-3 flex flex-wrap items-center justify-between gap-2 font-normal">
+        <bdi dir="ltr" className="text-xs font-mono text-muted-foreground text-left rtl:text-right">{a.code}</bdi>
         <span className="text-sm font-bold min-w-0">{a.title}</span>
         <span className="text-xs">{TIER_LABEL[a.tier]}</span>
         <span><Status status={a.status} /></span>
@@ -103,8 +103,8 @@ function ApprovalDialog({ action, open, onOpenChange }: { action: ActionProposal
   };
   const blocked = approvalError(action, user, scope.siteId);
   return <Dialog open={open} onOpenChange={change}>
-    <DialogContent dir="rtl" data-testid="approval-dialog" className="max-w-lg text-right">
-      <DialogHeader className="text-right sm:text-right">
+    <DialogContent data-testid="approval-dialog" className="max-w-lg text-start">
+      <DialogHeader className="text-start sm:text-start">
         <DialogTitle>تأیید پیشنهاد اقدام</DialogTitle>
         <DialogDescription><bdi dir="ltr">{action.code}</bdi> · {action.title}</DialogDescription>
       </DialogHeader>
@@ -149,7 +149,7 @@ function ApprovalPanel({ action }: { action: ActionProposal }) {
   const cancelAllowed = !cancelError(action, user, 'x'.repeat(MIN_REASON_LENGTH));
   const reconcile = action.status === 'uncertain' || action.status === 'sent';
   const manualError = manualVerificationError(action, user);
-  return <aside className="border-t lg:border-t-0 lg:border-r border-border pt-6 lg:pt-0 lg:pr-6 space-y-5 min-w-0" data-testid="approval-panel">
+  return <aside className="border-t lg:border-t-0 lg:border-s border-border pt-6 lg:pt-0 lg:ps-6 space-y-5 min-w-0" data-testid="approval-panel">
     <h2 className="text-base font-bold flex items-center gap-2"><ShieldCheck className="size-5 text-action-brand" />پنل تأیید</h2>
     <dl className="space-y-3 text-sm"><div><dt className="text-xs text-muted-foreground">وضعیت</dt><dd className="mt-1"><Status status={action.status} /></dd></div><div><dt className="text-xs text-muted-foreground">سازنده پیشنهاد</dt><dd className="mt-1">{action.creatorName}</dd></div><div><dt className="text-xs text-muted-foreground">کاربر فعلی (شما)</dt><dd className="mt-1">{user?.name ?? '—'}</dd></div>{(action.approvals?.length ?? 0) > 0 && <div data-testid="approvers"><dt className="text-xs text-muted-foreground">تأییدکنندگان ({(action.approvals?.length ?? 0).toLocaleString('fa-IR')} از {requiredApprovals(action.tier).toLocaleString('fa-IR')})</dt><dd className="mt-1">{action.approvals.map(a => a.name).join('، ')}</dd></div>}<div><dt className="text-xs text-muted-foreground">مقصد</dt><dd className="mt-1"><bdi dir="auto">{action.target}</bdi></dd></div></dl>
     {action.status === 'proposed' && <div className="space-y-3">{error && <p role="status" className="text-sm text-action-warning leading-6">{error}</p>}<Button className="w-full bg-action-brand text-action-brand-foreground hover:bg-action-brand/90" disabled={!!error} onClick={() => setApproveOpen(true)}><ShieldCheck />تأیید پیشنهاد اقدام</Button><p className="text-xs text-muted-foreground leading-6">انقضای تأیید: {action.expiresAt}</p>{requiredApprovals(action.tier) > 1 && <p className="text-xs text-muted-foreground leading-6" data-testid="approval-progress">{TIER_LABEL[action.tier]} · تأییدهای ثبت‌شده: {(action.approvals?.length ?? 0).toLocaleString('fa-IR')} از {requiredApprovals(action.tier).toLocaleString('fa-IR')}</p>}<ApprovalDialog action={action} open={approveOpen} onOpenChange={setApproveOpen} /></div>}
@@ -199,7 +199,7 @@ export function ActionProposalDetailView({ id }: { id: string }) {
     <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-8"><div className="min-w-0 space-y-8">
       {action.status === 'finalized' && <CompensationRequest actionId={action.id} code={action.code} executed={!!action.manualCompletion || action.reconciliation?.outcome==='confirmed'} />}
       <section><h2 className="font-bold text-sm mb-3">شرح پیشنهاد</h2><p className="text-sm leading-7 text-muted-foreground">{action.description}</p></section>
-      <section><h2 className="font-bold text-sm mb-3 flex gap-2 items-center"><GitCompareArrows className="size-5 text-action-brand" />تفاوت‌ها (Diff)</h2><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="text-xs text-muted-foreground bg-muted"><tr><th className="p-3">فیلد</th><th className="p-3">قبل از اقدام</th><th className="p-3">پس از اقدام</th></tr></thead><tbody>{action.diff.map(d => <tr key={d.field} className="border-b border-border"><td className="p-3 font-medium">{d.field}</td><td className="p-3 text-muted-foreground">{d.before}</td><td className="p-3 text-action-success">{d.after}</td></tr>)}</tbody></table></div></section>
+      <section><h2 className="font-bold text-sm mb-3 flex gap-2 items-center"><GitCompareArrows className="size-5 text-action-brand" />تفاوت‌ها (Diff)</h2><div className="overflow-x-auto"><table className="w-full text-start text-sm"><thead className="text-xs text-muted-foreground bg-muted"><tr><th className="p-3">فیلد</th><th className="p-3">قبل از اقدام</th><th className="p-3">پس از اقدام</th></tr></thead><tbody>{action.diff.map(d => <tr key={d.field} className="border-b border-border"><td className="p-3 font-medium">{d.field}</td><td className="p-3 text-muted-foreground">{d.before}</td><td className="p-3 text-action-success">{d.after}</td></tr>)}</tbody></table></div></section>
       <section><h2 className="font-bold text-sm mb-3">تأثیر مورد انتظار و ریسک</h2><p className="text-sm leading-7">{action.impact}</p><p className="mt-2 text-sm leading-7 text-muted-foreground">{action.risk}</p></section>
       <section><h2 className="font-bold text-sm mb-3">منابع و شواهد مرتبط</h2><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => openWorkView({ kind: 'task', id: action.taskId })}>وظیفه مرتبط و بسته شواهد<ArrowLeft /></Button><Button variant="outline" size="sm" onClick={() => openWorkView({ kind: 'alert', id: action.alertId })}>هشدار مرتبط و بسته شواهد<ArrowLeft /></Button></div></section>
       <section><h2 className="font-bold text-sm mb-4 flex gap-2 items-center"><History className="size-5 text-action-brand" />ژورنال اقدام</h2><JournalEntries action={action} /></section>
@@ -218,6 +218,6 @@ export function ApprovalQueueView() {
   const rows = scopedActions(actions, scope.siteId).filter(a => a.status === 'proposed' && !approvalError(a, user, scope.siteId));
   return <div data-testid="approval-queue"><Heading title="صف تأییدهای من" />
     <p className="mb-5 text-xs leading-6 text-muted-foreground">فقط پیشنهادهای در انتظار تأیید در دامنه فعلی که شما مجاز به تأیید آن‌ها هستید (سازنده‌ی پیشنهاد نمی‌تواند خودش تأیید کند).</p>
-    {rows.length ? <div className="divide-y divide-border border-y border-border">{rows.map(a => <Button key={a.id} variant="ghost" onClick={() => openWorkView({ kind: 'proposal', id: a.id })} className="w-full h-auto min-h-20 rounded-none px-2 py-4 justify-between text-right whitespace-normal gap-4"><div className="min-w-0"><bdi dir="ltr" className="text-xs font-mono text-muted-foreground">{a.code}</bdi><h2 className="text-sm font-bold mt-1">{a.title}</h2><p className="text-xs font-normal text-muted-foreground mt-1">سازنده: {a.creatorName} · انقضا: {a.expiresAt}</p></div><div className="flex items-center gap-2 shrink-0"><Status status={a.status} /><ArrowLeft /></div></Button>)}</div> : <p className="py-12 text-center text-muted-foreground">پیشنهادی در انتظار تأیید شما در این دامنه نیست.</p>}
+    {rows.length ? <div className="divide-y divide-border border-y border-border">{rows.map(a => <Button key={a.id} variant="ghost" onClick={() => openWorkView({ kind: 'proposal', id: a.id })} className="w-full h-auto min-h-20 rounded-none px-2 py-4 justify-between text-start whitespace-normal gap-4"><div className="min-w-0"><bdi dir="ltr" className="text-xs font-mono text-muted-foreground">{a.code}</bdi><h2 className="text-sm font-bold mt-1">{a.title}</h2><p className="text-xs font-normal text-muted-foreground mt-1">سازنده: {a.creatorName} · انقضا: {a.expiresAt}</p></div><div className="flex items-center gap-2 shrink-0"><Status status={a.status} /><ArrowLeft /></div></Button>)}</div> : <p className="py-12 text-center text-muted-foreground">پیشنهادی در انتظار تأیید شما در این دامنه نیست.</p>}
   </div>;
 }

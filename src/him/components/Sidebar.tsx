@@ -80,10 +80,10 @@ export const Sidebar: React.FC = () => {
           - On desktop (md+): in-flow flex container (w-64 or w-16).
       */}
       <aside
-        className={`bg-white border-l border-slate-200/80 transition-all duration-200 flex flex-col select-none ${
+        className={`bg-white border-e border-slate-200/80 transition-all duration-200 flex flex-col select-none ${
           sidebarCollapsed
             ? 'hidden md:flex md:w-16 shrink-0 z-20'
-            : 'fixed inset-y-0 right-0 z-40 w-72 shadow-2xl md:shadow-none md:static md:w-64 shrink-0'
+            : 'fixed inset-y-0 start-0 z-40 w-72 shadow-2xl md:shadow-none md:static md:w-64 shrink-0'
         }`}
       >
         {/* Mobile-only header with close button */}
@@ -135,7 +135,7 @@ export const Sidebar: React.FC = () => {
             )}
 
             <nav className="space-y-1">
-              <button type="button" onClick={()=>openWorkView({kind:'spec-page',path:'/workforce'})} data-testid="sidebar-item-WFM" className="w-full rounded-lg px-3 py-2.5 text-right text-xs font-semibold text-slate-700 hover:bg-teal-50">{!sidebarCollapsed?(lang==='en'?'Workforce (WFM)':'نیروی انسانی (WFM)'):'WFM'}</button>
+              <button type="button" onClick={()=>openWorkView({kind:'spec-page',path:'/workforce'})} data-testid="sidebar-item-WFM" className="w-full rounded-lg px-3 py-2.5 text-start text-xs font-semibold text-slate-700 hover:bg-teal-50">{!sidebarCollapsed?(lang==='en'?'Workforce (WFM)':'نیروی انسانی (WFM)'):'WFM'}</button>
               {MODULES_CONFIG.map((mod) => {
                 const isSelected = !workView && activeModule === mod.key;
 
@@ -156,7 +156,7 @@ export const Sidebar: React.FC = () => {
                     {getIcon(mod.iconName, isSelected)}
                     
                     {!sidebarCollapsed && (
-                      <div className="flex-1 text-right overflow-hidden min-w-0">
+                      <div className="flex-1 text-start overflow-hidden min-w-0">
                         <div className="flex items-center justify-between gap-1">
                           <span className="truncate">{lang==='en'?(moduleEnglish[mod.key]||mod.key):mod.shortTitle}</span>
                           <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-500 font-normal shrink-0">
@@ -168,15 +168,15 @@ export const Sidebar: React.FC = () => {
 
                     {/* Active highlight line in RTL */}
                     {isSelected && (
-                      <span className="w-1 h-5 rounded-l-full bg-teal-600 absolute left-0 top-1/2 -translate-y-1/2"></span>
+                      <span className="w-1 h-5 rounded-e-full bg-teal-600 absolute end-0 top-1/2 -translate-y-1/2"></span>
                     )}
                   </button>
                 );
               })}
             </nav>
             <nav className="space-y-1 mt-1">
-              {([{path:'/knowledge/documents',fa:'مخزن مستندات',en:'Knowledge documents'},{path:'/knowledge/search',fa:'جستجوی دانش',en:'Knowledge search'}] as const).map(x=><button type="button" key={x.path} data-testid={x.path==='/knowledge/documents'?'sidebar-knowledge-documents':'sidebar-knowledge-search'} onClick={()=>openWorkView({kind:'spec-page',path:x.path})} className="w-full rounded-lg px-3 py-2 text-right text-xs text-teal-800 hover:bg-teal-50">{sidebarCollapsed?'KNO':lang==='en'?x.en:x.fa}</button>)}
-              <button type="button" data-testid="sidebar-brief-builder" onClick={()=>openWorkView({kind:'spec-page',path:'/executive/briefs'})} className="w-full rounded-lg px-3 py-2 text-right text-xs font-semibold text-teal-800 hover:bg-teal-50">{!sidebarCollapsed?(lang==='en'?'Executive briefs':'گزارش‌های مدیریتی'):'EXE'}</button>
+              {([{path:'/knowledge/documents',fa:'مخزن مستندات',en:'Knowledge documents'},{path:'/knowledge/search',fa:'جستجوی دانش',en:'Knowledge search'}] as const).map(x=><button type="button" key={x.path} data-testid={x.path==='/knowledge/documents'?'sidebar-knowledge-documents':'sidebar-knowledge-search'} onClick={()=>openWorkView({kind:'spec-page',path:x.path})} className="w-full rounded-lg px-3 py-2 text-start text-xs text-teal-800 hover:bg-teal-50">{sidebarCollapsed?'KNO':lang==='en'?x.en:x.fa}</button>)}
+              <button type="button" data-testid="sidebar-brief-builder" onClick={()=>openWorkView({kind:'spec-page',path:'/executive/briefs'})} className="w-full rounded-lg px-3 py-2 text-start text-xs font-semibold text-teal-800 hover:bg-teal-50">{!sidebarCollapsed?(lang==='en'?'Executive briefs':'گزارش‌های مدیریتی'):'EXE'}</button>
               {([
                 { kind: 'proposals', label: 'پیشنهادهای اقدام', Icon: ClipboardCheck },
                 { kind: 'approvals', label: 'صف تأییدهای من', Icon: ShieldCheck },
@@ -219,7 +219,7 @@ export const Sidebar: React.FC = () => {
                         {count > 0 && <span className="text-[10px] px-1.5 rounded-full bg-rose-100 text-rose-700 shrink-0 tabular-nums">{count.toLocaleString('fa-IR')}</span>}
                       </div>
                     )}
-                    {sel && <span className="w-1 h-5 rounded-l-full bg-teal-600 absolute left-0 top-1/2 -translate-y-1/2"></span>}
+                    {sel && <span className="w-1 h-5 rounded-e-full bg-teal-600 absolute end-0 top-1/2 -translate-y-1/2"></span>}
                   </button>
                 );
               })}

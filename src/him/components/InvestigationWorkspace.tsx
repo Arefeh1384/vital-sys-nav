@@ -24,7 +24,7 @@ function ScopedInvestigationWorkspace({siteId,actorId,actorName,alerts,openAlert
   const item:Case={id:`INV-SYN-${Date.now()}`,siteId,alertId,playbook,hypothesis:hypothesis.trim(),support:support.trim(),against:against.trim(),missing:missing.trim(),createdBy:actorId,createdByName:actorName,reviewerId,createdAt:new Date().toISOString(),state:'awaiting_review'};
   if(persist([item,...cases])){setHypothesis('');setSupport('');setAgainst('');setMissing('');setReviewerId('')}
  };
- return <section dir="rtl" data-testid="executive-investigations" className="space-y-4">
+ return <section data-testid="executive-investigations" className="space-y-4">
   <h1 className="text-xl font-bold">EXE-05 · پرونده تحقیق ناهنجاری مبتنی بر شواهد</h1>
   <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm">این پرونده فقط در مرورگر ذخیره می‌شود. فهرست Playbookها مثال طراحی است، نه نسخه مصوب. درستی فرضیه، شواهد، هویت بازبین و نتیجه تغییر وضعیت هشدار به‌صورت عملیاتی تأیید نشده‌اند.</p>
   <div className="rounded-xl border bg-white p-4 space-y-3"><h2 className="font-semibold">ثبت پرونده برای بازبینی مستقل</h2>

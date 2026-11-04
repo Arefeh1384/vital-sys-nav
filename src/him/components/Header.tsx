@@ -36,7 +36,7 @@ export const Header: React.FC = () => {
   const [timeZone,setTimeZone] = useState<'Asia/Tehran'|'UTC'>(()=>{try{return localStorage.getItem('him.ui.timeZone')==='UTC'?'UTC':'Asia/Tehran';}catch{return 'Asia/Tehran';}});
   const updateCalendar=(v:'persian'|'gregory')=>{setCalendar(v);try{localStorage.setItem('him.ui.calendar',v);}catch{/* optional */}window.dispatchEvent(new Event('him:preferences'));};
   const updateTimeZone=(v:'Asia/Tehran'|'UTC')=>{setTimeZone(v);try{localStorage.setItem('him.ui.timeZone',v);}catch{/* optional */}window.dispatchEvent(new Event('him:preferences'));};
-  const displayDate=new Intl.DateTimeFormat(lang==='en'?'en-US':'fa-IR',{calendar,weekday:'long',year:'numeric',month:'long',day:'numeric',timeZone}).format(new Date());
+  const displayDate=new Intl.DateTimeFormat(lang==='en'?'en-US':'fa-IR',{calendar,weekday:lang==='en'?'short':'long',year:'numeric',month:lang==='en'?'short':'long',day:'numeric',timeZone}).format(new Date());
   const unreadCount = notifications.filter(n => !readNotificationIds.includes(n.id)).length;
 
   const [commandOpen,setCommandOpen]=useState(false);
@@ -85,7 +85,7 @@ export const Header: React.FC = () => {
             <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </div>
 
-          <div className="text-right min-w-0">
+          <div className="text-start min-w-0">
             <div className="flex items-center gap-1 min-w-0">
               <span className="text-xs font-bold text-slate-900 group-hover:text-teal-900 truncate">
                 {scope.siteName}
@@ -99,12 +99,12 @@ export const Header: React.FC = () => {
             </div>
           </div>
 
-          <ChevronDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-400 group-hover:text-slate-700 transition-colors shrink-0 mr-0.5" />
+          <ChevronDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-400 group-hover:text-slate-700 transition-colors shrink-0 ms-0.5" />
         </button>
       </div>
 
       <button type="button" data-testid="global-command-search" onClick={()=>setCommandOpen(true)} aria-label="جستجوی سراسری و فرمان" className="hidden xl:inline-flex rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700 hover:bg-teal-50">جستجوی سراسری / فرمان</button>
-      {commandOpen&&<div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/50 p-3 pt-16" role="dialog" aria-modal="true" aria-label="جستجوی سراسری و فرمان" onClick={()=>setCommandOpen(false)}><div className="w-full max-w-lg rounded-xl border bg-white p-4 space-y-3 shadow-lg" dir="rtl" onClick={e=>e.stopPropagation()}><div className="flex justify-between"><h2 className="font-bold">جستجوی مسیرهای برنامه</h2><button type="button" onClick={()=>setCommandOpen(false)}>بستن</button></div><input autoFocus className="w-full rounded-lg border p-2 text-sm" placeholder="جستجوی نام بخش یا فرمان…" value={commandQuery} onChange={e=>setCommandQuery(e.target.value)}/><p className="text-xs text-amber-900">فقط جستجوی فرمان‌ها و مسیرهای همین نمونه؛ این کادر متن پرونده بیمار، اسناد محرمانه یا داده فراتر از دامنه مجاز را جست‌وجو نمی‌کند.</p><div className="max-h-64 overflow-auto space-y-1">{([{name:'داشبورد اجرایی',kind:'executive-dashboard'},{name:'فهرست وظایف',kind:'tasks'},{name:'فهرست هشدارها',kind:'alerts'},{name:'مرکز اعلان‌ها',kind:'notifications'},{name:'پیشنهادهای اقدام',kind:'proposals'},{name:'یادداشت‌های تصمیم',kind:'memos'},{name:'کوپایلت',kind:'copilot'}] as const).filter(x=>x.name.includes(commandQuery.trim())).map(x=><button type="button" key={x.kind} onClick={()=>{if(x.kind==='executive-dashboard')setActiveModule('EXE');else openWorkView({kind:x.kind});setCommandOpen(false);setCommandQuery('')}} className="block w-full rounded border p-2 text-right text-sm hover:bg-slate-50">{x.name}</button>)}</div></div></div>}
+      {commandOpen&&<div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/50 p-3 pt-16" role="dialog" aria-modal="true" aria-label="جستجوی سراسری و فرمان" onClick={()=>setCommandOpen(false)}><div className="w-full max-w-lg rounded-xl border bg-white p-4 space-y-3 shadow-lg" onClick={e=>e.stopPropagation()}><div className="flex justify-between"><h2 className="font-bold">جستجوی مسیرهای برنامه</h2><button type="button" onClick={()=>setCommandOpen(false)}>بستن</button></div><input autoFocus className="w-full rounded-lg border p-2 text-sm" placeholder="جستجوی نام بخش یا فرمان…" value={commandQuery} onChange={e=>setCommandQuery(e.target.value)}/><p className="text-xs text-amber-900">فقط جستجوی فرمان‌ها و مسیرهای همین نمونه؛ این کادر متن پرونده بیمار، اسناد محرمانه یا داده فراتر از دامنه مجاز را جست‌وجو نمی‌کند.</p><div className="max-h-64 overflow-auto space-y-1">{([{name:'داشبورد اجرایی',kind:'executive-dashboard'},{name:'فهرست وظایف',kind:'tasks'},{name:'فهرست هشدارها',kind:'alerts'},{name:'مرکز اعلان‌ها',kind:'notifications'},{name:'پیشنهادهای اقدام',kind:'proposals'},{name:'یادداشت‌های تصمیم',kind:'memos'},{name:'کوپایلت',kind:'copilot'}] as const).filter(x=>x.name.includes(commandQuery.trim())).map(x=><button type="button" key={x.kind} onClick={()=>{if(x.kind==='executive-dashboard')setActiveModule('EXE');else openWorkView({kind:x.kind});setCommandOpen(false);setCommandQuery('')}} className="block w-full rounded border p-2 text-start text-sm hover:bg-slate-50">{x.name}</button>)}</div></div></div>}
       {/* Zone 3: Date, State Tester & User Profile */}
       <div className="order-2 sm:order-3 flex items-center gap-1 sm:gap-2 md:gap-3 shrink-0">
         {/* Persian Calendar */}
@@ -144,7 +144,7 @@ export const Header: React.FC = () => {
 
           {isStateMenuOpen && (
             <div 
-              className="absolute left-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-lg p-1.5 text-xs z-40 space-y-1 animate-in fade-in"
+              className="absolute end-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-lg p-1.5 text-xs z-40 space-y-1 animate-in fade-in"
               onMouseLeave={() => setIsStateMenuOpen(false)}
             >
               <div className="px-2 py-1 text-[11px] font-bold text-slate-400 border-b border-slate-100">
@@ -153,7 +153,7 @@ export const Header: React.FC = () => {
               <button
                 type="button"
                 onClick={() => { setViewState('normal'); setIsStateMenuOpen(false); }}
-                className={`w-full text-right px-2.5 py-1.5 rounded-lg flex items-center justify-between ${
+                className={`w-full text-start px-2.5 py-1.5 rounded-lg flex items-center justify-between ${
                   viewState === 'normal' ? 'bg-teal-50 text-teal-800 font-bold' : 'hover:bg-slate-50 text-slate-700'
                 }`}
               >
@@ -163,7 +163,7 @@ export const Header: React.FC = () => {
               <button
                 type="button"
                 onClick={() => { setViewState('loading'); setIsStateMenuOpen(false); }}
-                className={`w-full text-right px-2.5 py-1.5 rounded-lg flex items-center justify-between ${
+                className={`w-full text-start px-2.5 py-1.5 rounded-lg flex items-center justify-between ${
                   viewState === 'loading' ? 'bg-amber-50 text-amber-800 font-bold' : 'hover:bg-slate-50 text-slate-700'
                 }`}
               >
@@ -173,7 +173,7 @@ export const Header: React.FC = () => {
               <button
                 type="button"
                 onClick={() => { setViewState('empty'); setIsStateMenuOpen(false); }}
-                className={`w-full text-right px-2.5 py-1.5 rounded-lg flex items-center justify-between ${
+                className={`w-full text-start px-2.5 py-1.5 rounded-lg flex items-center justify-between ${
                   viewState === 'empty' ? 'bg-sky-50 text-sky-800 font-bold' : 'hover:bg-slate-50 text-slate-700'
                 }`}
               >
@@ -183,7 +183,7 @@ export const Header: React.FC = () => {
               <button
                 type="button"
                 onClick={() => { setViewState('error'); setIsStateMenuOpen(false); }}
-                className={`w-full text-right px-2.5 py-1.5 rounded-lg flex items-center justify-between ${
+                className={`w-full text-start px-2.5 py-1.5 rounded-lg flex items-center justify-between ${
                   viewState === 'error' ? 'bg-rose-50 text-rose-800 font-bold' : 'hover:bg-slate-50 text-slate-700'
                 }`}
               >
@@ -195,15 +195,15 @@ export const Header: React.FC = () => {
         </div>
 
         <label className="hidden sm:flex items-center gap-1 text-xs font-medium text-slate-600">
-          <span className="hidden sm:inline">{lang==='en'?'Language':'زبان'}</span>
-          <select aria-label="Language / زبان" value={lang} onChange={e=>setLang(e.target.value as 'fa'|'en')} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs">
+          <span className="hidden 2xl:inline">{lang==='en'?'Language':'زبان'}</span>
+          <select translate="no" aria-label="Language / زبان" value={lang} onChange={e=>setLang(e.target.value as 'fa'|'en')} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs">
             <option value="fa">فارسی · RTL</option><option value="en">English · LTR</option>
           </select>
         </label>
-        <label className="hidden md:flex items-center gap-1 text-xs text-slate-600">{lang==='en'?'Calendar':'تقویم'}
-          <select aria-label="Calendar system / نوع تقویم" value={calendar} onChange={e=>updateCalendar(e.target.value as 'persian'|'gregory')} className="rounded-lg border p-1.5 bg-white"><option value="persian">Jalali</option><option value="gregory">Gregorian</option></select>
+        <label className="hidden md:flex items-center gap-1 text-xs text-slate-600"><span className="hidden 2xl:inline">{lang==='en'?'Calendar':'تقویم'}</span>
+          <select aria-label="Calendar system / نوع تقویم" value={calendar} onChange={e=>updateCalendar(e.target.value as 'persian'|'gregory')} className="rounded-lg border p-1.5 bg-white"><option value="persian">شمسی</option><option value="gregory">میلادی</option></select>
         </label>
-        <label className="hidden xl:flex items-center gap-1 text-xs text-slate-600">{lang==='en'?'Timezone':'منطقه زمانی'}
+        <label className="hidden xl:flex items-center gap-1 text-xs text-slate-600"><span className="hidden 2xl:inline">{lang==='en'?'Timezone':'منطقه زمانی'}</span>
           <select aria-label="Display timezone / منطقه زمانی" value={timeZone} onChange={e=>updateTimeZone(e.target.value as 'Asia/Tehran'|'UTC')} className="rounded-lg border p-1.5 bg-white"><option value="Asia/Tehran">Asia/Tehran</option><option value="UTC">UTC</option></select>
         </label>
         {/* Notifications Icon */}
@@ -215,7 +215,7 @@ export const Header: React.FC = () => {
           title="اعلانات سامانه"
         >
           <Bell className="w-4 h-4" />
-          {unreadCount > 0 && <span className="min-w-4 h-4 px-1 rounded-full bg-rose-600 text-white text-[9px] leading-4 text-center absolute -top-0.5 -left-0.5 ring-2 ring-white tabular-nums">{unreadCount.toLocaleString('fa-IR')}</span>}
+          {unreadCount > 0 && <span className="min-w-4 h-4 px-1 rounded-full bg-rose-600 text-white text-[9px] leading-4 text-center absolute -top-0.5 -end-0.5 ring-2 ring-white tabular-nums">{unreadCount.toLocaleString('fa-IR')}</span>}
         </button>
 
         {/* User Profile dropdown */}
@@ -231,7 +231,7 @@ export const Header: React.FC = () => {
             <div className="w-8 h-8 rounded-lg bg-slate-900 text-white font-bold flex items-center justify-center text-xs">
               {user ? user.name.slice(0, 1) : 'U'}
             </div>
-            <div className="text-right hidden xl:block">
+            <div className="text-start hidden xl:block max-w-[9rem]">
               <div className="text-xs font-bold text-slate-900 line-clamp-1">{user?.name}</div>
               <div className="text-[10px] text-slate-500 line-clamp-1">{user?.roleTitle}</div>
             </div>
@@ -240,7 +240,7 @@ export const Header: React.FC = () => {
 
           {isUserMenuOpen && (
             <div 
-              className="fixed inset-x-2 top-16 max-h-[calc(100dvh-5rem)] overflow-y-auto sm:absolute sm:inset-x-auto sm:left-0 sm:top-auto sm:mt-2 w-auto sm:w-72 bg-white border border-slate-200 rounded-xl shadow-xl p-2 z-40 animate-in fade-in space-y-2 text-xs"
+              className="fixed inset-x-2 top-16 max-h-[calc(100dvh-5rem)] overflow-y-auto sm:absolute sm:inset-x-auto sm:end-0 sm:top-auto sm:mt-2 w-auto sm:w-72 bg-white border border-slate-200 rounded-xl shadow-xl p-2 z-40 animate-in fade-in space-y-2 text-xs"
               onMouseLeave={() => setIsUserMenuOpen(false)}
             >
               <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100 space-y-1">
@@ -250,8 +250,8 @@ export const Header: React.FC = () => {
               </div>
 
               <div className="px-2 pt-2 space-y-2 border-t" aria-label="تنظیمات نمایش">
-                <label className="block">{lang==='en'?'Language':'زبان'}<select aria-label="Profile language" className="mt-1 w-full rounded-lg border p-2" value={lang} onChange={e=>setLang(e.target.value as 'fa'|'en')}><option value="fa">فارسی (RTL)</option><option value="en">English (LTR)</option></select></label>
-                <label className="block">{lang==='en'?'Calendar':'تقویم'}<select aria-label="Profile calendar" className="mt-1 w-full rounded-lg border p-2" value={calendar} onChange={e=>updateCalendar(e.target.value as 'persian'|'gregory')}><option value="persian">Jalali</option><option value="gregory">Gregorian</option></select></label>
+                <label className="block">{lang==='en'?'Language':'زبان'}<select translate="no" aria-label="Profile language" className="mt-1 w-full rounded-lg border p-2" value={lang} onChange={e=>setLang(e.target.value as 'fa'|'en')}><option value="fa">فارسی (RTL)</option><option value="en">English (LTR)</option></select></label>
+                <label className="block">{lang==='en'?'Calendar':'تقویم'}<select aria-label="Profile calendar" className="mt-1 w-full rounded-lg border p-2" value={calendar} onChange={e=>updateCalendar(e.target.value as 'persian'|'gregory')}><option value="persian">شمسی</option><option value="gregory">میلادی</option></select></label>
                 <label className="block">{lang==='en'?'Timezone':'منطقه زمانی'}<select aria-label="Profile timezone" className="mt-1 w-full rounded-lg border p-2" value={timeZone} onChange={e=>updateTimeZone(e.target.value as 'Asia/Tehran'|'UTC')}><option value="Asia/Tehran">Asia/Tehran</option><option value="UTC">UTC</option></select></label>
                 <p className="text-amber-800 text-[10px]">این تنظیمات فقط نحوه نمایش تاریخ را تغییر می‌دهد؛ مبنای ذخیره داده ثابت است.</p>
               </div>
@@ -263,7 +263,7 @@ export const Header: React.FC = () => {
                       key={u.id}
                       type="button"
                       onClick={() => { loginAsDemoUser(u); setIsUserMenuOpen(false); }}
-                      className={`w-full text-right p-1.5 rounded flex items-center justify-between text-[11px] ${
+                      className={`w-full text-start p-1.5 rounded flex items-center justify-between text-[11px] ${
                         user?.id === u.id ? 'bg-teal-50 text-teal-800 font-bold' : 'hover:bg-slate-50 text-slate-700'
                       }`}
                     >
@@ -278,7 +278,7 @@ export const Header: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => { logout(); setIsUserMenuOpen(false); }}
-                  className="w-full text-right px-3 py-2 text-rose-600 hover:bg-rose-50 rounded-lg font-medium flex items-center gap-2 transition-colors"
+                  className="w-full text-start px-3 py-2 text-rose-600 hover:bg-rose-50 rounded-lg font-medium flex items-center gap-2 transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
                   <span>خروج از حساب کاربری</span>

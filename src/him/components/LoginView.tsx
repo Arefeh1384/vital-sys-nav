@@ -14,9 +14,11 @@ import {
 import { useApp } from '../context/AppContext';
 import { DEMO_USERS, SITES_DATA, CURRENT_ORGANIZATION } from '../data/mockData';
 import { User as UserType } from '../types';
+import { useShellLanguage } from './useShellLanguage';
 
 export const LoginView: React.FC = () => {
   const { login, loginAsDemoUser } = useApp();
+  const [lang, setLang] = useShellLanguage();
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -49,7 +51,7 @@ export const LoginView: React.FC = () => {
   };
 
   return (
-    <div dir="rtl" className="min-h-screen w-full bg-slate-900 flex flex-col justify-between relative overflow-hidden text-slate-100 text-start">
+    <div className="min-h-screen w-full bg-slate-900 flex flex-col justify-between relative overflow-hidden text-slate-100 text-start">
       {/* Background ambient medical grid */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-30 pointer-events-none" />
 
@@ -69,9 +71,16 @@ export const LoginView: React.FC = () => {
           </div>
         </div>
 
-        <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400 bg-slate-800/80 border border-slate-700/80 px-3 py-1.5 rounded-lg">
-          <Server className="w-3.5 h-3.5 text-teal-400" />
-          <span>محیط استقرار: اینترانت محلی بیمارستان (<bdi dir="ltr">On-Premises</bdi>)</span>
+        <div className="flex items-center gap-2">
+          <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400 bg-slate-800/80 border border-slate-700/80 px-3 py-1.5 rounded-lg">
+            <Server className="w-3.5 h-3.5 text-teal-400" />
+            <span>محیط استقرار: اینترانت محلی بیمارستان (<bdi dir="ltr">On-Premises</bdi>)</span>
+          </div>
+          {/* Language is chosen before sign-in too (REQ-PLT-005); language names stay in their own script. */}
+          <select translate="no" data-testid="login-language" aria-label="Language / زبان" value={lang} onChange={e => setLang(e.target.value as 'fa' | 'en')} className="rounded-lg border border-slate-700/80 bg-slate-800/80 px-2 py-1.5 text-xs text-slate-200">
+            <option value="fa">فارسی · RTL</option>
+            <option value="en">English · LTR</option>
+          </select>
         </div>
       </header>
 
@@ -107,7 +116,7 @@ export const LoginView: React.FC = () => {
                     نام کاربری یا شماره پرسنلی
                   </label>
                   <div className="relative">
-                    <User className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+                    <User className="w-4 h-4 text-slate-400 absolute start-3.5 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
                       dir="auto"
@@ -115,7 +124,7 @@ export const LoginView: React.FC = () => {
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       placeholder="مثال: 984120 یا zali@sbmu.ac.ir"
-                      className="w-full pr-10 pl-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-teal-500 text-slate-900"
+                      className="w-full ps-10 pe-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-teal-500 text-slate-900"
                     />
                   </div>
                 </div>
@@ -126,7 +135,7 @@ export const LoginView: React.FC = () => {
                     کلمه عبور
                   </label>
                   <div className="relative">
-                    <Lock className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+                    <Lock className="w-4 h-4 text-slate-400 absolute start-3.5 top-1/2 -translate-y-1/2" />
                     <input
                       type={showPassword ? 'text' : 'password'}
                       dir="auto"
@@ -134,12 +143,12 @@ export const LoginView: React.FC = () => {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="کلمه عبور (پیش‌فرض دمو: sbmu1405 یا 123456)"
-                      className="w-full pr-10 pl-10 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-teal-500 text-slate-900 font-mono"
+                      className="w-full ps-10 pe-10 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-teal-500 text-slate-900 font-mono"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="p-1 text-slate-400 hover:text-slate-600 absolute left-3 top-1/2 -translate-y-1/2"
+                      className="p-1 text-slate-400 hover:text-slate-600 absolute end-3 top-1/2 -translate-y-1/2"
                       title={showPassword ? 'مخفی کردن رمز' : 'نمایش رمز'}
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -153,11 +162,11 @@ export const LoginView: React.FC = () => {
                     سایت بیمارستانی اولیه
                   </label>
                   <div className="relative">
-                    <Hospital className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <Hospital className="w-4 h-4 text-slate-400 absolute start-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <select
                       value={selectedSiteId}
                       onChange={(e) => setSelectedSiteId(e.target.value)}
-                      className="w-full pr-10 pl-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-teal-500 text-slate-800"
+                      className="w-full ps-10 pe-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-teal-500 text-slate-800"
                     >
                       {SITES_DATA.map((site) => (
                         <option key={site.id} value={site.id}>
@@ -233,7 +242,7 @@ export const LoginView: React.FC = () => {
                     key={demo.id}
                     type="button"
                     onClick={() => handleQuickLogin(demo)}
-                    className="w-full text-right p-3 rounded-xl bg-slate-900/70 hover:bg-slate-900 border border-slate-700/60 hover:border-teal-500/60 transition-all flex items-start justify-between gap-3 group"
+                    className="w-full text-start p-3 rounded-xl bg-slate-900/70 hover:bg-slate-900 border border-slate-700/60 hover:border-teal-500/60 transition-all flex items-start justify-between gap-3 group"
                   >
                     <div className="space-y-1">
                       <div className="text-xs font-bold text-slate-100 group-hover:text-teal-300 transition-colors">

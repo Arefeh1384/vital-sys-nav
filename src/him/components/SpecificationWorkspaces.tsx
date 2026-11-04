@@ -74,7 +74,7 @@ function GenericSpecificationWorkspace({path,siteName}:{path:string;siteName:str
   const updated={...records,[path]:[...(records[path]||[]),{title:entry.trim(),detail:`${current} · ${siteName} · پیش‌نویس غیرمعتبر برای استفاده عملیاتی`,at:new Date().toISOString()}]};
   setRecords(updated);localStorage.setItem(scopedDraftKey(STATE_KEY,path,scope.siteId||'none',user?.id||'guest'),JSON.stringify(updated));setEntry('');
  };
- return <section dir="rtl" className="space-y-5" data-testid="spec-workspace">
+ return <section className="space-y-5" data-testid="spec-workspace">
   <header className="bg-white rounded-xl border border-slate-200 p-5 space-y-2"><h1 className="text-xl font-bold">{page.title}</h1><p className="text-sm text-slate-600">{page.intro}</p><p className="text-xs text-slate-500">سایت جاری: {siteName}</p></header>
   <div role="alert" className="border border-amber-300 bg-amber-50 text-amber-950 rounded-xl p-4 text-sm">{page.warning} داده‌ها مصنوعی‌اند و این صفحه جایگزین مجوز، بازبینی و زیرساخت عملیاتی نیست.</div>
   <nav role="tablist" aria-label={page.title} className="flex flex-wrap gap-2">{page.tabs.map((t,i)=><button key={t} role="tab" aria-selected={tab===i} onClick={()=>setTab(i)} className={`rounded-lg border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-teal-500 ${tab===i?'bg-teal-800 text-white':'bg-white text-slate-800'}`}>{t}</button>)}</nav>

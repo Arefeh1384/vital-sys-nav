@@ -160,7 +160,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
   );
   if (path === '/knowledge/search')
     return (
-      <section className="space-y-4" dir="rtl" data-testid="knowledge-retrieval">
+      <section className="space-y-4" data-testid="knowledge-retrieval">
         <h1 className="text-xl font-bold">KNO-02 · جستجوی دانش و شواهد</h1>
         <p className={info}>
           نسخه‌هایی که در همین مرورگر با بازبین مستقل آزمایشی تأیید و منتشر شده‌اند می‌توانند
@@ -287,7 +287,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
       </section>
     );
   return (
-    <section dir="rtl" className="space-y-4" data-testid="knowledge-documents">
+    <section className="space-y-4" data-testid="knowledge-documents">
       <h1 className="text-xl font-bold">KNO-01 · مخزن سند و چرخه نسخه</h1>
       <p className={info}>
         اسناد محلی فقط metadata و گزیده متن مصنوعی دارند؛ فایل انتخاب‌شده به سرور یا مخزن رسمی ارسال نمی‌شود.
@@ -399,7 +399,7 @@ export function KnowledgeWorkspace({ path, siteName }: { path: string; siteName:
               type="button"
               key={d.id}
               onClick={() => setSelected(d.id)}
-              className={`block w-full text-right rounded border p-2 text-sm ${d.id === selected ? 'border-teal-600' : 'border-slate-200'}`}
+              className={`block w-full text-start rounded border p-2 text-sm ${d.id === selected ? 'border-teal-600' : 'border-slate-200'}`}
             >
               {d.title} · v{d.version} · {d.state} · {d.id}
             </button>

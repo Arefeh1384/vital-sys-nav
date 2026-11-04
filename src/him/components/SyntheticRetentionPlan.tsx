@@ -21,7 +21,7 @@ export function SyntheticRetentionPlan(){
  const approve=(id:string)=>setPlans(x=>x.map(p=>p.id===id&&p.author!==actor&&p.reviewer===actor?{...p,state:'review_approved_synthetic',reviewedAt:new Date().toISOString()}:p));
  const latest=plans.find(p=>p.state==='review_approved_synthetic');
  const result=latest?sample.filter(r=>r.kind===latest.kind).map(r=>({...r,decision:decideRetention(r.ageDays,r.hold,latest.hold,latest.days)})):[];
- return <section className="rounded-xl border border-amber-300 p-4 space-y-3 bg-white" data-testid="synthetic-retention-plan" dir="rtl">
+ return <section className="rounded-xl border border-amber-300 p-4 space-y-3 bg-white" data-testid="synthetic-retention-plan">
   <h3 className="font-semibold">طرح حذف/نگهداری و Legal Hold صرفاً نمایشی</h3><p className="text-xs text-amber-900">خروجی صرفاً dry-run روی سه شناسه مصنوعی است. حتی رکورد واجد شرایط هم حذف نمی‌شود؛ بررسی سازمانی و کنترل واقعی نگهداری وجود ندارد.</p>
   <div className="grid sm:grid-cols-2 gap-3 text-xs">
   <label>نوع سند<select className="w-full border rounded p-2" value={kind} onChange={e=>setKind(e.target.value)}><option value="audit">ممیزی</option><option value="memo">یادداشت</option></select></label>

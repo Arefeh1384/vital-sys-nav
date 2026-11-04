@@ -10,7 +10,8 @@
     "test": "vitest run",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "i18n:check": "node scripts/i18n/check-missing.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

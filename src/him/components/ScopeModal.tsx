@@ -93,13 +93,13 @@ export const ScopeModal: React.FC = () => {
         {/* Search Bar */}
         <div className="p-3 sm:p-4 border-b border-slate-100 bg-white">
           <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Search className="w-4 h-4 text-slate-400 absolute start-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="جستجوی نام بیمارستان، کد سایت درمانی یا نوع مرکز..."
-              className="w-full pr-10 pl-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-teal-500 focus:bg-white text-slate-800 placeholder:text-slate-400"
+              className="w-full ps-10 pe-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-teal-500 focus:bg-white text-slate-800 placeholder:text-slate-400"
             />
           </div>
         </div>
@@ -198,7 +198,7 @@ export const ScopeModal: React.FC = () => {
           <button
             type="button"
             onClick={() => setIsScopeModalOpen(false)}
-            className="px-3 py-1.5 font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-200/50 rounded-lg shrink-0 mr-2"
+            className="px-3 py-1.5 font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-200/50 rounded-lg shrink-0 ms-2"
           >
             انصراف
           </button>

@@ -1,4 +1,4 @@
-import {useShellLanguage} from './useShellLanguage';
+import {uiText,useShellLanguage} from './useShellLanguage';
 import {SpecificationWorkspace} from './SpecificationWorkspaces';
 import {ManualViews} from '../manual/ManualViews';
 import {ExecutiveDashboard} from '../executive/ExecutiveDashboard';
@@ -311,7 +311,7 @@ export const MainContent: React.FC = () => {
 
             <button
               type="button"
-              onClick={() => alert('درخواست بازنشانی توکن‌های موقت ثبت شد.')}
+              onClick={() => alert(uiText('درخواست بازنشانی توکن‌های موقت ثبت شد.'))}
               className="w-full py-2 px-3 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition-colors shadow-2xs"
             >
               بازنشانی توکن‌های نشست‌های محلی
@@ -375,7 +375,7 @@ export const MainContent: React.FC = () => {
       </div>
 
       {/* Entry points to the existing OPS workflows. No source-side operation is triggered. */}
-      <section aria-labelledby="ops-planning-heading" data-testid="ops-planning-tools" className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 space-y-4 shadow-xs" dir="rtl">
+      <section aria-labelledby="ops-planning-heading" data-testid="ops-planning-tools" className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 space-y-4 shadow-xs">
         <div className="space-y-1">
           <h3 id="ops-planning-heading" className="flex items-center gap-2 text-sm sm:text-base font-bold text-slate-900">
             <SlidersHorizontal className="h-5 w-5 text-teal-700" aria-hidden="true" />
@@ -807,15 +807,15 @@ export const MainContent: React.FC = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-right text-xs">
+          <table className="w-full text-start text-xs">
             <thead>
               <tr className="border-b border-slate-200 text-slate-400 font-medium">
                 <th className="py-2.5 px-3">نام مرکز درمانی</th>
                 <th className="py-2.5 px-3">کد سایت</th>
-                <th className="py-2.5 px-3 text-left">ظرفیت تخت مصوب</th>
-                <th className="py-2.5 px-3 text-left">ضریب اشغال</th>
-                <th className="py-2.5 px-3 text-left">میانه انتظار اورژانس</th>
-                <th className="py-2.5 px-3 text-left">وضعیت اتصال</th>
+                <th className="py-2.5 px-3 text-end">ظرفیت تخت مصوب</th>
+                <th className="py-2.5 px-3 text-end">ضریب اشغال</th>
+                <th className="py-2.5 px-3 text-end">میانه انتظار اورژانس</th>
+                <th className="py-2.5 px-3 text-end">وضعیت اتصال</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -833,10 +833,10 @@ export const MainContent: React.FC = () => {
                     )}
                   </td>
                   <td className="py-3 px-3 font-mono text-slate-500 text-[11px]">{site.code}</td>
-                  <td className="py-3 px-3 text-left tabular-nums text-slate-800">{site.beds} تخت</td>
-                  <td className="py-3 px-3 text-left tabular-nums text-teal-800">{site.occ}</td>
-                  <td className="py-3 px-3 text-left tabular-nums text-slate-700">{site.wait}</td>
-                  <td className="py-3 px-3 text-left text-emerald-700 text-[11px]">{site.conn}</td>
+                  <td className="py-3 px-3 text-end tabular-nums text-slate-800">{site.beds} تخت</td>
+                  <td className="py-3 px-3 text-end tabular-nums text-teal-800">{site.occ}</td>
+                  <td className="py-3 px-3 text-end tabular-nums text-slate-700">{site.wait}</td>
+                  <td className="py-3 px-3 text-end text-emerald-700 text-[11px]">{site.conn}</td>
                 </tr>
               ))}
             </tbody>
