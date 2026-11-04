@@ -1,4 +1,5 @@
 import {uiText,useShellLanguage} from './useShellLanguage';
+import {FinanceKpis} from '../finance/FinanceWorkspace';
 import {SpecificationWorkspace} from './SpecificationWorkspaces';
 import {ManualViews} from '../manual/ManualViews';
 import {ExecutiveDashboard} from '../executive/ExecutiveDashboard';
@@ -619,39 +620,7 @@ export const MainContent: React.FC = () => {
           <span className="text-xs text-slate-500 font-mono">واحد پول: ریال ایران (IRR)</span>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
-            <span className="text-xs text-slate-500 block">نرخ کسورات بیمه‌ای (Denial Rate)</span>
-            <div className="text-2xl font-black text-teal-700 tabular-nums">
-              ۳.۲٪
-            </div>
-            <span className="text-[11px] text-emerald-700 block">کاهش نسبت به ماه گذشته</span>
-          </div>
-
-          <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
-            <span className="text-xs text-slate-500 block">اسناد بستری در انتظار رسیدگی</span>
-            <div className="text-2xl font-black text-slate-900 tabular-nums">
-              ۴۵۰ پرونده
-            </div>
-            <span className="text-[11px] text-slate-500 block">ارسال الکترونیک سپاس</span>
-          </div>
-
-          <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
-            <span className="text-xs text-slate-500 block">مغایرت صورت‌حساب با منبع</span>
-            <div className="text-2xl font-black text-slate-900 tabular-nums">
-              ۰.۰٪
-            </div>
-            <span className="text-[11px] text-emerald-700 block">تطبیق کامل ریالی با HIS</span>
-          </div>
-
-          <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1">
-            <span className="text-xs text-slate-500 block">تعهدات قراردادی سررسیدشده</span>
-            <div className="text-2xl font-black text-amber-700 tabular-nums">
-              ۱ قرارداد
-            </div>
-            <span className="text-[11px] text-amber-700 block">نیازمند بازبینی کارشناس</span>
-          </div>
-        </div>
+        <FinanceKpis />
       </div>
     </div>
   );

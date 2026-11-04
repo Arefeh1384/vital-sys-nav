@@ -3,6 +3,7 @@ import { ALERTS_DATA, TASKS_DATA } from './workData';
 import { alertEvidence, taskEvidence } from './evidenceData';
 import { SITES_DATA } from './mockData';
 import { toEnglishText } from '../i18n/translate';
+import { occupancyDaySnapshot } from '../executive/dashboardStore';
 
 const EN_UNAVAILABLE_NOTE = 'ترجمه‌ی انگلیسی پاسخ در نسخه‌ی نمونه ارائه نمی‌شود؛ متن پاسخ فارسی است.';
 
@@ -32,7 +33,9 @@ export interface CopilotTurn {
   state: RunState; jobState: 'queued' | 'running' | 'succeeded' | 'failed' | 'canceling';
   idempotencyKey: string; answer?: AnswerArtifact; originalAnswer?: AnswerArtifact;
   context?: { purpose: string; range: string; attachmentIds: string[] };
-  feedback?: { helpful: boolean | null; errorType: string; text: string; claimIndex?: number | null };
+  feedback?: { helpful: boolean | null; errorType: string; text: string; claimIndex?: number | null;
+    /** Submitted feedback records, append-only; the original answer is never rewritten (REQ-EXE-008). */
+    submissions?: { at: string; helpful: boolean | null; errorType: string; text: string; claimIndex: number | null }[] };
 }
 export const REASON_LABEL: Record<ReasonCode, string> = {
   missing_evidence: 'شواهد ناموجود', conflicting_evidence: 'تعارض بین منابع', ambiguous_request: 'درخواست مبهم',
@@ -78,6 +81,8 @@ export function approvedDocuments(siteId: string) {
   ];
 }
 function hash(s: string) { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return (h >>> 0).toString(16); }
+/** Stable identifier of the exact evidence set (ids, versions, locators, as-of) an answer was built from (REQ-AIM-010). */
+export function evidenceSnapshotId(answer: AnswerArtifact) { return `EVS-${hash(answer.evidence.map(e => `${e.id}@${e.version}#${e.locator}|${e.dataAsOf}|${e.revoked ? 'revoked' : 'active'}`).join(';'))}`; }
 /** A fixture cannot be 'fresh' just because its persisted flag says so. */
 export function evidenceFreshness(dataAsOf:string, evaluatedAt:string | number = Date.now()): 'fresh' | 'stale' | 'unknown' {
   const observed=Date.parse(dataAsOf);
@@ -208,6 +213,24 @@ function answerQuestionFa(question: string, siteId: string, userPermittedSiteIds
     const lastCompleteDay = /last\s+(?:complete|completed|full)\s+day|previous\s+(?:complete|completed|full)\s+day|آخرین\s+روز\s+کامل|روز\s+کامل\s+قبل|روز\s+گذشته/.test(q);
     if (lastCompleteDay && !/آخرین روز کامل|last complete day/i.test(ctx?.range ?? '')) {
       return clarify('ambiguous_request');
+    }
+    // REQ-EXE-001: the default reporting period is the last complete local day (Asia/Tehran).
+    if (/آخرین روز کامل|last complete day/i.test(ctx?.range ?? '')) {
+      const snap = occupancyDaySnapshot(siteId);
+      if (!snap) return abstain('missing_evidence', 'برای آخرین روز کامل، Snapshot روزانه تأییدشده‌ای برای این سایت در داده نمایشی وجود ندارد. مقدار امروز جایگزین آن نمی‌شود.');
+      const dayResult = metricResult(snap.occupied, snap.staffed);
+      const tehranDay = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tehran', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+      const lastComplete = tehranDay(new Date(Date.parse(now) - 86400000).toISOString());
+      const behind = snap.localDay < lastComplete;
+      const de: EvidenceItem = { ...evidence(`${siteId}-occ-day`, 'computed', 'Snapshot روزانه اشغال تخت (نمونه)', `${snap.occupied} تخت اشغال‌شده / ${snap.staffed} تخت فعال دارای نیروی انسانی`, { kind: 'metric', id: `${siteId}-occ-day` }), version: snap.snapshot, locator: `${snap.snapshot}#${snap.localDay}`, numerator: snap.occupied, denominator: snap.staffed, metricVersion: snap.metricVersion, dataAsOf: snap.asOf, sourceEventAt: snap.syntheticSourceEventAt, ingestedAt: snap.syntheticIngestedAt, provenanceNote: 'Snapshot ثابت فیکسچر؛ از سامانه بیمارستان دریافت نشده است.' };
+      const limitations = [
+        ...(lastCompleteDay ? [] : ['بازه در پرسش مشخص نشده بود؛ بازه پیش‌فرض «آخرین روز کامل» محلی (Asia/Tehran) به کار رفت. برای بازه دیگر، بازه زمانی را تغییر دهید.']),
+        ...(behind ? [`آخرین روز کامل محلی ${lastComplete} است، ولی جدیدترین Snapshot روزانه موجود ${snap.localDay} است؛ داده تازه‌تری در دسترس نیست.`] : []),
+        ...(dayResult.status === 'not_computable' ? ['مخرج (تخت‌های فعال) صفر است؛ اشغال تخت قابل محاسبه نیست و ۰٪ فرض نمی‌شود.'] : []),
+        ...(ctx?.language === 'en' ? [EN_UNAVAILABLE_NOTE] : []),
+      ];
+      return validateAnswer({ ...base, status: behind || dayResult.status === 'not_computable' ? 'partial' : 'answered', reasonCodes: behind ? ['source_stale'] : dayResult.status === 'not_computable' ? ['missing_evidence'] : [], dataAsOf: snap.asOf, evidence: [de],
+        blocks: [{ text: dayResult.status === 'not_computable' ? 'اشغال تخت قابل محاسبه نیست (not_computable).' : `اشغال تخت‌های فعال دارای نیروی انسانی در روز کامل ${snap.localDay} (Asia/Tehran) ${dayResult.value.toLocaleString('fa-IR')}٪ است.`, evidenceIds: [de.id] }], limitations });
     }
     if (lastCompleteDay) {
       return abstain('missing_evidence', 'برای آخرین روز کامل، رکورد تأییدشده با بازه تقویمی و زمان محلی در داده‌های نمایشی موجود نیست. مقدار امروز جایگزین آن نمی‌شود.');

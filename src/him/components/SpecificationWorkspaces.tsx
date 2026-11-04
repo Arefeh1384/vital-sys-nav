@@ -1,5 +1,7 @@
 import {InvestigationWorkspace} from './InvestigationWorkspace';
 import {AssistantRunsWorkspace} from './AssistantRunsWorkspace';
+import {LineageWorkspace} from './LineageWorkspace';
+import {FinanceWorkspace} from '../finance/FinanceWorkspace';
 import { SpecializedWorkspace } from './SpecializedWorkspaces';
 import {ConnectorWorkspace} from './ConnectorWorkspace';
 import {AuditWorkspace, NotificationPolicyWorkspace} from './ControlWorkflows';
@@ -49,6 +51,8 @@ const STATE_KEY = 'him.spec-workspaces.demo.v2';
 export function SpecificationWorkspace({path,siteName,initialTab}:{path:string;siteName:string;initialTab?:number}) {
  const {scope,user}=useApp();
  if(path==='/assistant/runs')return <AssistantRunsWorkspace/>;
+ if(path==='/data/lineage/demo')return <LineageWorkspace/>;
+ if(path==='/finance/workflows')return <FinanceWorkspace key={scope.siteId??'none'}/>;
  if(path==='/executive/investigations')return <InvestigationWorkspace/>;
  if(path==='/audit')return <AuditWorkspace/>;
  if(path==='/settings/notification-policy')return <NotificationPolicyWorkspace/>;

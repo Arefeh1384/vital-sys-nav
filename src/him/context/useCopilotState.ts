@@ -3,7 +3,7 @@ import { answerQuestion, appendTurn, jobStateForRun, questionError, RUN_DEADLINE
 import type { User } from '../types';
 
 export interface CopilotContext { purpose: string; language: 'fa' | 'en'; range: string; attachmentIds: string[] }
-const DEFAULT_CONTEXT: CopilotContext = { purpose: 'مدیریت عملیات', language: 'fa', range: 'امروز', attachmentIds: [] };
+const DEFAULT_CONTEXT: CopilotContext = { purpose: 'مدیریت عملیات', language: 'fa', range: 'آخرین روز کامل', attachmentIds: [] }; // REQ-EXE-001 default period
 const ACTIVE_STATES = ['queued', 'running', 'validating'];
 function readTurns(): CopilotTurn[] {
   try {
@@ -16,7 +16,9 @@ function readTurns(): CopilotTurn[] {
 export function useCopilotState(user: User | null, siteId: string | null) {
   const [turns, setTurns] = useState<CopilotTurn[]>(readTurns);
   const turnsRef = useRef(turns);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The open answer survives a page reload in this tab so feedback and history can be read back.
+  const [selectedId, setSelectedIdRaw] = useState<string | null>(() => { try { return sessionStorage.getItem('him.copilot.selected'); } catch { return null; } });
+  const setSelectedId = (id: string | null) => { setSelectedIdRaw(id); try { if (id) sessionStorage.setItem('him.copilot.selected', id); else sessionStorage.removeItem('him.copilot.selected'); } catch { /* optional */ } };
   const [context, setContext] = useState<CopilotContext>(DEFAULT_CONTEXT);
   const [contextChanged, setContextChanged] = useState(false);
   const [scopeMessage, setScopeMessage] = useState('');

@@ -68,7 +68,7 @@ export function AssistantRunsWorkspace() {
         </div>
       : <div className="overflow-x-auto rounded-xl border bg-white">
           <table className="w-full min-w-[760px] text-sm text-start">
-            <thead className="bg-slate-50 text-xs text-slate-500"><tr>{['شناسه اجرا', 'پرسش', 'وضعیت اجرا', 'نتیجه پاسخ', 'شواهد', 'زبان پاسخ', 'زمان', ''].map((h, i) => <th key={i} className="p-3 text-start font-semibold">{h}</th>)}</tr></thead>
+            <thead className="bg-slate-50 text-xs text-slate-500"><tr>{['شناسه اجرا', 'پرسش', 'وضعیت اجرا', 'نتیجه پاسخ', 'شواهد', 'زبان پاسخ', 'بازخورد', 'زمان', ''].map((h, i) => <th key={i} className="p-3 text-start font-semibold">{h}</th>)}</tr></thead>
             <tbody>{rows.map(t => <tr key={t.id} className="border-t align-top">
               <td className="p-3 font-mono text-xs" dir="ltr">{t.answer?.runId ?? t.id}</td>
               <td className="p-3 max-w-xs break-words" dir="auto" translate="no">{t.question}</td>
@@ -76,6 +76,7 @@ export function AssistantRunsWorkspace() {
               <td className="p-3">{t.answer ? ANSWER_LABEL[t.answer.status] ?? t.answer.status : 'بدون خروجی'}</td>
               <td className="p-3 tabular-nums">{(t.answer?.evidence.filter(e => !e.revoked).length ?? 0).toLocaleString('fa-IR')}</td>
               <td className="p-3">{t.language === 'en' ? 'انگلیسی' : 'فارسی'}</td>
+              <td className="p-3 text-xs">{t.feedback?.submissions?.length ? `${t.feedback.submissions.length.toLocaleString('fa-IR')} مورد · ${t.feedback.submissions.at(-1)!.helpful === false ? 'مفید نبود' : t.feedback.submissions.at(-1)!.helpful ? 'مفید بود' : 'بدون رأی'}${t.feedback.submissions.at(-1)!.errorType ? ` · ${t.feedback.submissions.at(-1)!.errorType}` : ''}` : '—'}</td>
               <td className="p-3 whitespace-nowrap">{formatPreferredDate(t.at, language)}</td>
               <td className="p-3">{t.answer && <button type="button" className="text-teal-800 underline" onClick={() => openWorkView({kind: 'copilot', answerId: t.answer!.id})}>باز کردن پاسخ</button>}</td>
             </tr>)}</tbody>

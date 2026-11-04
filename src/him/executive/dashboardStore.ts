@@ -19,6 +19,8 @@ const OCCUPANCY_FIXTURE:Record<string,{occupied:number;staffed:number;snapshot:s
  [SITES_DATA[1]?.id||'none']:{occupied:85,staffed:110,snapshot:'SYN-OPS-IMAM-20261023-v1',syntheticSourceEventAt:'2026-10-23T23:42:00+03:30',syntheticIngestedAt:'2026-10-23T23:44:00+03:30'},
  [SITES_DATA[2]?.id||'none']:{occupied:0,staffed:0,snapshot:'SYN-OPS-SHO-EMPTY-v1',syntheticSourceEventAt:'2026-10-23T23:10:00+03:30',syntheticIngestedAt:'2026-10-23T23:12:00+03:30'},
 };
+/** Daily occupancy snapshot shared by the dashboard and Copilot (one complete local day, Asia/Tehran). */
+export function occupancyDaySnapshot(siteId:string){const r=OCCUPANCY_FIXTURE[siteId];return r?{...r,localDay:'2026-10-23',asOf:'2026-10-23T23:59:59+03:30',metricVersion:'available_staffed_bed_occupancy@1'}:null;}
 /** Comparison is explicitly restricted to authorized synthetic fixtures; not approved cross-site analytics. */
 export function compareOccupancyFixtures(siteIds:string[],period:Period){
  // Resolve short site codes to canonical UUIDs; callers must still supply their permitted site list.
